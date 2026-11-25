@@ -77,6 +77,26 @@ Managing hundreds of alerts can be tedious. Use the bulk action buttons at the t
 
 ---
 
+## Cleaning Up Deleted Media
+
+Posterizarr automatically keeps Action Center records aligned with your media servers and also offers a manual cleanup action when items have been removed from Plex, Jellyfin, or Emby.
+
+### Automatic Cleanup
+
+- **On Media Server Export Import:** Whenever Plex or Jellyfin/Emby library exports are imported (automatically after a Posterizarr run or manually under **Media Server Export**), Posterizarr compares active items per library and prunes orphaned `imagechoices` and `skipped_items` records for items that no longer exist.
+- **On Media Server HTTP 404:** When Dynamic Overlays receives an HTTP 404 for a deleted item, Posterizarr removes its stale `media_export.db` row along with matching `imagechoices` and `skipped_items` entries in `imagechoices.db` (without touching files on disk).
+
+### Manual "Cleanup Deleted" Action
+
+1. Click **Cleanup Deleted** in the Action Center toolbar and confirm **Check & Cleanup**.
+2. Posterizarr queries your active configured **Plex**, **Jellyfin**, and **Emby** libraries (respecting library exclusions).
+3. Orphaned entries in Action Center (`imagechoices`, `skipped_items`) and `media_export.db` are removed, and a summary shows the removed count and checked libraries.
+
+!!! note "Non-destructive safety guard"
+    **Cleanup Deleted** never deletes media or artwork files on disk. Any unreachable media server or library that returns `0` active items is skipped so temporary server outages cannot wipe your tracking records.
+
+---
+
 ## FAQ
 
 ### Why am I getting so many errors/alerts?

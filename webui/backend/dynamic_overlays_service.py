@@ -36,6 +36,49 @@ VISUAL_MANAGED_OVERLAY_DEFAULTS = {
 }
 VISUAL_MANAGED_OVERLAY_FILES = ("overlays_movies.yml", "overlays_tv.yml", "anime_overlays.yml")
 
+STATUS_STATE_KEYS = ("airing", "returning", "ended", "canceled")
+STATUS_DEFAULT_COLORS = {
+    "airing": "#27C24C",
+    "returning": "#FFA500",
+    "canceled": "#ED1F1F",
+    "ended": "#FF0000",
+}
+
+
+def _parse_status_bool(value: Any) -> Optional[bool]:
+    """Parse boolean-like status template variables strictly, returning None when unset."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int) and not isinstance(value, bool):
+        if value == 1:
+            return True
+        if value == 0:
+            return False
+        return None
+    if isinstance(value, str):
+        norm = value.strip().lower()
+        if norm in ("true", "1", "yes"):
+            return True
+        if norm in ("false", "0", "no"):
+            return False
+    return None
+
+
+def extract_status_states_enabled(vars_dict: Dict[str, Any]) -> Dict[str, bool]:
+    """Resolve enabled/disabled state flags for Airing, Returning, Ended, and Canceled."""
+    vars_lower = {str(k).strip().lower(): v for k, v in (vars_dict or {}).items()}
+    use_all = _parse_status_bool(vars_lower.get("use_all"))
+    result: Dict[str, bool] = {}
+    for st in STATUS_STATE_KEYS:
+        explicit = _parse_status_bool(vars_lower.get(f"use_{st}"))
+        if explicit is not None:
+            result[st] = explicit
+        elif use_all is not None:
+            result[st] = use_all
+        else:
+            result[st] = True
+    return result
+
 
 def _normalize_asset_overrides(value: Any) -> Dict[str, Dict[str, str]]:
     normalized = {}
@@ -711,12 +754,9 @@ def generate_starter_visual_config(detected_libraries: Optional[List[Dict[str, s
                     "offset_x": 0,
                     "offset_y": 23,
                     "font_size": 80,
-                    "colors": {
-                        "airing": "#27C24C",
-                        "returning": "#FFA500",
-                        "canceled": "#ED1F1F",
-                        "ended": "#FF0000"
-                    }
+                    "colors": dict(STATUS_DEFAULT_COLORS),
+                    "states": {st: True for st in STATUS_STATE_KEYS},
+                    "texts": {st: "" for st in STATUS_STATE_KEYS}
                 },
                 "network": {
                     "enabled": False,
@@ -954,12 +994,9 @@ def parse_config_yml_to_visual(config_path: Optional[Path] = None, auto_seed: bo
                 "offset_x": 0,
                 "offset_y": 23,
                 "font_size": 80,
-                "colors": {
-                    "airing": "#27C24C",
-                    "returning": "#FFA500",
-                    "canceled": "#ED1F1F",
-                    "ended": "#FF0000"
-                }
+                "colors": dict(STATUS_DEFAULT_COLORS),
+                "states": {st: True for st in STATUS_STATE_KEYS},
+                "texts": {st: "" for st in STATUS_STATE_KEYS}
             },
             "network": {
                 "enabled": False,
@@ -1104,6 +1141,7 @@ def parse_config_yml_to_visual(config_path: Optional[Path] = None, auto_seed: bo
             elif default_name == "status":
                 h_pos = vars_dict.get("horizontal_align") or vars_dict.get("horizontal_position", "center")
                 v_pos = vars_dict.get("vertical_align") or vars_dict.get("vertical_position", "bottom")
+                fallback_font_color = str(vars_dict.get("font_color") or "").strip()
                 badges["status"] = {
                     "enabled": True,
                     "level": vars_dict.get("builder_level", "show"),
@@ -1111,15 +1149,21 @@ def parse_config_yml_to_visual(config_path: Optional[Path] = None, auto_seed: bo
                     "offset_x": vars_dict.get("horizontal_offset", 0),
                     "offset_y": vars_dict.get("vertical_offset", 23),
                     "font_size": vars_dict.get("font_size", 80),
+                    "font": vars_dict.get("font", ""),
                     "back_color": vars_dict.get("back_color", "#00000000"),
                     "back_radius": int(vars_dict.get("back_radius", 15)),
                     "back_width": int(vars_dict.get("back_width", 965)),
                     "back_height": int(vars_dict.get("back_height", 149)),
                     "colors": {
-                        "airing": vars_dict.get("font_color_airing", "#27C24C"),
-                        "returning": vars_dict.get("font_color_returning", "#FFA500"),
-                        "canceled": vars_dict.get("font_color_canceled", "#ED1F1F"),
-                        "ended": vars_dict.get("font_color_ended", "#FF0000")
+                        st: str(vars_dict.get(f"font_color_{st}") or "").strip()
+                        or fallback_font_color
+                        or STATUS_DEFAULT_COLORS[st]
+                        for st in STATUS_STATE_KEYS
+                    },
+                    "states": extract_status_states_enabled(vars_dict),
+                    "texts": {
+                        st: str(vars_dict.get(f"text_{st}") or "")
+                        for st in STATUS_STATE_KEYS
                     },
                     "template_variables": dict(vars_dict)
                 }
@@ -1601,23 +1645,42 @@ def compile_visual_to_config_yml(visual_data: Dict[str, Any], output_path: Optio
         if media_type == "show" and b_stat.get("enabled"):
             h, v = _split_unified_position(b_stat.get("position", "bottom-center"))
             colors = b_stat.get("colors", {})
+            raw_tpl_vars = b_stat.get("template_variables", {})
+            stale_status_keys = {"font_color", "text", "use_all"} | {f"use_{st}" for st in STATUS_STATE_KEYS}
             stat_vars: Dict[str, Any] = {
-                **b_stat.get("template_variables", {}),
+                k: val for k, val in raw_tpl_vars.items()
+                if str(k).strip().lower() not in stale_status_keys
+            }
+            prev_font = str(raw_tpl_vars.get("font") or "").strip()
+            stat_vars.update({
                 "horizontal_align": h,
                 "vertical_align": v,
                 "horizontal_offset": int(b_stat.get("offset_x", 0)),
                 "vertical_offset": int(b_stat.get("offset_y", 23)),
                 "font_size": int(b_stat.get("font_size", 80)),
-                "font": "config/fonts/Colus-Regular.ttf",
+                "font": str(b_stat.get("font") or prev_font or "config/fonts/Colus-Regular.ttf"),
                 "back_height": int(b_stat.get("back_height", 149)),
                 "back_width": int(b_stat.get("back_width", 965)),
                 "back_color": b_stat.get("back_color", "#00000000"),
                 "back_radius": int(b_stat.get("back_radius", 15)),
-                "font_color_airing": colors.get("airing", "#27C24C"),
-                "font_color_returning": colors.get("returning", "#FFA500"),
-                "font_color_canceled": colors.get("canceled", "#ED1F1F"),
-                "font_color_ended": colors.get("ended", "#FF0000")
-            }
+            })
+            for st in STATUS_STATE_KEYS:
+                stat_vars[f"font_color_{st}"] = (
+                    str(colors.get(st) or "").strip() or STATUS_DEFAULT_COLORS[st]
+                )
+            states = b_stat.get("states")
+            if isinstance(states, dict):
+                for st in STATUS_STATE_KEYS:
+                    if states.get(st) is False:
+                        stat_vars[f"use_{st}"] = False
+            texts = b_stat.get("texts")
+            if isinstance(texts, dict):
+                for st in STATUS_STATE_KEYS:
+                    txt = str(texts.get(st) or "").strip()
+                    if txt:
+                        stat_vars[f"text_{st}"] = txt
+                    else:
+                        stat_vars.pop(f"text_{st}", None)
             if b_stat.get("level"):
                 stat_vars["builder_level"] = b_stat["level"]
             overlay_files.append({

@@ -3303,29 +3303,35 @@ def build_overlay_layers_for_item(
         is_recently_aired = matches_episode_air_date(status_vars.get("last", 14), item_metadata)
         eff_status = "airing" if is_recently_aired else norm_series_status
         if eff_status in ["airing", "returning", "ended", "canceled"]:
-            status_colors = {
-                "airing": status_vars.get("font_color_airing", "#27C24C"),
-                "returning": status_vars.get("font_color_returning", "#FFA500"),
-                "ended": status_vars.get("font_color_ended", "#FF0000"),
-                "canceled": status_vars.get("font_color_canceled", "#ED1F1F"),
-            }
-            color = status_colors.get(eff_status, "#FF0000")
-            status_text = str(status_vars.get(f"text_{eff_status}") or eff_status.upper())
-            layers.append({
-                "name": "status",
-                "type": "text",
-                "text": status_text,
-                "font_path": str(colus_font) if colus_font.exists() else font_to_use,
-                "font_size": int(status_vars.get("font_size", 80 if not is_landscape else 50)),
-                "font_color": color,
-                "back_color": status_vars.get("back_color", "#00000000"),
-                "back_width": int(status_vars.get("back_width", 965)),
-                "back_height": int(status_vars.get("back_height", 149)),
-                "horizontal_align": status_vars.get("horizontal_align", "center"),
-                "horizontal_offset": int(status_vars.get("horizontal_offset", 0)),
-                "vertical_align": status_vars.get("vertical_align") or status_vars.get("vertical_position") or "bottom",
-                "vertical_offset": int(status_vars.get("vertical_offset", 23))
-            })
+            use_all_status = _parse_overlay_bool(status_vars.get("use_all"))
+            explicit_state_enabled = _parse_overlay_bool(status_vars.get(f"use_{eff_status}"))
+            state_enabled = explicit_state_enabled if explicit_state_enabled is not None else (use_all_status if use_all_status is not None else True)
+            if state_enabled:
+                fallback_fc = status_vars.get("font_color")
+                status_colors = {
+                    "airing": status_vars.get("font_color_airing") or fallback_fc or "#27C24C",
+                    "returning": status_vars.get("font_color_returning") or fallback_fc or "#FFA500",
+                    "ended": status_vars.get("font_color_ended") or fallback_fc or "#FF0000",
+                    "canceled": status_vars.get("font_color_canceled") or fallback_fc or "#ED1F1F",
+                }
+                color = status_colors.get(eff_status, "#FF0000")
+                status_text = str(status_vars.get(f"text_{eff_status}") or eff_status.upper())
+                layers.append({
+                    "name": "status",
+                    "type": "text",
+                    "text": status_text,
+                    "font_path": str(colus_font) if colus_font.exists() else font_to_use,
+                    "font_size": int(status_vars.get("font_size", 80 if not is_landscape else 50)),
+                    "font_color": color,
+                    "back_color": status_vars.get("back_color", "#00000000"),
+                    "back_radius": int(status_vars.get("back_radius", 15)),
+                    "back_width": int(status_vars.get("back_width", 965)),
+                    "back_height": int(status_vars.get("back_height", 149)),
+                    "horizontal_align": status_vars.get("horizontal_align", "center"),
+                    "horizontal_offset": int(status_vars.get("horizontal_offset", 0)),
+                    "vertical_align": status_vars.get("vertical_align") or status_vars.get("vertical_position") or "bottom",
+                    "vertical_offset": int(status_vars.get("vertical_offset", 23))
+                })
 
     # 6. Ratings Badge (Audience/Critic Score - ONLY if explicitly configured in rules!)
     if "ratings" in rule_names or "rating" in rule_names:

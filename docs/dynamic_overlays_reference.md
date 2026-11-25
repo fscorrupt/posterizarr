@@ -28,8 +28,8 @@ checksums. Byte-identical, downloadable defaults, images, and fonts are recorded
 as dependencies rather than copied into the ZIP. Locally modified files remain
 included even if they use a standard filename. Export needs access to GitHub
 to verify the official catalog; it does not download the default asset files.
-After import, use readiness checks to download missing official dependencies
-before syncing.
+Missing official dependencies can be downloaded automatically during bundle or
+Community Gallery import, or fetched afterward via readiness checks before syncing.
 
 API keys, tokens, passwords, media-server connections, and the main application
 configuration are not exported. Import does not replace existing provider keys
@@ -48,15 +48,21 @@ To import a bundle:
 3. Choose **AniMetaFill** and **Season ratings** for the mapped show libraries.
    **Restore feature settings** also restores the exported rating sources,
    styles, and enabled states. Leave it off to import layouts/assets without
-   replacing shared feature preferences.
+   replacing shared feature preferences. Keep **Automatically download missing
+   official Kometa dependencies (defaults, images, and fonts)** enabled to fetch
+   required manifest defaults, images, and fonts automatically (plus indirect
+   template dependencies).
 4. Review any conflicting shared YAML/assets. Replacing them requires explicit
    confirmation and can affect other libraries using those same files. Changed
    files are backed up under `dynamic_overlays/bundle_backups/`; each backup has
    an `index.json` recording its original destination paths.
-5. Confirm **Import bundle**. Review the imported layout in preview and Dry Run
-   before deliberately enabling uploads. The import itself uploads no artwork
-   and always sets change detection to **Dry Run**, including when shared
-   feature settings are not restored.
+5. Confirm **Import bundle**. When automatic dependency download is enabled,
+   partial failures do not abort the import—missing items are listed so you can
+   retry them later in **Config & YAML Files**. If disabled, use readiness checks
+   to download missing files before syncing. Review the imported layout in
+   preview and Dry Run before deliberately enabling uploads. The import itself
+   uploads no artwork and always sets change detection to **Dry Run**, including
+   when shared feature settings are not restored.
 
 The import review preserves the local server selection and only lists libraries
 available from that server. Refresh the server's library list first if it is
@@ -67,9 +73,10 @@ empty. An active overlay or AniMetaFill run blocks imports.
     mappings are not transferred. The local IMDb feature flag can be restored,
     but its datasets must be downloaded separately. AniMetaFill classification
     can be regenerated against the mapped local libraries. Remote-only or missing
-    dependencies are not downloaded during export; use readiness checks after
-    import. Only share fonts and artwork you have permission to redistribute,
-    and only import bundles from sources you trust.
+    dependencies are not stored inside the exported ZIP, but can be downloaded
+    automatically during bundle and Community Gallery import (or fetched afterward
+    via readiness checks). Only share fonts and artwork you have permission to
+    redistribute, and only import bundles from sources you trust.
 
 Bundles are limited to 128 MiB compressed, 256 MiB expanded, and 2,048 files.
 Archive paths, checksums, file types, and library mappings are validated before
@@ -393,8 +400,11 @@ sync can still query providers.
 When the media server itself returns metadata HTTP 404, Posterizarr removes that
 server/item's ratings, retry and season-mapping records, all cached overlay assets,
 orphaned layer snapshots, and skipped-item record across `overlay_cache.db` and
-`imagechoices.db`. Provider-side 404 responses do not trigger this cleanup.
-Media-export history and provider caches keyed by shared TMDb IDs are retained.
+`imagechoices.db`. It also resolves the item's library and root folder from
+`media_export.db`, deletes the stale `media_export.db` entry, and removes matching
+Action Center `imagechoices` and `skipped_items` rows in `imagechoices.db`
+(without touching files on disk). Provider-side 404 responses do not trigger this
+cleanup; provider caches keyed by shared TMDb IDs are retained.
 
 ## Rule Artwork Targets
 
@@ -496,6 +506,62 @@ Unrecognized Plex resolution labels fall back to reported video dimensions to
 identify 4K, 1080p, 720p, or SD without depending on the codec/profile description.
 After updating, run a full overlay sync for the affected shows and seasons.
 
+### Uncapped Max Flags, Regional Flags, and Custom Flag Overrides
+
+- **Uncapped flag limit:** `overlay_limit` (and **Max flags** in **Visual Badges** / **Live Preview**) accepts any positive integer `>= 1` (default `5`; existing settings are preserved).
+- **Bundled regional flags:** Posterizarr includes built-in support and bundled artwork in `webui/backend/bundled_assets/flag/{round,square}/` for Spanish co-official languages:
+  - `ca` (Catalan — Senyera, `es-ct.png`)
+  - `ca-valencia` (Valencian — `es-vc.png`; displays `VAL` when language codes are enabled and normalizes `val`, `ca-ES-valencia`, and `valencian`)
+  - `eu` (Basque — Ikurriña, `es-pv.png`)
+  - `gl` (Galician — `es-ga.png`)
+  Missing bundled assets are non-destructively seeded into `Overlayfiles/dynamic_overlays/assets/flag/{round,square}/` on backend startup (never overwriting existing files) and remain available as a resolver fallback.
+- **Custom flag overrides:** Place custom `.png`, `.webp`, `.jpg`, or `.jpeg` files named `<language-tag>.<ext>` (for example `ca-valencia.png`) in `Overlayfiles/dynamic_overlays/assets/flag/custom/` or style-specific subfolders `flag/custom/round/` and `flag/custom/square/` (`flags/custom/` is also checked). Style-specific subfolders take precedence over the shared `custom/` directory, and custom flags override bundled or downloaded flags without triggering remote downloads.
+
+### Representative Episode Filepath Aggregation
+
+When aggregating episode streams for show and season artwork, Posterizarr also selects a representative episode `filepath` (preferring episodes matching the selected aggregate video format and audio codec, then the most frequent technical filename tag signature across resolution, HDR/DV, audio codec, source, and video codec). Custom `filepath.regex` and video-source rules therefore evaluate reliably on show and season posters.
+
+---
+
+## Resolution Tier and Variant Filtering
+
+`default: resolution` rules support Kometa-compatible tier and variant filtering across both portrait **Top Ribbon Banner** (`mode: banner`) and **Corner Badge** (`mode: corner_badge`) layouts:
+
+- Set `use_all: false` paired with explicit `use_<tier>: true` keys (`use_4k`, `use_1080p`, `use_720p`, `use_576p`, `use_480p`), disable individual tiers with `use_<tier>: false`, or disable the rule with `use_resolution: false`.
+- Example (displaying only 4K items so 1080p/lower items receive no banner or badge):
+
+```yaml
+- default: resolution
+  template_variables:
+    use_all: false
+    use_4k: true
+```
+
+- **HDR / Dolby Vision variant filtering:** Control variant badges with `use_hdr`, `use_dv`, `use_dvhdr`, or per-tier keys such as `use_4k_dv`, `use_4k_hdr`, and `use_4k_dvhdr`.
+- **Legacy compatibility & banner flags:** Existing configurations without tier flags continue displaying all five resolution tiers. Posterizarr also accepts a `tiers` list, while `<tier>_banner: false` flags apply only when `mode: banner` so they never suppress Corner Badges.
+- **Visual Badges controls:** Under **Visual Badges > Enabled Resolution Tiers**, toggle individual tiers (`4K UHD (HDR/DV)`, `1080p Full HD`, `720p HD`, `576p PAL`, `480p SD`) or apply quick presets (**4K Only**, **4K + 1080p**, **All**). Whenever a subset is chosen, Posterizarr compiles it cleanly to Kometa `use_all: false` and `use_<tier>: true` variables.
+
+---
+
+## External Builders for Ribbons and MediaStinger
+
+Native external list, award, and TMDb keyword resolvers (`overlay_external_lists.py`) evaluate Kometa chart/award/keyword rules locally and persist results in `overlay_cache.db` (`external_list_cache` and `tmdb_keywords_cache`):
+
+- **`imdb_chart`:** Queries IMDb's public GraphQL endpoint (no API key required; 24-hour cache with stale-cache fallback on errors). Supported charts: `top_movies`, `top_shows`, `popular_movies`, `popular_shows`, `lowest_rated`, `top_english`, `top_indian`, `top_tamil`, `top_telugu`, `top_malayalam`, `box_office`, `trending_india`, `trending_tamil`, `trending_telugu`.
+- **`imdb_award`:** Fetches Kometa's `IMDb-Awards` YAML datasets by validated `ev...` event ID (7-day / 168-hour cache with stale-cache fallback; no API key required). Supports `event_year` (`all`, `latest`, or specific years), `award_filter`, `category_filter`, and `winning`.
+- **`mdblist_list`:** Validates `mdblist.com` / `api.mdblist.com` list URLs, reads the public JSON feed first (falling back to the MDBList API with a configured MDBList API key if non-200), and caches IMDb/TMDb IDs for 24 hours (with stale-cache fallback).
+- **`tmdb_keyword`:** Queries TMDb v3 keywords using the configured TMDb token and caches results for 7 days in `tmdb_keywords_cache`. On lookup failure, reuses an expired cache entry if present; otherwise leaves the item's artwork untouched rather than rendering an incorrect state.
+
+### Award / Chart Ribbon (`default: ribbon`)
+
+- Supported on both **Movies** and **TV Shows** (`builder_level: movie` or `show`; adding it from **Libraries & Rules** presets automatically selects `show` for TV libraries and `movie` for Movie libraries).
+- Configurable directly in **Visual Badges** and **Live Preview** with ribbon styles **`yellow`** (default), **`red`**, **`black`**, and **`gray`**, plus position, offsets, and scope level.
+
+### Media Stinger (`default: mediastinger`)
+
+- Supported on **Movies** only; matches TMDb `aftercreditsstinger` and `duringcreditsstinger` keywords (requires a configured TMDb token).
+- Configurable directly in **Visual Badges** and **Live Preview** with background color, `back_width`, `back_height`, position, and offsets.
+
 
 ---
 
@@ -525,6 +591,8 @@ Overlayfiles/
    ├── defaults/       # Downloaded Kometa-compatible YAML templates
    │   └── images/     # Images downloaded for those templates
    ├── assets/         # Custom/local overlay images
+   │   └── flag/
+   │       └── custom/ # Custom flag overrides (also custom/round/ & custom/square/)
    └── fonts/          # Custom/local overlay fonts
 ```
 
@@ -571,9 +639,10 @@ guessed meaning. Reading or clicking an info icon does not change the setting.
 - Live, interactive canvas preview for both Movie Posters (1000 × 1500) and Titlecards / Backdrops (1920 × 1080).
 - Real-time adjustment of ratings, resolution, series status, runtimes, and anime tags.
 - **Runtime text:** Duration-only is the default. The Label field can add an optional prefix, while Format selects hours/minutes or total minutes. These values are also available in Visual Badges and survive Save Layout, including for new libraries.
-- **Language text:** Audio and subtitle flags each have a separate Show Language Codes checkbox. Flags-only is the default; enable codes to add EN/DE/etc. Language-to-country flag aliases are resolved for both local files and on-demand downloads.
-- **Optional badges:** Subtitle flags, aspect ratio, studio, and streaming services have explicit enable checkboxes. Enabling one creates a temporary preview rule even if the selected library has not saved that badge yet. Save Layout persists the rule.
-- **Resolution style:** The top-banner choice is part of the production recipe. Portrait banners use matching local `4K_banner.png`, `1080p_banner.png`, `720p_banner.png`, `576p_banner.png`, or `480p_banner.png` artwork when present; otherwise they render a full-width tier label. Variant asset overrides can select another local image. Landscape/titlecard formats retain corner badges. The banner can coexist with single-score/provider ratings and audio-codec badges.
+- **Series Status states & colors:** **Series Status** supports per-state toggles (`use_airing`, `use_returning`, `use_ended`, `use_canceled`), custom labels (`text_<state>`), and per-state font colors (`font_color_<state>`) across **Visual Badges**, **Live Preview** (**Save Layout**), and **Edit Template Variables**.
+- **Language text:** Audio and subtitle flags each have a separate **Show Language Codes** checkbox and an uncapped **Max flags** numeric input (`>= 1`). Flags-only is the default; enable codes to display labels (`EN`, `DE`, `CA`, `VAL`, `EU`, `GL`, etc.). Bundled Spanish regional flags (`ca`, `ca-valencia`, `eu`, `gl`) and custom flag overrides in `assets/flag/custom/` are supported alongside on-demand official downloads.
+- **Optional badges & Ribbon / Stinger previews:** Subtitle flags, aspect ratio, studio, streaming services, **Award / Chart Ribbon**, and **Media Stinger** (movie formats only) have explicit preview toggles and position controls. Enabling a badge lets you inspect sample artwork (**Award / Chart Ribbon** provides sample charts/awards such as IMDb Top 250, Emmys, Golden Globes, RT Certified Fresh, Metacritic Must See, Common Sense Selection, plus movie-only awards, alongside **`yellow`**, **`red`**, **`black`**, and **`gray`** styles), drag and drop placement, and persist rules via **Save Layout**.
+- **Resolution style & tier filtering:** The top-banner choice is part of the production recipe, and enabled tiers (`use_all` / `use_<tier>` or the Visual Badges **Enabled Resolution Tiers** checklist) control which resolutions render in both Top Ribbon Banner and Corner Badge modes. Portrait banners use matching local `4K_banner.png`, `1080p_banner.png`, `720p_banner.png`, `576p_banner.png`, or `480p_banner.png` artwork when present; otherwise they render a full-width tier label. Variant asset overrides can select another local image. Landscape/titlecard formats retain corner badges. The banner can coexist with single-score/provider ratings and audio-codec badges.
 - **Corner badge sizing:** Resolution images fit proportionally inside their configured pill/container instead of allowing wide quality/HDR artwork to extend outside it or be clipped at an edge. Positions remain configurable; this does not automatically resolve overlaps caused by custom positions of separate badges. Imported YAML resolution images do not receive an extra backdrop unless one is configured.
 - Banner and corner styles are mutually exclusive, including when legacy movie/TV overlay files are configured. Full-poster transparent banner artwork keeps its original canvas positioning instead of being centered inside the small corner-badge box. Corner badges use the separate resolution badge assets and the displayed contrast settings. Saving an explicit style retains its native rule without re-enabling the competing legacy banner or overwriting another format's rule. A number such as `8.4` is a separately enabled rating overlay, not part of the resolution image.
 - Subtitle languages, aspect ratio, and studio have separate sample values and position controls. Audio and subtitle flags use independent queues. Their metadata must be available at the chosen target level; a show poster does not automatically aggregate streams from all episodes.

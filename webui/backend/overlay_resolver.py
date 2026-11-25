@@ -2545,6 +2545,64 @@ class OverlayResolver:
         """Remove a single library entry from config.yml."""
         return self.remove_libraries([library_name], filename)
 
+    _STATUS_STATE_COLORS: Dict[str, str] = {
+        "airing": "#27C24C",
+        "returning": "#FFA500",
+        "canceled": "#ED1F1F",
+        "ended": "#FF0000",
+    }
+
+    @staticmethod
+    def _normalize_status_state_key(raw: Any) -> Optional[str]:
+        s = str(raw or "").strip().lower()
+        if s == "airing":
+            return "airing"
+        if s in ("returning", "returning series", "continuing"):
+            return "returning"
+        if s == "ended":
+            return "ended"
+        if s in ("canceled", "cancelled"):
+            return "canceled"
+        return None
+
+    @classmethod
+    def _apply_status_layout_vars(cls, target_vars: Dict[str, Any], coords: Dict[str, Any]) -> None:
+        """Apply positional and per-state Series Status variables without leaking generic text/font_color."""
+        skip_keys = {"text", "font_color", "status_state"}
+        for coord_k, coord_v in coords.items():
+            if coord_v is None or coord_k in skip_keys:
+                continue
+            if coord_k.startswith("text_") and isinstance(coord_v, str) and not coord_v.strip():
+                target_vars.pop(coord_k, None)
+                continue
+            target_vars[coord_k] = coord_v
+
+        has_per_state_colors = any(
+            str(coords.get(f"font_color_{st}") or "").strip() for st in cls._STATUS_STATE_COLORS
+        )
+        if has_per_state_colors:
+            for st in cls._STATUS_STATE_COLORS:
+                val = str(coords.get(f"font_color_{st}") or "").strip()
+                if val:
+                    target_vars[f"font_color_{st}"] = val
+            target_vars.pop("font_color", None)
+        elif str(coords.get("font_color") or "").strip():
+            raw_fc = str(coords["font_color"]).strip()
+            mapped_state = cls._normalize_status_state_key(
+                coords.get("status_state") or coords.get("text")
+            )
+            if mapped_state:
+                target_vars[f"font_color_{mapped_state}"] = raw_fc
+                target_vars.pop("font_color", None)
+            elif any(f"font_color_{st}" in target_vars for st in cls._STATUS_STATE_COLORS):
+                for st in cls._STATUS_STATE_COLORS:
+                    target_vars[f"font_color_{st}"] = raw_fc
+                target_vars.pop("font_color", None)
+            else:
+                target_vars["font_color"] = raw_fc
+
+        target_vars.pop("text", None)
+
     def save_library_layout(
         self,
         library_name: str,
@@ -2779,6 +2837,8 @@ class OverlayResolver:
                             vars_dict["back_width"] = int(best_coords["back_width"])
                         elif "back_width" not in vars_dict:
                             vars_dict["back_width"] = 205
+                    elif best_key.lower() == "status":
+                        self._apply_status_layout_vars(vars_dict, best_coords)
                     else:
                         for coord_k, coord_v in best_coords.items():
                             if coord_v is not None:
@@ -2800,7 +2860,11 @@ class OverlayResolver:
                 # If key is an age rating alias but an age rating rule is already configured, skip
                 if key_lower in age_rating_aliases and any(any(cr in str(r.get("default") or r.get("file") or "").lower() for cr in age_rating_aliases) for r in overlay_files if isinstance(r, dict)):
                     continue
-                clean_vars = {k: v for k, v in coords.items() if v is not None}
+                if key_lower == "status":
+                    clean_vars = {}
+                    self._apply_status_layout_vars(clean_vars, {k: v for k, v in coords.items() if v is not None})
+                else:
+                    clean_vars = {k: v for k, v in coords.items() if v is not None}
                 if clean_vars:
                     target_level = {
                         "movie_poster": "movie", "show_poster": "show", "season_poster": "season",
@@ -2961,6 +3025,34 @@ class OverlayResolver:
                                 b[target_badge]["font_size"] = int(l_coords["font_size"])
                             if "font" in l_coords:
                                 b[target_badge]["font"] = str(l_coords["font"])
+                            if l_key.lower() == "status":
+                                colors = b[target_badge].setdefault("colors", dict(self._STATUS_STATE_COLORS))
+                                states = b[target_badge].setdefault("states", {st: True for st in self._STATUS_STATE_COLORS})
+                                texts = b[target_badge].setdefault("texts", {st: "" for st in self._STATUS_STATE_COLORS})
+                                has_state_colors = any(
+                                    str(l_coords.get(f"font_color_{st}") or "").strip()
+                                    for st in self._STATUS_STATE_COLORS
+                                )
+                                if has_state_colors:
+                                    for st in self._STATUS_STATE_COLORS:
+                                        fc = str(l_coords.get(f"font_color_{st}") or "").strip()
+                                        if fc:
+                                            colors[st] = fc
+                                elif str(l_coords.get("font_color") or "").strip():
+                                    raw_fc = str(l_coords["font_color"]).strip()
+                                    mapped = self._normalize_status_state_key(
+                                        l_coords.get("status_state") or l_coords.get("text")
+                                    )
+                                    if mapped:
+                                        colors[mapped] = raw_fc
+                                    else:
+                                        for st in self._STATUS_STATE_COLORS:
+                                            colors[st] = raw_fc
+                                for st in self._STATUS_STATE_COLORS:
+                                    if isinstance(l_coords.get(f"use_{st}"), bool):
+                                        states[st] = l_coords[f"use_{st}"]
+                                    if f"text_{st}" in l_coords:
+                                        texts[st] = str(l_coords.get(f"text_{st}") or "").strip()
                             if l_key.lower() == "ribbon":
                                 r_style = str(l_coords.get("style") or "").strip().lower()
                                 if r_style in ("yellow", "red", "black", "gray"):

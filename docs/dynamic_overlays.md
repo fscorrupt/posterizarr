@@ -85,11 +85,11 @@ After the wizard, use this safe setup path:
 
 | Overlay Type | Target Level | Source Metadata | Description |
 |---|---|---|---|
-| **4K Quality Banner** | Movie Posters & Titlecards | Stream video resolution (`width >= 3840` or `4K`) | Diagonal top banner on posters or corner badge on episode cards. |
+| **Resolution / Quality Banner** | Movie Posters, Show/Season Posters & Titlecards | Stream video resolution, HDR/Dolby Vision (`4K`, `1080p`, `720p`, `576p`, `480p`) | Portrait top ribbon banner or corner badge styles with configurable tier filtering (e.g., `4K` only) and HDR/DV variants. |
 | **Audience Rating** | Movies & Shows | Audience / critic score (IMDb, TMDb, Rotten Tomatoes, Trakt, Metacritic, Letterboxd, SIMKL, MAL) | Color-tiered badge (High ≥ 6.5, Mid 4.5–6.4, Low < 4.5) or multi-provider score pills. |
 | **Series Status** | Shows | Series status (`Airing`, `Returning`, `Ended`, `Canceled`) | Optical centered status banner with status colors (`Colus-Regular.ttf`). |
 | **Runtime** | Movies & Titlecards | Stream duration (`RunTimeTicks` / `duration`) | Clean duration badge (e.g. `124 min`, `24 min`). |
-| **Audio Languages** | Movies & Titlecards (plus optional Show/Season) | Audio streams present in media item | Square badges or flags (`round`, `square`, `half`) for audio languages (e.g. `de`, `en`, `ja`). |
+| **Audio Languages** | Movies & Titlecards (plus optional Show/Season) | Audio streams present in media item | Square badges or flags (`round`, `square`, `half`) with uncapped flag limits (`>= 1`), bundled regional flags (`ca`, `ca-valencia`, `eu`, `gl`), and custom flag overrides in `assets/flag/custom/`. |
 | **Subtitle Languages** | Movies & Titlecards | Subtitle streams reported by the media server | Reuses audio-language flag images with independent placement and language selection. |
 | **Aspect Ratio** | Movies & Titlecards | Video display aspect ratio, or video width/height fallback | Kometa aspect badges such as `1.78` and `2.35`; unknown ratios receive no badge. |
 | **Audio Codec** | Movies & Titlecards; Shows & Seasons with aggregation | Audio codec, stream profile, track title, filename | Dolby Atmos, TrueHD, DTS-HD MA, DTS:X, AAC, and other codec badges. |
@@ -99,6 +99,8 @@ After the wizard, use this safe setup path:
 | **Anime Filler Tag** | Anime Episodes | `anime_overlays.yml` episode regex match | "Canon" (Green), "Filler" (Red), or "Mixed" (Orange) badge via **AniMetaFill**. |
 | **Network Logos** | Seasons | Studio / TV Network | Official network logo (e.g., Netflix, HBO, Disney+, Apple TV+). |
 | **Common Sense Media** | Movies | Common Sense Media age rating | Age rating badge (e.g., `10+`, `14+`, `18+`). |
+| **Award / Chart Ribbon** | Movies & Shows | IMDb Charts, Kometa IMDb-Awards, and MDBList lists (`default: ribbon`) | Corner ribbons (`IMDb Top 250`, `Oscars`, `Emmys`, `Golden Globes`, `Rotten Tomatoes`, `Metacritic`, etc.) in `yellow`, `red`, `black`, or `gray` styles. |
+| **Media Stinger** | Movies | TMDb keywords (`aftercreditsstinger`, `duringcreditsstinger`) via `default: mediastinger` | Post-/mid-credits scene indicator badge with configurable backdrop color and size. |
 | **Custom PNG Images** | Any Library (Movies, Shows, Seasons, Titlecards, Backdrops) | Custom uploaded PNG/JPG/WebP or **Overlay Builder** PNGs | One-click per-library corner badge or full-poster frame via **+ Add Overlay > Custom PNG Image** without writing YAML. |
 
 ---
@@ -169,6 +171,7 @@ Everything beyond everyday setup lives in **[Dynamic Overlays Reference](dynamic
 - [Provider Ratings and Score Layout](dynamic_overlays_reference.md#provider-ratings-and-score-layout), [SIMKL Catalog Ratings](dynamic_overlays_reference.md#simkl-catalog-ratings), [Local IMDb Dataset](dynamic_overlays_reference.md#local-imdb-dataset), and [Anime Season Ratings](dynamic_overlays_reference.md#anime-season-ratings)
 - [OMDb Run Protection](dynamic_overlays_reference.md#omdb-run-protection) & [Automatic Retry Schedule](dynamic_overlays_reference.md#automatic-retry-schedule)
 - [Rule Artwork Targets](dynamic_overlays_reference.md#rule-artwork-targets), [Episode Ratings](dynamic_overlays_reference.md#episode-ratings), [Language Priority and Parent Video Formats](dynamic_overlays_reference.md#language-priority-and-parent-video-formats), and [Jellyfin / Emby Box Sets](dynamic_overlays_reference.md#jellyfin-emby-box-sets)
+- [Resolution Tier and Variant Filtering](dynamic_overlays_reference.md#resolution-tier-and-variant-filtering) & [External Builders for Ribbons and MediaStinger](dynamic_overlays_reference.md#external-builders-for-ribbons-and-mediastinger)
 - [Live Preview, Template Variables, and Flag Styles](dynamic_overlays_reference.md#live-preview-template-variables-and-flag-styles) & [Detailed Web UI Controls & Technical Notes](dynamic_overlays_reference.md#detailed-web-ui-controls-technical-notes)
 - [Security Architecture](dynamic_overlays_reference.md#security-architecture)
 

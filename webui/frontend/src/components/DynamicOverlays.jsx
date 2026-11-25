@@ -85,6 +85,47 @@ import { useToast } from "../context/ToastContext";
 import { getAssetPreviewFormats, getAssetPreviewGuides } from "../utils/assetPreviewGuides";
 import { getAniMetaFillPreview, getConfiguredPreviewBadges, getPreviewSpriteBounds, getPreviewSpriteOffset } from "../utils/overlayPreview";
 
+const DEFAULT_STATUS_COLORS = {
+  airing: "#27C24C",
+  returning: "#FFA500",
+  ended: "#FF0000",
+  canceled: "#ED1F1F",
+};
+const DEFAULT_STATUS_STATES = {
+  airing: true,
+  returning: true,
+  ended: true,
+  canceled: true,
+};
+const DEFAULT_STATUS_TEXTS = {
+  airing: "",
+  returning: "",
+  ended: "",
+  canceled: "",
+};
+const STATUS_STATE_META = [
+  { key: "airing", label: "Airing", previewValue: "AIRING", defaultText: "AIRING", defaultColor: "#27C24C" },
+  { key: "returning", label: "Returning", previewValue: "RETURNING SERIES", defaultText: "RETURNING", defaultColor: "#FFA500" },
+  { key: "ended", label: "Ended", previewValue: "ENDED", defaultText: "ENDED", defaultColor: "#FF0000" },
+  { key: "canceled", label: "Canceled", previewValue: "CANCELED", defaultText: "CANCELED", defaultColor: "#ED1F1F" },
+];
+
+function normalizeStatusStateKey(raw) {
+  const s = String(raw || "").trim().toLowerCase();
+  if (s === "airing") return "airing";
+  if (s === "returning" || s === "returning series" || s === "continuing") return "returning";
+  if (s === "ended") return "ended";
+  if (s === "canceled" || s === "cancelled") return "canceled";
+  return null;
+}
+
+function toSafeColorPickerHex(value, fallback = "#FFFFFF") {
+  const raw = String(value || "").trim();
+  if (/^#[0-9a-fA-F]{6}$/.test(raw)) return raw;
+  if (/^#[0-9a-fA-F]{8}$/.test(raw)) return raw.slice(0, 7);
+  return fallback;
+}
+
 function templateVisualValues(name, fields) {
   const values = {
     builder_level: fields.level || undefined,
@@ -102,8 +143,16 @@ function templateVisualValues(name, fields) {
     values.style = fields.flagStyle;
   }
   if (name.toLowerCase().includes("status")) {
-    values.text = fields.statusText || undefined;
-    values.font_color = fields.statusColor || undefined;
+    delete values.font_color;
+    delete values.text;
+    for (const meta of STATUS_STATE_META) {
+      const stColor = fields.statusColors?.[meta.key];
+      const stText = String(fields.statusTexts?.[meta.key] || "").trim();
+      const stEnabled = fields.statusStates?.[meta.key];
+      values[`font_color_${meta.key}`] = stColor || undefined;
+      values[`text_${meta.key}`] = stText || undefined;
+      values[`use_${meta.key}`] = stEnabled === false ? false : undefined;
+    }
   }
   return values;
 }
@@ -910,6 +959,15 @@ export default function DynamicOverlays() {
   const [previewResolution, setPreviewResolution] = useState("4K");
   const [previewStatus, setPreviewStatus] = useState("");
   const [previewStatusColor, setPreviewStatusColor] = useState("#FFA500");
+  const [previewStatusColors, setPreviewStatusColors] = useState({ ...DEFAULT_STATUS_COLORS });
+  const handlePreviewStatusColorChange = (nextColor) => {
+    setPreviewStatusColor(nextColor);
+    const stateKey = normalizeStatusStateKey(previewStatus);
+    if (stateKey) {
+      setPreviewStatusColors(prev => ({ ...prev, [stateKey]: nextColor }));
+    }
+    setPreviewTimestamp(Date.now());
+  };
   const [previewRuntime, setPreviewRuntime] = useState("1h 58m");
   const [previewRuntimePrefix, setPreviewRuntimePrefix] = useState("");
   const [previewRuntimeFormat, setPreviewRuntimeFormat] = useState("<<runtimeH>>h <<runtimeM>>m");
@@ -2095,8 +2153,9 @@ export default function DynamicOverlays() {
   const [visualFlagStyle, setVisualFlagStyle] = useState("round");
   const visualVariableBaseline = useRef({});
   const [templateVariableErrors, setTemplateVariableErrors] = useState({});
-  const [visualStatusText, setVisualStatusText] = useState("");
-  const [visualStatusColor, setVisualStatusColor] = useState("#FFA500");
+  const [visualStatusStates, setVisualStatusStates] = useState({ ...DEFAULT_STATUS_STATES });
+  const [visualStatusColors, setVisualStatusColors] = useState({ ...DEFAULT_STATUS_COLORS });
+  const [visualStatusTexts, setVisualStatusTexts] = useState({ ...DEFAULT_STATUS_TEXTS });
   const [visualFont, setVisualFont] = useState("");
   const [visualFontSize, setVisualFontSize] = useState("");
   const [visualFontColor, setVisualFontColor] = useState("");
@@ -3662,6 +3721,23 @@ export default function DynamicOverlays() {
     const vars = { ...ov.template_defaults, ...ov.variables };
     setEditVariablesJson(JSON.stringify(ov.variables || {}, null, 2));
     setTemplateVariableErrors({});
+    const parseBoolVar = (val) => {
+      if (typeof val === "boolean") return val;
+      if (val === 1 || String(val).trim().toLowerCase() === "true") return true;
+      if (val === 0 || String(val).trim().toLowerCase() === "false") return false;
+      return null;
+    };
+    const useAllStatus = parseBoolVar(vars.use_all);
+    const fallbackStatusColor = String(vars.font_color || "").trim();
+    const initStatusStates = {};
+    const initStatusColors = {};
+    const initStatusTexts = {};
+    for (const meta of STATUS_STATE_META) {
+      const explicitUse = parseBoolVar(vars[`use_${meta.key}`]);
+      initStatusStates[meta.key] = explicitUse !== null ? explicitUse : (useAllStatus !== null ? useAllStatus : true);
+      initStatusColors[meta.key] = String(vars[`font_color_${meta.key}`] || "").trim() || fallbackStatusColor || meta.defaultColor;
+      initStatusTexts[meta.key] = String(vars[`text_${meta.key}`] || "");
+    }
     visualVariableBaseline.current = templateVisualValues(ov.name, {
       level: vars.builder_level || "", artworkType: vars.artwork_type || "both",
       hAlign: vars.horizontal_align || vars.horizontal_position || "center",
@@ -3672,8 +3748,10 @@ export default function DynamicOverlays() {
       fontSize: vars.font_size !== undefined && vars.font_size !== null ? String(vars.font_size) : "",
       fontColor: vars.font_color || "", languages: Array.isArray(vars.languages) ? vars.languages.join(", ") : "de, en, ja",
       useSubtitles: vars.use_subtitles === true || vars.use_subtitles === "true",
-      flagStyle: vars.style || "round", statusText: vars.text || vars.status_label || vars.status || "",
-      statusColor: vars.font_color || vars.status_color || "#FFA500",
+      flagStyle: vars.style || "round",
+      statusStates: initStatusStates,
+      statusColors: initStatusColors,
+      statusTexts: initStatusTexts,
     });
     setVisualLevel(vars.builder_level || "");
     setVisualArtworkType(vars.artwork_type || "both");
@@ -3685,8 +3763,9 @@ export default function DynamicOverlays() {
     setVisualLanguages(Array.isArray(vars.languages) ? vars.languages.join(", ") : "de, en, ja");
     setVisualUseSubtitles(vars.use_subtitles === true || vars.use_subtitles === "true");
     setVisualFlagStyle(vars.style || ov.template_defaults?.style || "round");
-    setVisualStatusText(vars.text || vars.status_label || vars.status || "");
-    setVisualStatusColor(vars.font_color || vars.status_color || "#FFA500");
+    setVisualStatusStates(initStatusStates);
+    setVisualStatusColors(initStatusColors);
+    setVisualStatusTexts(initStatusTexts);
     setVisualFont(vars.font || "");
     setVisualFontSize(vars.font_size !== undefined && vars.font_size !== null ? String(vars.font_size) : "");
     setVisualFontColor(vars.font_color || "");
@@ -3701,7 +3780,7 @@ export default function DynamicOverlays() {
           hOffset: visualHOffset, vOffset: visualVOffset, backColor: visualBackColor,
           font: visualFont, fontSize: visualFontSize, fontColor: visualFontColor,
           languages: visualLanguages, useSubtitles: visualUseSubtitles, flagStyle: visualFlagStyle,
-          statusText: visualStatusText, statusColor: visualStatusColor,
+          statusStates: visualStatusStates, statusColors: visualStatusColors, statusTexts: visualStatusTexts,
         });
         for (const [key, value] of Object.entries(values)) {
           if (JSON.stringify(value) === JSON.stringify(visualVariableBaseline.current[key])) continue;
@@ -3709,6 +3788,17 @@ export default function DynamicOverlays() {
           else finalVariables[key] = value;
           if (key === "horizontal_align" && "horizontal_position" in finalVariables) finalVariables.horizontal_position = value;
           if (key === "vertical_align" && "vertical_position" in finalVariables) finalVariables.vertical_position = value;
+        }
+        if (String(editVariablesModal.overlay.name || "").toLowerCase().includes("status")) {
+          delete finalVariables.font_color;
+          delete finalVariables.text;
+          const useAllRaw = finalVariables.use_all;
+          const isUseAllFalse = useAllRaw === false || String(useAllRaw).trim().toLowerCase() === "false";
+          for (const meta of STATUS_STATE_META) {
+            if (isUseAllFalse && visualStatusStates[meta.key] !== false) {
+              finalVariables[`use_${meta.key}`] = true;
+            }
+          }
         }
       }
       return finalVariables;
@@ -4254,13 +4344,21 @@ export default function DynamicOverlays() {
         };
       }
       if (previewStatus && previewStatus !== "Off") {
+        const activeStateKey = normalizeStatusStateKey(previewStatus);
+        const effectiveStatusColors = {
+          ...DEFAULT_STATUS_COLORS,
+          ...previewStatusColors,
+          ...(activeStateKey && previewStatusColor ? { [activeStateKey]: previewStatusColor } : {}),
+        };
         layoutPayload.status = {
           horizontal_offset: offsets.status.x,
           vertical_offset: offsets.status.y,
           horizontal_align: offsets.status.align,
           vertical_align: offsets.status.valign,
-          text: previewStatus,
-          font_color: previewStatusColor,
+          font_color_airing: effectiveStatusColors.airing,
+          font_color_returning: effectiveStatusColors.returning,
+          font_color_ended: effectiveStatusColors.ended,
+          font_color_canceled: effectiveStatusColors.canceled,
           ...(offsets.status.font_size ? { font_size: offsets.status.font_size } : {}),
           ...(offsets.status.font ? { font: offsets.status.font } : {})
         };
@@ -4608,12 +4706,27 @@ export default function DynamicOverlays() {
         font_size: badges.status?.font_size ?? "",
         font: badges.status?.font ?? ""
       };
-      setPreviewStatus(badges.status.text || "RETURNING SERIES");
-      if (badges.status.colors?.returning) {
-        setPreviewStatusColor(badges.status.colors.returning);
+      const savedColors = {
+        ...DEFAULT_STATUS_COLORS,
+        ...(badges.status.colors || {}),
+      };
+      const savedStates = {
+        ...DEFAULT_STATUS_STATES,
+        ...(badges.status.states || {}),
+      };
+      setPreviewStatusColors(savedColors);
+      const preferredOrder = ["returning", "airing", "ended", "canceled"];
+      const initialKey = preferredOrder.find((k) => savedStates[k] !== false) || null;
+      if (initialKey) {
+        const meta = STATUS_STATE_META.find((m) => m.key === initialKey);
+        setPreviewStatus(meta?.previewValue || "RETURNING SERIES");
+        setPreviewStatusColor(savedColors[initialKey] || meta?.defaultColor || "#FFA500");
+      } else {
+        setPreviewStatus("");
       }
     } else {
       setPreviewStatus("");
+      setPreviewStatusColors({ ...DEFAULT_STATUS_COLORS });
     }
 
     // 3. AUDIO LANGUAGES (FLAGS)
@@ -7491,6 +7604,107 @@ export default function DynamicOverlays() {
                         </div>
                       </div>
 
+                      {/* Per-State Toggles, Custom Text & Font Colors */}
+                      {(() => {
+                        const statusColors = { ...DEFAULT_STATUS_COLORS, ...(badges.status?.colors || {}) };
+                        const statusStates = { ...DEFAULT_STATUS_STATES, ...(badges.status?.states || {}) };
+                        const statusTexts = { ...DEFAULT_STATUS_TEXTS, ...(badges.status?.texts || {}) };
+                        return (
+                          <div className="p-2.5 rounded-lg bg-theme-hover/40 border border-theme/50 space-y-2">
+                            <div className="flex items-center justify-between">
+                              <label className="text-[10px] font-semibold text-theme-text uppercase tracking-wider">
+                                Status States &amp; Colors
+                              </label>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  updateBadge("status", {
+                                    colors: { ...DEFAULT_STATUS_COLORS },
+                                    states: { ...DEFAULT_STATUS_STATES },
+                                    texts: { ...DEFAULT_STATUS_TEXTS },
+                                  });
+                                  if (selectedSaveLibrary === selectedVisualLib) {
+                                    setPreviewStatusColors({ ...DEFAULT_STATUS_COLORS });
+                                    const activeKey = normalizeStatusStateKey(previewStatus);
+                                    if (activeKey) {
+                                      setPreviewStatusColor(DEFAULT_STATUS_COLORS[activeKey]);
+                                    }
+                                    setPreviewTimestamp(Date.now());
+                                  }
+                                }}
+                                className="text-[10px] text-theme-muted hover:text-theme-primary transition-colors"
+                              >
+                                Reset Defaults
+                              </button>
+                            </div>
+                            <div className="space-y-1.5">
+                              {STATUS_STATE_META.map((meta) => {
+                                const isChecked = statusStates[meta.key] !== false;
+                                const stateColor = statusColors[meta.key] || meta.defaultColor;
+                                const handleStateColorUpdate = (nextColor) => {
+                                  updateBadge("status", {
+                                    colors: { ...statusColors, [meta.key]: nextColor },
+                                  });
+                                  if (selectedSaveLibrary === selectedVisualLib) {
+                                    setPreviewStatusColors(prev => ({ ...prev, [meta.key]: nextColor }));
+                                    if (normalizeStatusStateKey(previewStatus) === meta.key) {
+                                      setPreviewStatusColor(nextColor);
+                                    }
+                                    setPreviewTimestamp(Date.now());
+                                  }
+                                };
+                                return (
+                                  <div key={meta.key} className="grid grid-cols-[auto_72px_1fr_auto] items-center gap-2">
+                                    <input
+                                      type="checkbox"
+                                      aria-label={`Enable ${meta.label} status`}
+                                      checked={isChecked}
+                                      onChange={(e) => updateBadge("status", {
+                                        states: { ...statusStates, [meta.key]: e.target.checked },
+                                      })}
+                                      className="rounded border-theme text-theme-primary focus:ring-theme-primary"
+                                    />
+                                    <span className={`text-[11px] font-semibold ${isChecked ? "text-theme-text" : "text-theme-muted line-through"}`}>
+                                      {meta.label}
+                                    </span>
+                                    <input
+                                      type="text"
+                                      aria-label={`${meta.label} custom label`}
+                                      value={statusTexts[meta.key] || ""}
+                                      onChange={(e) => updateBadge("status", {
+                                        texts: { ...statusTexts, [meta.key]: e.target.value },
+                                      })}
+                                      placeholder={meta.defaultText}
+                                      disabled={!isChecked}
+                                      className="w-full bg-theme-card border border-theme rounded-md px-2 py-1 text-[11px] text-theme-text disabled:opacity-50"
+                                    />
+                                    <div className="flex items-center gap-1.5">
+                                      <input
+                                        type="color"
+                                        aria-label={`${meta.label} font color picker`}
+                                        value={toSafeColorPickerHex(stateColor, meta.defaultColor)}
+                                        onChange={(e) => handleStateColorUpdate(e.target.value.toUpperCase())}
+                                        disabled={!isChecked}
+                                        className="h-6 w-7 cursor-pointer rounded border border-theme bg-transparent p-0.5 disabled:opacity-50"
+                                      />
+                                      <input
+                                        type="text"
+                                        aria-label={`${meta.label} font color`}
+                                        value={stateColor}
+                                        onChange={(e) => handleStateColorUpdate(e.target.value)}
+                                        placeholder={meta.defaultColor}
+                                        disabled={!isChecked}
+                                        className="w-20 bg-theme-card border border-theme rounded-md px-1.5 py-1 text-[11px] text-theme-text font-mono disabled:opacity-50"
+                                      />
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })()}
+
                       {/* Contrast Background Pill Controls */}
                       <div className="p-2.5 rounded-lg bg-theme-hover/40 border border-theme/50 space-y-2">
                         <div className="flex items-center justify-between">
@@ -10056,10 +10270,13 @@ export default function DynamicOverlays() {
                           if (st === "Off") {
                             setPreviewStatus("");
                           } else {
+                            const stateKey = normalizeStatusStateKey(st);
                             setPreviewStatus(st);
-                            if (st === "AIRING") setPreviewStatusColor("#27C24C");
-                            else if (st === "RETURNING SERIES") setPreviewStatusColor("#FFA500");
-                            else setPreviewStatusColor("#ED1F1F");
+                            setPreviewStatusColor(
+                              (stateKey && previewStatusColors[stateKey]) ||
+                              DEFAULT_STATUS_COLORS[stateKey] ||
+                              "#FFA500"
+                            );
                           }
                           setPreviewTimestamp(Date.now());
                         }}
@@ -10082,35 +10299,49 @@ export default function DynamicOverlays() {
                   />
 
                   {/* Status Color Picker */}
-                  {previewStatus && (
-                    <div className="flex items-center gap-2.5 pt-1">
-                      <span className="text-[11px] text-theme-muted">Color:</span>
-                      {[
-                        { color: "#FFA500", label: "Orange" },
-                        { color: "#27C24C", label: "Green" },
-                        { color: "#ED1F1F", label: "Red" },
-                        { color: "#3B82F6", label: "Blue" },
-                        { color: "#A855F7", label: "Purple" }
-                      ].map((c) => (
-                        <button
-                          key={c.color}
-                          type="button"
-                          onClick={() => { setPreviewStatusColor(c.color); setPreviewTimestamp(Date.now()); }}
-                          className={`w-5 h-5 rounded-full border-2 transition-transform ${
-                            previewStatusColor === c.color ? "scale-125 border-white shadow-md" : "border-transparent"
-                          }`}
-                          style={{ backgroundColor: c.color }}
-                          title={c.label}
+                  {previewStatus && (() => {
+                    const activeStateKey = normalizeStatusStateKey(previewStatus);
+                    const activeStateMeta = STATUS_STATE_META.find((m) => m.key === activeStateKey);
+                    return (
+                      <div className="flex items-center flex-wrap gap-2 pt-1">
+                        <span className="text-[11px] text-theme-muted">
+                          Color{activeStateMeta ? ` (${activeStateMeta.label})` : ""}:
+                        </span>
+                        {[
+                          { color: "#FFA500", label: "Orange" },
+                          { color: "#27C24C", label: "Green" },
+                          { color: "#ED1F1F", label: "Red" },
+                          { color: "#3B82F6", label: "Blue" },
+                          { color: "#A855F7", label: "Purple" }
+                        ].map((c) => (
+                          <button
+                            key={c.color}
+                            type="button"
+                            onClick={() => handlePreviewStatusColorChange(c.color)}
+                            className={`w-5 h-5 rounded-full border-2 transition-transform ${
+                              previewStatusColor?.toUpperCase() === c.color ? "scale-125 border-white shadow-md" : "border-transparent"
+                            }`}
+                            style={{ backgroundColor: c.color }}
+                            title={c.label}
+                          />
+                        ))}
+                        <input
+                          type="color"
+                          aria-label="Preview status color picker"
+                          value={toSafeColorPickerHex(previewStatusColor, activeStateMeta?.defaultColor || "#FFA500")}
+                          onChange={(e) => handlePreviewStatusColorChange(e.target.value.toUpperCase())}
+                          className="h-6 w-7 cursor-pointer rounded border border-theme bg-transparent p-0.5"
                         />
-                      ))}
-                      <input
-                        type="text"
-                        value={previewStatusColor}
-                        onChange={(e) => { setPreviewStatusColor(e.target.value); setPreviewTimestamp(Date.now()); }}
-                        className="w-20 bg-theme-hover border border-theme rounded-lg px-2 py-0.5 text-[11px] text-theme-text font-mono"
-                      />
-                    </div>
-                  )}
+                        <input
+                          type="text"
+                          aria-label="Preview status color hex"
+                          value={previewStatusColor}
+                          onChange={(e) => handlePreviewStatusColorChange(e.target.value)}
+                          className="w-20 bg-theme-hover border border-theme rounded-lg px-2 py-0.5 text-[11px] text-theme-text font-mono"
+                        />
+                      </div>
+                    );
+                  })()}
 
                   {previewStatus && (
                     <BadgeOffsetControls
@@ -13682,68 +13913,93 @@ export default function DynamicOverlays() {
                   </div>
 
                   {/* Font Color */}
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-semibold text-theme-muted uppercase tracking-wider">Font Color (Hex)<TemplateVariableHelp name="font_color" /></label>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="text"
-                        value={visualFontColor}
-                        onChange={(e) => setVisualFontColor(e.target.value)}
-                        placeholder="#FFFFFF"
-                        className="flex-1 bg-theme-hover border border-theme rounded-xl px-3 py-1.5 text-xs text-theme-text font-mono"
-                      />
-                      <div
-                        className="w-7 h-7 rounded-lg border border-theme shrink-0"
-                        style={{ backgroundColor: visualFontColor || "#FFFFFF" }}
-                        title="Font Color Preview"
-                      />
+                  {!editVariablesModal.overlay.name.toLowerCase().includes("status") && (
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-semibold text-theme-muted uppercase tracking-wider">Font Color (Hex)<TemplateVariableHelp name="font_color" /></label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          value={visualFontColor}
+                          onChange={(e) => setVisualFontColor(e.target.value)}
+                          placeholder="#FFFFFF"
+                          className="flex-1 bg-theme-hover border border-theme rounded-xl px-3 py-1.5 text-xs text-theme-text font-mono"
+                        />
+                        <div
+                          className="w-7 h-7 rounded-lg border border-theme shrink-0"
+                          style={{ backgroundColor: visualFontColor || "#FFFFFF" }}
+                          title="Font Color Preview"
+                        />
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </div>
 
-                {/* Optional Status text & color input */}
-                {(editVariablesModal.overlay.name.toLowerCase().includes("status") || visualStatusText) && (
+                {/* Per-State Series Status Controls */}
+                {editVariablesModal.overlay.name.toLowerCase().includes("status") && (
                   <div className="space-y-2 p-3 rounded-xl bg-theme-hover/40 border border-theme">
-                    <label className="text-xs font-semibold text-theme-muted uppercase tracking-wider">Status Banner Text<TemplateVariableHelp name="text" /></label>
-                    <input
-                      type="text"
-                      value={visualStatusText}
-                      onChange={(e) => setVisualStatusText(e.target.value)}
-                      placeholder="e.g. RETURNING SERIES, AIRING, ENDED, CANCELED"
-                      className="w-full bg-theme-hover border border-theme rounded-xl px-3 py-2 text-xs text-theme-text font-medium"
-                    />
-                    <div className="flex flex-wrap gap-1.5">
-                      {["AIRING", "RETURNING SERIES", "ENDED", "CANCELED"].map((st) => (
-                        <button
-                          key={st}
-                          type="button"
-                          onClick={() => {
-                            setVisualStatusText(st);
-                            if (st === "AIRING") setVisualStatusColor("#27C24C");
-                            else if (st === "RETURNING SERIES") setVisualStatusColor("#FFA500");
-                            else setVisualStatusColor("#ED1F1F");
-                          }}
-                          className={`px-2 py-0.5 rounded-lg text-[10px] font-semibold border ${
-                            visualStatusText === st ? "bg-theme-primary text-white border-theme-primary" : "bg-theme-hover border-theme text-theme-muted"
-                          }`}
-                        >
-                          {st}
-                        </button>
-                      ))}
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-semibold text-theme-muted uppercase tracking-wider">
+                        Series Status States &amp; Colors<TemplateVariableHelp name="font_color" />
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setVisualStatusStates({ ...DEFAULT_STATUS_STATES });
+                          setVisualStatusColors({ ...DEFAULT_STATUS_COLORS });
+                          setVisualStatusTexts({ ...DEFAULT_STATUS_TEXTS });
+                        }}
+                        className="text-[11px] text-theme-muted hover:text-theme-primary transition-colors"
+                      >
+                        Reset Defaults
+                      </button>
                     </div>
-                    <div className="flex items-center gap-2 pt-1">
-                      <span className="text-[11px] text-theme-muted">Font Color:<TemplateVariableHelp name="font_color" /></span>
-                      <input
-                        type="text"
-                        value={visualStatusColor}
-                        onChange={(e) => setVisualStatusColor(e.target.value)}
-                        className="w-24 bg-theme-hover border border-theme rounded-lg px-2 py-0.5 text-xs text-theme-text font-mono"
-                      />
-                      <div
-                        className="w-6 h-6 rounded-lg border border-theme shrink-0"
-                        style={{ backgroundColor: visualStatusColor }}
-                        title="Status Font Color Preview"
-                      />
+                    <div className="space-y-2">
+                      {STATUS_STATE_META.map((meta) => {
+                        const isChecked = visualStatusStates[meta.key] !== false;
+                        const stateColor = visualStatusColors[meta.key] || meta.defaultColor;
+                        return (
+                          <div key={meta.key} className="grid grid-cols-[auto_76px_1fr_auto] items-center gap-2">
+                            <input
+                              type="checkbox"
+                              aria-label={`Enable ${meta.label} status in template`}
+                              checked={isChecked}
+                              onChange={(e) => setVisualStatusStates(prev => ({ ...prev, [meta.key]: e.target.checked }))}
+                              className="rounded border-theme text-theme-primary focus:ring-theme-primary"
+                            />
+                            <span className={`text-xs font-semibold ${isChecked ? "text-theme-text" : "text-theme-muted line-through"}`}>
+                              {meta.label}
+                            </span>
+                            <input
+                              type="text"
+                              aria-label={`${meta.label} custom text`}
+                              value={visualStatusTexts[meta.key] || ""}
+                              onChange={(e) => setVisualStatusTexts(prev => ({ ...prev, [meta.key]: e.target.value }))}
+                              placeholder={meta.defaultText}
+                              disabled={!isChecked}
+                              className="w-full bg-theme-hover border border-theme rounded-lg px-2.5 py-1 text-xs text-theme-text disabled:opacity-50"
+                            />
+                            <div className="flex items-center gap-1.5">
+                              <input
+                                type="color"
+                                aria-label={`${meta.label} color picker`}
+                                value={toSafeColorPickerHex(stateColor, meta.defaultColor)}
+                                onChange={(e) => setVisualStatusColors(prev => ({ ...prev, [meta.key]: e.target.value.toUpperCase() }))}
+                                disabled={!isChecked}
+                                className="h-6 w-7 cursor-pointer rounded border border-theme bg-transparent p-0.5 disabled:opacity-50"
+                              />
+                              <input
+                                type="text"
+                                aria-label={`${meta.label} color hex`}
+                                value={stateColor}
+                                onChange={(e) => setVisualStatusColors(prev => ({ ...prev, [meta.key]: e.target.value }))}
+                                placeholder={meta.defaultColor}
+                                disabled={!isChecked}
+                                className="w-24 bg-theme-hover border border-theme rounded-lg px-2 py-1 text-xs text-theme-text font-mono disabled:opacity-50"
+                              />
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 )}
@@ -14150,7 +14406,7 @@ export default function DynamicOverlays() {
                         resolution: { enabled: false, banner_4k: true, banner_1080p: false, banner_720p: false },
                         audio_languages: { enabled: true, languages: ["de", "en"], position: "bottom-left", offset_x: 48, offset_y: 37, limit: 5 },
                         runtime: { enabled: true, position: "bottom-right", offset_x: 18, offset_y: 20, back_width: 205, back_height: 80 },
-                        status: { enabled: newLibForm.media_type === "show", position: "bottom-center", offset_x: 0, offset_y: 23, font_size: 80, colors: { airing: "#27C24C", returning: "#FFA500", ended: "#FF0000", canceled: "#ED1F1F" } },
+                        status: { enabled: newLibForm.media_type === "show", position: "bottom-center", offset_x: 0, offset_y: 23, font_size: 80, colors: { ...DEFAULT_STATUS_COLORS }, states: { ...DEFAULT_STATUS_STATES }, texts: { ...DEFAULT_STATUS_TEXTS } },
                         network: { enabled: false, level: "season", position: "bottom-center", offset_x: 30, offset_y: 50 },
                         rating: { enabled: false, source: "commonsense", position: "bottom-left", offset_x: 255, offset_y: 37, back_width: 230 },
                         anime: { enabled: false, level: "episode" }

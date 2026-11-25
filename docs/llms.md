@@ -110,6 +110,9 @@ PosterizarrUI_dev/
 │   │   ├── migrate_runtime_data.py # Database migration utility for upgrading schemas between versions
 │   │   ├── release_notes.py       # Cached GitHub Releases fetcher & post-update "What's New" evaluator
 │   │   ├── support_bundle.py      # Diagnostic support ZIP builder with credential & IP redaction
+│   │   ├── overlay_external_lists.py # IMDb chart/award, MDBList, and TMDb keyword resolvers with SQLite caching
+│   │   ├── action_center_cleanup.py  # Stale Action Center & media_export cleanup on export import, 404, or manual prune
+│   │   ├── bundled_assets/        # Packaged fallback overlay assets (e.g. regional flags) seeded on startup
 │   │   ├── animetafill_service.py # Integration service for AniMetaFill anime episode classification
 │   │   └── animetafill_core/      # Core anime classification engine, providers, and overlay YAML generator
 │   └── frontend/              # Vite + React 18 single-page application
@@ -242,7 +245,7 @@ database/
 ├── server_libraries.db    # Media server library caches (Plex/Jellyfin/Emby/Silo section IDs)
 ├── media_export.db        # Media library exports and item metadata
 ├── runtime_stats.db       # Historical run metrics, processing durations, and asset counts
-├── overlay_cache.db       # Dynamic Overlays state, ratings cache, layer snapshots, and title-change baselines
+├── overlay_cache.db       # Dynamic Overlays state, ratings cache, external list/TMDb keyword caches, layer snapshots, and title-change baselines
 ├── animetafill.db         # Anime episode Canon/Filler/Mixed classifications and manual overrides
 ├── plex_push_cache.db     # Plex Collection Explorer & Plex Sync push state and hashes
 └── imdb_dataset.db        # Optional local IMDb title/episode/ratings index and manual episode mappings
