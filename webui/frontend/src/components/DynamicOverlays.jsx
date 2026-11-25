@@ -4534,6 +4534,10 @@ export default function DynamicOverlays() {
 
     // 1. RESOLUTION BADGE / 4K BANNER
     // Landscape formats (Titlecards, Backdrops) NEVER use top banner ribbons!
+    const tierToPreviewLabel = { "4k": "4K", "1080p": "1080p", "720p": "720p", "576p": "576p", "480p": "480p" };
+    const firstEnabledRes = Array.isArray(badges.resolution?.tiers) && badges.resolution.tiers.length > 0
+      ? (tierToPreviewLabel[String(badges.resolution.tiers[0]).toLowerCase()] || "4K")
+      : "4K";
     const isResBanner = !isLandscape && Boolean(
       badges.resolution?.banner_4k ||
       badges.resolution?.mode === "banner" ||
@@ -4545,8 +4549,8 @@ export default function DynamicOverlays() {
       if (targetFormat === "movie_poster" || targetFormat === "show_poster" || targetFormat === "season_poster") {
         if (isResBanner) {
           nextOffsets.resolution = { x: 0, y: 0, align: "center", valign: "top", mode: "banner", banner_4k: true };
-          setPreviewResolution("4K");
-        } else if (badges.resolution.banner_1080p) {
+          setPreviewResolution(firstEnabledRes);
+        } else if (badges.resolution.banner_1080p && !Array.isArray(badges.resolution?.tiers)) {
           nextOffsets.resolution = { x: 0, y: 0, align: "center", valign: "top", mode: "banner", banner_4k: true };
           setPreviewResolution("1080p");
         } else {
@@ -4563,7 +4567,7 @@ export default function DynamicOverlays() {
             back_width: Number(badges.resolution.back_width) || 245,
             back_height: Number(badges.resolution.back_height) || 95
           };
-          setPreviewResolution("4K");
+          setPreviewResolution(firstEnabledRes);
         }
       } else if (targetFormat === "episode_card" || targetFormat === "backdrop") {
         const rawPos = badges.resolution.titlecard_position || badges.resolution.position;
@@ -4583,7 +4587,7 @@ export default function DynamicOverlays() {
           back_width: Number(badges.resolution.back_width) || 260,
           back_height: Number(badges.resolution.back_height) || 85
         };
-        setPreviewResolution(badges.resolution.banner_1080p ? "1080p" : "4K");
+        setPreviewResolution(firstEnabledRes || (badges.resolution.banner_1080p ? "1080p" : "4K"));
       } else {
         setPreviewResolution("");
       }
@@ -5645,6 +5649,7 @@ export default function DynamicOverlays() {
                 return { ...prev, libraries: nextLibs };
               });
               if (badgeKey === "resolution") {
+                const normalizedMode = patch.mode === "badge" ? "corner_badge" : (patch.mode === "ribbon" ? "banner" : patch.mode);
                 setOffsets(prev => ({
                   ...prev,
                   resolution: {
@@ -5659,7 +5664,7 @@ export default function DynamicOverlays() {
                     ...(patch.back_radius !== undefined ? { back_radius: patch.back_radius } : {}),
                     ...(patch.back_width !== undefined ? { back_width: patch.back_width } : {}),
                     ...(patch.back_height !== undefined ? { back_height: patch.back_height } : {}),
-                    ...(patch.mode !== undefined ? { mode: patch.mode } : {})
+                    ...(normalizedMode !== undefined ? { mode: normalizedMode } : {})
                   }
                 }));
                 setPreviewTimestamp(Date.now());
@@ -5997,8 +6002,17 @@ export default function DynamicOverlays() {
             const renderResolutionCard = () => {
               const resBadge = badges.resolution || {};
               const isResEnabled = Boolean(resBadge.enabled);
-              const resMode = resBadge.mode || "badge";
-              const activeTiers = resBadge.tiers || ["4k", "1080p", "720p", "576p", "480p"];
+              const isBannerMode = ["banner", "ribbon", "both"].includes(resBadge.mode) || (!resBadge.mode && Boolean(resBadge.banner_4k));
+              const activeTiers = Array.isArray(resBadge.tiers) ? resBadge.tiers : ["4k", "1080p", "720p", "576p", "480p"];
+              const updateResolutionTiers = (nextTiers) => {
+                const ordered = ["4k", "1080p", "720p", "576p", "480p"].filter((t) => nextTiers.includes(t));
+                updateBadge("resolution", {
+                  tiers: ordered,
+                  banner_4k: ordered.includes("4k"),
+                  banner_1080p: ordered.includes("1080p"),
+                  banner_720p: ordered.includes("720p")
+                });
+              };
 
               return (
                 <div className={`p-3.5 sm:p-4 rounded-xl bg-theme-card border transition-all ${
@@ -6057,9 +6071,9 @@ export default function DynamicOverlays() {
                         <div className="grid grid-cols-2 gap-1.5">
                           <button
                             type="button"
-                            onClick={() => updateBadge("resolution", { mode: "badge" })}
+                            onClick={() => updateBadge("resolution", { mode: "corner_badge", banner_4k: false })}
                             className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
-                              resMode === "badge"
+                              !isBannerMode
                                 ? "bg-theme-primary text-white border-theme-primary shadow-sm"
                                 : "bg-theme-hover border-theme text-theme-muted hover:text-theme-text"
                             }`}
@@ -6068,9 +6082,9 @@ export default function DynamicOverlays() {
                           </button>
                           <button
                             type="button"
-                            onClick={() => updateBadge("resolution", { mode: "ribbon" })}
+                            onClick={() => updateBadge("resolution", { mode: "banner", banner_4k: activeTiers.includes("4k") })}
                             className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
-                              resMode === "ribbon"
+                              isBannerMode
                                 ? "bg-theme-primary text-white border-theme-primary shadow-sm"
                                 : "bg-theme-hover border-theme text-theme-muted hover:text-theme-text"
                             }`}
@@ -6080,7 +6094,7 @@ export default function DynamicOverlays() {
                         </div>
                       </div>
 
-                      {resMode === "badge" ? (
+                      {!isBannerMode && (
                         <>
                           {/* Position & Offsets for Corner Badges */}
                           <div className="flex items-start gap-2.5">
@@ -6193,62 +6207,70 @@ export default function DynamicOverlays() {
                               </div>
                             </div>
                           </div>
-
-                          {/* Resolution Tiers Checkboxes */}
-                          <div className="space-y-1">
-                            <label className="text-[9px] font-semibold text-theme-muted uppercase">Enabled Resolution Tiers</label>
-                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
-                              {[
-                                { id: "4k", label: "4K UHD (HDR/DV)" },
-                                { id: "1080p", label: "1080p Full HD" },
-                                { id: "720p", label: "720p HD" },
-                                { id: "576p", label: "576p SD / PAL" },
-                                { id: "480p", label: "480p SD / NTSC" }
-                              ].map((t) => {
-                                const isChecked = activeTiers.includes(t.id);
-                                return (
-                                  <label key={t.id} className="flex items-center gap-2 p-1.5 rounded-lg bg-theme-hover/40 border border-theme/40 cursor-pointer hover:bg-theme-hover">
-                                    <input
-                                      type="checkbox"
-                                      checked={isChecked}
-                                      onChange={(e) => {
-                                        const next = e.target.checked
-                                          ? [...activeTiers, t.id]
-                                          : activeTiers.filter(x => x !== t.id);
-                                        updateBadge("resolution", { tiers: next });
-                                      }}
-                                      className="rounded bg-theme-card border-theme text-theme-primary focus:ring-0 w-3.5 h-3.5"
-                                    />
-                                    <span className="font-semibold text-xs text-theme-text truncate">{t.label}</span>
-                                  </label>
-                                );
-                              })}
-                            </div>
-                          </div>
                         </>
-                      ) : (
-                        /* Ribbon Banner Checkboxes */
-                        <div className="space-y-1.5">
-                          <p className="text-[10px] text-theme-muted">Select ribbons to composite at the top:</p>
-                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5">
+                      )}
+
+                      {/* Resolution Tiers Checkboxes (Corner Badges & Top Ribbon Banner) */}
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between gap-2 flex-wrap">
+                          <label className="text-[9px] font-semibold text-theme-muted uppercase">Enabled Resolution Tiers</label>
+                          <div className="flex items-center gap-1">
                             {[
-                              { key: "banner_4k", label: "4K UHD Ribbon" },
-                              { key: "banner_1080p", label: "1080p Full HD" },
-                              { key: "banner_720p", label: "720p HD" }
-                            ].map((b) => (
-                              <label key={b.key} className="flex items-center gap-2 p-1.5 rounded-lg bg-theme-hover/40 border border-theme/40 cursor-pointer hover:bg-theme-hover">
-                                <input
-                                  type="checkbox"
-                                  checked={Boolean(resBadge[b.key])}
-                                  onChange={(e) => updateBadge("resolution", { [b.key]: e.target.checked })}
-                                  className="rounded bg-theme-card border-theme text-theme-primary focus:ring-0 w-3.5 h-3.5"
-                                />
-                                <span className="font-semibold text-xs text-theme-text truncate">{b.label}</span>
-                              </label>
-                            ))}
+                              { label: "4K Only", tiers: ["4k"] },
+                              { label: "4K + 1080p", tiers: ["4k", "1080p"] },
+                              { label: "All", tiers: ["4k", "1080p", "720p", "576p", "480p"] }
+                            ].map((preset) => {
+                              const isPresetActive =
+                                activeTiers.length === preset.tiers.length &&
+                                preset.tiers.every((tier) => activeTiers.includes(tier));
+                              return (
+                                <button
+                                  key={preset.label}
+                                  type="button"
+                                  onClick={() => updateResolutionTiers(preset.tiers)}
+                                  className={`px-1.5 py-0.5 rounded text-[10px] font-semibold border transition-all ${
+                                    isPresetActive
+                                      ? "bg-theme-primary text-white border-theme-primary"
+                                      : "bg-theme-hover border-theme text-theme-muted hover:text-theme-text"
+                                  }`}
+                                >
+                                  {preset.label}
+                                </button>
+                              );
+                            })}
                           </div>
                         </div>
-                      )}
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+                          {[
+                            { id: "4k", label: "4K UHD (HDR/DV)" },
+                            { id: "1080p", label: "1080p Full HD" },
+                            { id: "720p", label: "720p HD" },
+                            { id: "576p", label: "576p SD / PAL" },
+                            { id: "480p", label: "480p SD / NTSC" }
+                          ].map((t) => {
+                            const isChecked = activeTiers.includes(t.id);
+                            return (
+                              <label key={t.id} className="flex items-center gap-2 p-1.5 rounded-lg bg-theme-hover/40 border border-theme/40 cursor-pointer hover:bg-theme-hover">
+                                <input
+                                  type="checkbox"
+                                  checked={isChecked}
+                                  onChange={(e) => {
+                                    const next = e.target.checked
+                                      ? [...activeTiers, t.id]
+                                      : activeTiers.filter(x => x !== t.id);
+                                    updateResolutionTiers(next);
+                                  }}
+                                  className="rounded bg-theme-card border-theme text-theme-primary focus:ring-0 w-3.5 h-3.5"
+                                />
+                                <span className="font-semibold text-xs text-theme-text truncate">{t.label}</span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                        <p className="text-[10px] text-theme-muted">
+                          Unchecked resolutions will not show a badge or banner (compiles to Kometa <span className="font-mono">use_all</span> / <span className="font-mono">use_&lt;resolution&gt;</span>).
+                        </p>
+                      </div>
                     </div>
                   )}
                 </div>

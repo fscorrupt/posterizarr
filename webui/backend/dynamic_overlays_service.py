@@ -1187,16 +1187,19 @@ def parse_config_yml_to_visual(config_path: Optional[Path] = None, auto_seed: bo
 
             # 6. Resolution Banner & Movie/TV overlay files
             elif "overlays_movies.yml" in file_name or "overlays_tv.yml" in file_name or default_name == "resolution":
+                from overlay_sync_service import RESOLUTION_TIERS, extract_enabled_resolution_tiers
+
                 h_pos = vars_dict.get("horizontal_align") or vars_dict.get("horizontal_position", "left")
                 v_pos = vars_dict.get("vertical_align") or vars_dict.get("vertical_position", "top")
                 has_banner_4k = bool(vars_dict.get("4K_banner"))
                 has_4k_badge = bool(vars_dict.get("4K"))
+                is_legacy_file = "overlays_movies.yml" in file_name or "overlays_tv.yml" in file_name
 
                 # In TV show libraries:
                 # - 4K_banner is a top ribbon banner specifically for show posters.
                 # - 4K is a corner badge specifically for episode titlecards (defaulting to top-left, 15px offset).
                 # Neither one cancels or displaces the other.
-                is_banner = bool(has_banner_4k or vars_dict.get("mode") == "banner" or (vars_dict.get("4K_banner") is not False and ("overlays_movies.yml" in file_name or "overlays_tv.yml" in file_name) and not has_4k_badge))
+                is_banner = bool(has_banner_4k or vars_dict.get("mode") == "banner" or (vars_dict.get("4K_banner") is not False and is_legacy_file and not has_4k_badge))
 
                 badge_pos = _to_unified_position(h_pos, v_pos)
                 if badge_pos == "top-center" and (media_type == "show" or "tv" in file_name) and not vars_dict.get("horizontal_align"):
@@ -1208,14 +1211,33 @@ def parse_config_yml_to_visual(config_path: Optional[Path] = None, auto_seed: bo
                 off_x = int(raw_x) if raw_x is not None else 15
                 off_y = int(raw_y) if raw_y is not None else 15
 
+                has_explicit_tier_vars = any(
+                    str(k).strip().lower() in ("tiers", "use_all", "use_4k", "use_1080p", "use_720p", "use_576p", "use_480p", "use_resolution")
+                    for k in vars_dict
+                )
+                if is_legacy_file and not has_explicit_tier_vars:
+                    legacy_tiers = [
+                        t for t, active in (
+                            ("4k", has_banner_4k or has_4k_badge),
+                            ("1080p", bool(vars_dict.get("1080p_banner", vars_dict.get("1080p", False)))),
+                            ("720p", bool(vars_dict.get("720p_banner", False))),
+                        ) if active
+                    ]
+                    enabled_tiers = legacy_tiers or list(RESOLUTION_TIERS)
+                    resolved_mode = "banner" if (is_banner and media_type != "show") else ("both" if (has_banner_4k and has_4k_badge) else ("banner" if has_banner_4k else "corner_badge"))
+                else:
+                    enabled_tiers = extract_enabled_resolution_tiers(vars_dict)
+                    resolved_mode = "banner" if is_banner else "corner_badge"
+
                 badges["resolution"] = {
                     "enabled": True if default_name == "resolution" else bool(has_4k_badge or has_banner_4k or vars_dict.get("1080p")),
+                    "source": "legacy_file" if is_legacy_file else "default",
                     "level": vars_dict.get("builder_level", "movie" if media_type == "movie" else "show"),
-                    "mode": "banner" if (is_banner and media_type != "show") else ("both" if (has_banner_4k and has_4k_badge) else ("banner" if has_banner_4k else "corner_badge")),
-                    "banner_4k": has_banner_4k,
-                    "banner_1080p": bool(vars_dict.get("1080p_banner", vars_dict.get("1080p", False))),
-                    "banner_720p": bool(vars_dict.get("720p_banner", False)),
-                    "tiers": vars_dict.get("tiers", ["4k", "1080p", "720p", "576p", "480p"]),
+                    "mode": resolved_mode,
+                    "banner_4k": has_banner_4k if is_legacy_file else ("4k" in enabled_tiers),
+                    "banner_1080p": bool(vars_dict.get("1080p_banner", vars_dict.get("1080p", False))) if is_legacy_file else ("1080p" in enabled_tiers),
+                    "banner_720p": bool(vars_dict.get("720p_banner", False)) if is_legacy_file else ("720p" in enabled_tiers),
+                    "tiers": enabled_tiers,
                     "position": badge_pos,
                     "offset_x": off_x,
                     "offset_y": off_y,
@@ -1636,28 +1658,26 @@ def compile_visual_to_config_yml(visual_data: Dict[str, Any], output_path: Optio
         # 6. Resolution Overlays (Corner Badges or Top Ribbon Banner)
         b_res = badges.get("resolution", {})
         if b_res.get("enabled"):
-            res_mode = b_res.get("mode", "ribbon" if b_res.get("banner_4k") else "corner_badge")
+            from overlay_sync_service import RESOLUTION_TIERS
+
+            raw_mode = str(b_res.get("mode") or ("banner" if b_res.get("banner_4k") else "corner_badge")).strip().lower()
+            is_banner_mode = raw_mode in ("banner", "ribbon", "both")
             h, v = _split_unified_position(b_res.get("position", "top-left"))
             res_custom_vars = dict(b_res.get("template_variables", {}))
-            if res_mode == "corner_badge" or (not b_res.get("banner_4k") and not b_res.get("banner_1080p")):
-                corner_vars = {
-                    **res_custom_vars,
-                    "horizontal_align": h,
-                    "vertical_align": v,
-                    "horizontal_offset": int(b_res.get("offset_x", 15)),
-                    "vertical_offset": int(b_res.get("offset_y", 15)),
-                    "back_color": b_res.get("back_color", "#00000099"),
-                    "back_radius": int(b_res.get("back_radius", 15)),
-                    "back_width": int(b_res.get("back_width", 260 if media_type == "show" else 245)),
-                    "back_height": int(b_res.get("back_height", 85 if media_type == "show" else 95))
-                }
-                if b_res.get("level"):
-                    corner_vars["builder_level"] = b_res["level"]
-                overlay_files.append({
-                    "default": "resolution",
-                    "template_variables": corner_vars
-                })
+
+            raw_tiers = b_res.get("tiers")
+            if isinstance(raw_tiers, list):
+                requested_tiers = {str(t).strip().lower() for t in raw_tiers if str(t).strip()}
+                enabled_tiers = [t for t in RESOLUTION_TIERS if t in requested_tiers]
             else:
+                enabled_tiers = list(RESOLUTION_TIERS)
+
+            use_legacy_file = (
+                b_res.get("source") == "legacy_file"
+                and is_banner_mode
+                and bool(b_res.get("banner_4k") or b_res.get("banner_1080p") or b_res.get("banner_720p"))
+            )
+            if use_legacy_file:
                 target_cfg = "config/overlays_movies.yml" if media_type == "movie" else "config/overlays_tv.yml"
                 is_banner = bool(b_res.get("banner_4k", False))
                 has_corner = bool(b_res.get("titlecard_enabled", True if media_type == "show" else (not is_banner)))
@@ -1683,6 +1703,51 @@ def compile_visual_to_config_yml(visual_data: Dict[str, Any], output_path: Optio
                 overlay_files[:] = [r for r in overlay_files if not (isinstance(r, dict) and r.get("default") == "resolution")]
                 overlay_files.append({
                     "file": target_cfg,
+                    "template_variables": res_vars
+                })
+            else:
+                stale_tier_keys = {
+                    "tiers", "use_all", "use_4k", "use_1080p", "use_720p", "use_576p", "use_480p",
+                    "1080p_banner", "720p_banner", "576p_banner", "480p_banner"
+                }
+                res_vars = {
+                    k: val for k, val in res_custom_vars.items()
+                    if str(k).strip().lower() not in stale_tier_keys
+                }
+                if len(enabled_tiers) < len(RESOLUTION_TIERS):
+                    res_vars["use_all"] = False
+                    for tier in enabled_tiers:
+                        res_vars[f"use_{tier}"] = True
+
+                res_vars["mode"] = "banner" if is_banner_mode else "corner_badge"
+                res_vars["4K_banner"] = bool(is_banner_mode and "4k" in enabled_tiers)
+
+                if is_banner_mode:
+                    res_vars["horizontal_align"] = "center"
+                    res_vars["vertical_align"] = "top"
+                    res_vars["horizontal_offset"] = 0
+                    res_vars["vertical_offset"] = 0
+                    if media_type == "show":
+                        res_vars.setdefault("back_color", b_res.get("back_color", "#00000099"))
+                        res_vars.setdefault("back_radius", int(b_res.get("back_radius", 15)))
+                        res_vars.setdefault("back_width", int(b_res.get("back_width", 260)))
+                        res_vars.setdefault("back_height", int(b_res.get("back_height", 85)))
+                else:
+                    res_vars.update({
+                        "horizontal_align": h,
+                        "vertical_align": v,
+                        "horizontal_offset": int(b_res.get("offset_x", 15)),
+                        "vertical_offset": int(b_res.get("offset_y", 15)),
+                        "back_color": b_res.get("back_color", "#00000099"),
+                        "back_radius": int(b_res.get("back_radius", 15)),
+                        "back_width": int(b_res.get("back_width", 260 if media_type == "show" else 245)),
+                        "back_height": int(b_res.get("back_height", 85 if media_type == "show" else 95))
+                    })
+
+                if b_res.get("level"):
+                    res_vars["builder_level"] = b_res["level"]
+                overlay_files.append({
+                    "default": "resolution",
                     "template_variables": res_vars
                 })
 

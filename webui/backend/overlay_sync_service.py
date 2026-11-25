@@ -2530,6 +2530,91 @@ def _rating_theme_colors(theme: str, source: str, score: Optional[float]) -> Tup
     return "#E53935E6", "#FFFFFF"
 
 
+RESOLUTION_TIERS: Tuple[str, ...] = ("4k", "1080p", "720p", "576p", "480p")
+RESOLUTION_VARIANT_CANDIDATES: Dict[Tuple[bool, bool], Tuple[str, ...]] = {
+    (True, True): ("dvhdr", "dv", "hdr", ""),
+    (True, False): ("dv", ""),
+    (False, True): ("hdr", ""),
+    (False, False): ("",),
+}
+
+
+def _parse_overlay_bool(value: Any) -> Optional[bool]:
+    """Parse boolean-like template variables strictly, returning None when unset."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int):
+        if value == 1:
+            return True
+        if value == 0:
+            return False
+        return None
+    if isinstance(value, str):
+        norm = value.strip().lower()
+        if norm in ("true", "1", "yes"):
+            return True
+        if norm in ("false", "0", "no"):
+            return False
+    return None
+
+
+def is_resolution_tier_enabled(variables: Dict[str, Any], tier: str) -> bool:
+    """Evaluate Kometa use_all / use_<tier> and Posterizarr tiers filtering for one resolution tier."""
+    norm_tier = str(tier or "").strip().lower()
+    if norm_tier not in RESOLUTION_TIERS:
+        return False
+    vars_lower = {str(k).strip().lower(): v for k, v in (variables or {}).items()}
+    if _parse_overlay_bool(vars_lower.get("use_resolution")) is False:
+        return False
+
+    tier_flag = _parse_overlay_bool(vars_lower.get(f"use_{norm_tier}"))
+    if tier_flag is not None:
+        return tier_flag
+
+    use_all_flag = _parse_overlay_bool(vars_lower.get("use_all"))
+    if use_all_flag is not None:
+        return use_all_flag
+
+    raw_tiers = vars_lower.get("tiers")
+    if isinstance(raw_tiers, list):
+        normalized_tiers = {str(item).strip().lower() for item in raw_tiers if str(item).strip()}
+        return norm_tier in normalized_tiers
+
+    if _parse_overlay_bool(vars_lower.get(f"{norm_tier}_banner")) is False:
+        return False
+
+    return True
+
+
+def extract_enabled_resolution_tiers(variables: Dict[str, Any]) -> List[str]:
+    """Return canonical enabled resolution tiers for a resolution template_variables dict."""
+    return [tier for tier in RESOLUTION_TIERS if is_resolution_tier_enabled(variables, tier)]
+
+
+def _resolve_allowed_resolution_variant(
+    variables: Dict[str, Any], tier: str, has_dv: bool, has_hdr: bool
+) -> Optional[str]:
+    """Return highest-priority allowed HDR/DV suffix ('dvhdr', 'dv', 'hdr', ''), or None if tier is disabled."""
+    vars_lower = {str(k).strip().lower(): v for k, v in (variables or {}).items()}
+    if _parse_overlay_bool(vars_lower.get("use_resolution")) is False:
+        return None
+
+    norm_tier = str(tier or "").strip().lower()
+    base_enabled = is_resolution_tier_enabled(variables, norm_tier)
+    for variant in RESOLUTION_VARIANT_CANDIDATES[(bool(has_dv), bool(has_hdr))]:
+        if variant == "":
+            if base_enabled:
+                return ""
+            continue
+        explicit_combo = _parse_overlay_bool(vars_lower.get(f"use_{norm_tier}_{variant}"))
+        explicit_alt = _parse_overlay_bool(vars_lower.get(f"use_{variant}"))
+        if explicit_combo is False or explicit_alt is False:
+            continue
+        if explicit_combo is True or base_enabled:
+            return variant
+    return None
+
+
 # ==============================================================================
 # OVERLAY RECIPE BUILDER
 # ==============================================================================
@@ -2610,6 +2695,11 @@ def build_overlay_layers_for_item(
         ) if any(term in resolution for term in terms)), None)
         if tier is None:
             continue
+        has_dv = bool(item_metadata.get("has_dolby_vision"))
+        has_hdr = bool(item_metadata.get("has_hdr"))
+        allowed_variant = _resolve_allowed_resolution_variant(variables, tier, has_dv, has_hdr)
+        if allowed_variant is None:
+            continue
         if variables.get("mode") == "banner" and not is_landscape:
             banner_assets = {
                 "4k": ("4K_banner.png", "4K ULTRA HD"),
@@ -2636,7 +2726,7 @@ def build_overlay_layers_for_item(
                     banner["font_path"] = str(font_path)
             native_rating_layers.append(banner)
         else:
-            variant = "dvhdr" if item_metadata.get("has_dolby_vision") and item_metadata.get("has_hdr") else ("dv" if item_metadata.get("has_dolby_vision") else ("hdr" if item_metadata.get("has_hdr") else ""))
+            variant = allowed_variant
             badge_dir = overlays_dir / "assets" / "resolution"
             selected_asset = variables.get(f"file_{tier}")
             if selected_asset:
@@ -2968,7 +3058,26 @@ def build_overlay_layers_for_item(
     if resolution and resolution not in ("none", "off", "false", "", "unknown"):
         if has_res_rule or "4k" in resolution:
             is_4k = ("4k" in resolution or "3840" in resolution or "2160" in resolution or "uhd" in resolution)
-            if has_4k_banner and is_4k and (assets_dir / "4K_banner.png").exists() and not is_landscape:
+            tier = "1080p"
+            if is_4k:
+                tier = "4k"
+            elif "1080" in resolution or "fhd" in resolution:
+                tier = "1080p"
+            elif "720" in resolution or "hd" in resolution:
+                tier = "720p"
+            elif "576" in resolution or "pal" in resolution:
+                tier = "576p"
+            elif "480" in resolution or "sd" in resolution or "ntsc" in resolution:
+                tier = "480p"
+
+            res_vars = rule_names.get("resolution") or rule_names.get("4k_banner") or rule_names.get("4k") or {}
+            has_dv = bool(item_metadata.get("has_dolby_vision"))
+            has_hdr = bool(item_metadata.get("has_hdr"))
+            allowed_variant = _resolve_allowed_resolution_variant(res_vars, tier, has_dv, has_hdr)
+
+            if allowed_variant is None:
+                pass
+            elif has_4k_banner and is_4k and (assets_dir / "4K_banner.png").exists() and not is_landscape:
                 layers.append({
                     "name": "resolution_banner",
                     "type": "image",
@@ -2979,33 +3088,17 @@ def build_overlay_layers_for_item(
                     "vertical_offset": 0
                 })
             elif "resolution" in rule_names or has_res_rule:
-                res_vars = rule_names.get("resolution", {})
                 h_pos = res_vars.get("horizontal_align") or res_vars.get("horizontal_position", "left")
                 v_pos = res_vars.get("vertical_align") or res_vars.get("vertical_position", "top")
                 h_off = int(res_vars.get("horizontal_offset", 15))
                 v_off = int(res_vars.get("vertical_offset", 15))
 
-                tier = "1080p"
-                if is_4k:
-                    tier = "4k"
-                elif "1080" in resolution or "fhd" in resolution:
-                    tier = "1080p"
-                elif "720" in resolution or "hd" in resolution:
-                    tier = "720p"
-                elif "576" in resolution or "pal" in resolution:
-                    tier = "576p"
-                elif "480" in resolution or "sd" in resolution or "ntsc" in resolution:
-                    tier = "480p"
-
-                has_dv = bool(item_metadata.get("has_dolby_vision"))
-                has_hdr = bool(item_metadata.get("has_hdr"))
-
                 badge_cands = []
-                if has_dv and has_hdr:
+                if allowed_variant == "dvhdr":
                     badge_cands.extend([f"{tier}dvhdr.png", f"{tier}dvhdrplus.png"])
-                elif has_dv:
+                elif allowed_variant == "dv":
                     badge_cands.append(f"{tier}dv.png")
-                elif has_hdr:
+                elif allowed_variant == "hdr":
                     badge_cands.append(f"{tier}hdr.png")
                 badge_cands.extend([f"{tier}.png", f"{tier.upper()}.png"])
 
