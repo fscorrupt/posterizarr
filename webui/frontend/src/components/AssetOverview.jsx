@@ -652,6 +652,7 @@ const AssetOverview = () => {
   // Selection state for bulk actions
   const [selectedAssetIds, setSelectedAssetIds] = useState(new Set());
   const [isBulkProcessing, setIsBulkProcessing] = useState(false);
+  const [isPruningDeleted, setIsPruningDeleted] = useState(false);
 
   // +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
   // ++ Generic Confirmation Modal State
@@ -1564,6 +1565,54 @@ const AssetOverview = () => {
   };
   // +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
+  const handlePruneDeleted = () => {
+    setConfirmModalState({
+      isOpen: true,
+      title: t("assetOverview.pruneDeletedTitle"),
+      message: t("assetOverview.pruneDeletedConfirm"),
+      confirmText: t("assetOverview.pruneDeletedConfirmButton"),
+      confirmColor: "primary",
+      onConfirm: runPruneDeleted,
+    });
+  };
+
+  const runPruneDeleted = async () => {
+    setConfirmModalState({ isOpen: false });
+    setIsPruningDeleted(true);
+    try {
+      const response = await fetch("/api/assets/prune-deleted", {
+        method: "POST",
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.detail || result.error || "Server error");
+      }
+      const totalRemoved =
+        (result.imagechoices_deleted || 0) + (result.skipped_deleted || 0);
+      if (totalRemoved > 0) {
+        showSuccess(
+          t("assetOverview.pruneDeletedSuccess", {
+            count: totalRemoved,
+            libraries: (result.libraries_checked || []).length,
+          })
+        );
+      } else {
+        showSuccess(t("assetOverview.pruneDeletedNone"));
+      }
+      setSelectedAssetIds(new Set());
+      await fetchData();
+      window.dispatchEvent(new Event("assetReplaced"));
+    } catch (error) {
+      showError(
+        t("assetOverview.pruneDeletedError", {
+          error: error.message,
+        })
+      );
+    } finally {
+      setIsPruningDeleted(false);
+    }
+  };
+
   const types = ["All Types", ...(data?.types || [])];
   const libraries = ["All Libraries", ...(data?.libraries || [])];
 
@@ -2334,6 +2383,20 @@ const AssetOverview = () => {
                 <span className="text-white">{t("assetOverview.refreshAllMetadata", { defaultValue: "Refresh All Metadata" })}</span>
               </button>
             )}
+
+            <button
+              onClick={handlePruneDeleted}
+              disabled={isPruningDeleted || isBulkProcessing || loading}
+              className="flex items-center gap-2 px-4 py-2 bg-theme-card hover:bg-theme-hover border border-theme hover:border-theme-primary/50 disabled:opacity-50 rounded-lg text-sm font-medium transition-all shadow-sm"
+              title={t("assetOverview.pruneDeletedTooltip")}
+            >
+              {isPruningDeleted ? (
+                <Loader2 className="w-4 h-4 animate-spin text-theme-primary" />
+              ) : (
+                <Trash2 className="w-4 h-4 text-theme-primary" />
+              )}
+              <span className="text-theme-text">{t("assetOverview.pruneDeleted")}</span>
+            </button>
 
             <button
               onClick={fetchData}

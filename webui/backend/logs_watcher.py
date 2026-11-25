@@ -852,6 +852,15 @@ class LogsWatcher:
                 logger.debug(f"[Thread {thread_id}] Calling media_export_db.import_latest_csvs()...")
                 start_time = time.time()
                 results = self.media_export_db.import_latest_csvs()
+                if results.get("library_count", 0) > 0 and self.db is not None:
+                    from action_center_cleanup import prune_action_center_from_export
+                    prune_stats = prune_action_center_from_export(
+                        self.db, self.media_export_db, "plex", results.get("run_timestamp")
+                    )
+                    logger.info(
+                        f"  Pruned stale Action Center records: {prune_stats.get('imagechoices_deleted', 0)} imagechoices, "
+                        f"{prune_stats.get('skipped_deleted', 0)} skipped_items across {prune_stats.get('libraries_checked', 0)} libraries"
+                    )
                 elapsed = time.time() - start_time
 
                 logger.info("=" * 80)
@@ -887,6 +896,15 @@ class LogsWatcher:
                 logger.debug(f"[Thread {thread_id}] Calling media_export_db.import_other_latest_csvs()...")
                 start_time = time.time()
                 results = self.media_export_db.import_other_latest_csvs()
+                if results.get("library_count", 0) > 0 and self.db is not None:
+                    from action_center_cleanup import prune_action_center_from_export
+                    prune_stats = prune_action_center_from_export(
+                        self.db, self.media_export_db, "jellyfin", results.get("run_timestamp")
+                    )
+                    logger.info(
+                        f"  Pruned stale Action Center records: {prune_stats.get('imagechoices_deleted', 0)} imagechoices, "
+                        f"{prune_stats.get('skipped_deleted', 0)} skipped_items across {prune_stats.get('libraries_checked', 0)} libraries"
+                    )
                 elapsed = time.time() - start_time
 
                 logger.info("=" * 80)

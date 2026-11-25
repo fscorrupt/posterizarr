@@ -4,7 +4,7 @@ Database module for ImageChoices tracking
 
 import sqlite3
 from pathlib import Path
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional, Tuple, Set
 import logging
 import csv
 import threading
@@ -480,6 +480,162 @@ class ImageChoicesDB:
                     conn.rollback()
                     conn.close()
                 raise
+
+    def delete_choices_by_library_rootfolder(self, library_name: str, rootfolder: str) -> int:
+        """Delete non-collection imagechoices rows for a deleted media item's library + rootfolder."""
+        lib_norm = str(library_name or "").strip().lower()
+        root_norm = str(rootfolder or "").strip().lower()
+        if not lib_norm or not root_norm:
+            return 0
+        with self.lock:
+            conn = None
+            try:
+                conn = self._get_connection()
+                cursor = conn.execute(
+                    """
+                    DELETE FROM imagechoices
+                    WHERE LOWER(TRIM(LibraryName)) = ?
+                      AND LOWER(TRIM(Rootfolder)) = ?
+                      AND LOWER(COALESCE(Type, '')) NOT LIKE '%collection%'
+                    """,
+                    (lib_norm, root_norm),
+                )
+                deleted = cursor.rowcount
+                conn.commit()
+                return deleted
+            except sqlite3.Error as e:
+                logger.error(
+                    "Error deleting imagechoices for %s / %s: %s",
+                    library_name,
+                    rootfolder,
+                    e,
+                )
+                if conn is not None:
+                    conn.rollback()
+                return 0
+            finally:
+                if conn is not None:
+                    conn.close()
+
+    def delete_skipped_items_by_library_rootfolder(self, library_name: str, rootfolder: str) -> int:
+        """Delete skipped_items rows matching a deleted media item's library + rootfolder."""
+        lib_norm = str(library_name or "").strip().lower()
+        root_norm = str(rootfolder or "").strip().lower()
+        if not lib_norm or not root_norm:
+            return 0
+        with self.lock:
+            conn = None
+            try:
+                conn = self._get_connection()
+                cursor = conn.execute(
+                    """
+                    DELETE FROM skipped_items
+                    WHERE LOWER(TRIM(LibraryName)) = ?
+                      AND LOWER(TRIM(Rootfolder)) = ?
+                    """,
+                    (lib_norm, root_norm),
+                )
+                deleted = cursor.rowcount
+                conn.commit()
+                return deleted
+            except sqlite3.Error as e:
+                logger.error(
+                    "Error deleting skipped_items for %s / %s: %s",
+                    library_name,
+                    rootfolder,
+                    e,
+                )
+                if conn is not None:
+                    conn.rollback()
+                return 0
+            finally:
+                if conn is not None:
+                    conn.close()
+
+    def prune_missing_from_libraries(
+        self,
+        active_by_library: Dict[str, Set[str]],
+        prune_skipped: bool = False,
+    ) -> Dict[str, int]:
+        """Remove stale Action Center rows whose rootfolder no longer exists in the inspected libraries."""
+        normalized: Dict[str, Set[str]] = {}
+        for lib_name, roots in (active_by_library or {}).items():
+            lib_norm = str(lib_name or "").strip().lower()
+            if not lib_norm:
+                continue
+            root_set = {str(r).strip().lower() for r in (roots or ()) if r is not None and str(r).strip()}
+            if root_set:
+                normalized.setdefault(lib_norm, set()).update(root_set)
+
+        if not normalized:
+            return {"imagechoices_deleted": 0, "skipped_deleted": 0, "libraries_checked": 0}
+
+        imagechoices_deleted = 0
+        skipped_deleted = 0
+        chunk_size = 500
+
+        with self.lock:
+            conn = None
+            try:
+                conn = self._get_connection()
+                cursor = conn.cursor()
+                for lib_norm, active_roots in normalized.items():
+                    cursor.execute(
+                        """
+                        SELECT id, Rootfolder FROM imagechoices
+                        WHERE LOWER(TRIM(LibraryName)) = ?
+                          AND Rootfolder IS NOT NULL
+                          AND TRIM(Rootfolder) != ''
+                          AND LOWER(COALESCE(Type, '')) NOT LIKE '%collection%'
+                        """,
+                        (lib_norm,),
+                    )
+                    stale_ids = [
+                        row["id"]
+                        for row in cursor.fetchall()
+                        if str(row["Rootfolder"]).strip().lower() not in active_roots
+                    ]
+                    for start in range(0, len(stale_ids), chunk_size):
+                        batch = stale_ids[start:start + chunk_size]
+                        placeholders = ",".join("?" for _ in batch)
+                        cursor.execute(f"DELETE FROM imagechoices WHERE id IN ({placeholders})", batch)
+                        imagechoices_deleted += cursor.rowcount
+
+                    if prune_skipped:
+                        cursor.execute(
+                            """
+                            SELECT id, Rootfolder FROM skipped_items
+                            WHERE LOWER(TRIM(LibraryName)) = ?
+                              AND Rootfolder IS NOT NULL
+                              AND TRIM(Rootfolder) != ''
+                            """,
+                            (lib_norm,),
+                        )
+                        stale_skipped_ids = [
+                            row["id"]
+                            for row in cursor.fetchall()
+                            if str(row["Rootfolder"]).strip().lower() not in active_roots
+                        ]
+                        for start in range(0, len(stale_skipped_ids), chunk_size):
+                            batch = stale_skipped_ids[start:start + chunk_size]
+                            placeholders = ",".join("?" for _ in batch)
+                            cursor.execute(f"DELETE FROM skipped_items WHERE id IN ({placeholders})", batch)
+                            skipped_deleted += cursor.rowcount
+
+                conn.commit()
+                return {
+                    "imagechoices_deleted": imagechoices_deleted,
+                    "skipped_deleted": skipped_deleted,
+                    "libraries_checked": len(normalized),
+                }
+            except sqlite3.Error as e:
+                logger.error("Error pruning stale Action Center entries: %s", e)
+                if conn is not None:
+                    conn.rollback()
+                return {"imagechoices_deleted": 0, "skipped_deleted": 0, "libraries_checked": 0}
+            finally:
+                if conn is not None:
+                    conn.close()
 
     def import_from_csv(self, csv_path: Path) -> dict:
         """

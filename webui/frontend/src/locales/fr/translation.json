@@ -2773,7 +2773,15 @@
     "unskipError": "Erreur lors de la restauration de l'élément : {{error}}",
     "noSkippedItems": "Aucun élément ignoré trouvé.",
     "skippedInfoTitle": "À propos des éléments ignorés",
-    "skippedInfoDesc": "Cette vue montre tous les actifs qui ont l'étiquette 'skip_posterizarr' appliquée dans votre serveur multimédia, ainsi que les éléments ignorés manuellement via l'interface utilisateur de Posterizarr. Les éléments listés ici seront ignorés par Posterizarr lors des synchronisations en arrière-plan."
+    "skippedInfoDesc": "Cette vue montre tous les actifs qui ont l'étiquette 'skip_posterizarr' appliquée dans votre serveur multimédia, ainsi que les éléments ignorés manuellement via l'interface utilisateur de Posterizarr. Les éléments listés ici seront ignorés par Posterizarr lors des synchronisations en arrière-plan.",
+    "pruneDeleted": "Nettoyer les supprimés",
+    "pruneDeletedTooltip": "Vérifie les bibliothèques du serveur multimédia et supprime les entrées orphelines du Centre d'actions (les fichiers sur le disque restent intacts)",
+    "pruneDeletedTitle": "Nettoyer les entrées orphelines ?",
+    "pruneDeletedConfirm": "Cette action interroge vos bibliothèques du serveur multimédia configuré et supprime de la base de données du Centre d'actions les éléments qui n'existent plus sur le serveur.\n\nAucun fichier sur le disque ne sera supprimé.",
+    "pruneDeletedConfirmButton": "Vérifier et nettoyer",
+    "pruneDeletedSuccess": "{{count}} entrée(s) orpheline(s) supprimée(s) dans {{libraries}} bibliothèque(s).",
+    "pruneDeletedNone": "Aucune entrée orpheline trouvée dans le Centre d'actions.",
+    "pruneDeletedError": "Échec du nettoyage : {{error}}"
   },
   "common": {
     "stop": "Arrêter",

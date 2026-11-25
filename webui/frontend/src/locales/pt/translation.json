@@ -2773,7 +2773,15 @@
     "unskipError": "Erro ao restaurar o item: {{error}}",
     "noSkippedItems": "Nenhum item ignorado encontrado.",
     "skippedInfoTitle": "Sobre Itens Ignorados",
-    "skippedInfoDesc": "Esta visualização mostra todos os ativos que têm o rótulo 'skip_posterizarr' aplicado em seu servidor de mídia, bem como os itens ignorados manualmente pela interface do Posterizarr. Os itens listados aqui serão ignorados pelo Posterizarr durante as sincronizações em segundo plano."
+    "skippedInfoDesc": "Esta visualização mostra todos os ativos que têm o rótulo 'skip_posterizarr' aplicado em seu servidor de mídia, bem como os itens ignorados manualmente pela interface do Posterizarr. Os itens listados aqui serão ignorados pelo Posterizarr durante as sincronizações em segundo plano.",
+    "pruneDeleted": "Limpar removidos",
+    "pruneDeletedTooltip": "Verifica as bibliotecas do servidor de mídia ativo e remove entradas órfãs da Central de Ações de mídias excluídas (os arquivos no disco não são alterados)",
+    "pruneDeletedTitle": "Remover entradas órfãs?",
+    "pruneDeletedConfirm": "Isso consulta as bibliotecas configuradas no seu servidor de mídia e remove do banco de dados da Central de Ações os itens que não existem mais no servidor.\n\nNenhum arquivo no disco será excluído.",
+    "pruneDeletedConfirmButton": "Verificar e limpar",
+    "pruneDeletedSuccess": "{{count}} entrada(s) órfã(s) removida(s) em {{libraries}} biblioteca(s).",
+    "pruneDeletedNone": "Nenhuma entrada órfã encontrada na Central de Ações.",
+    "pruneDeletedError": "Falha na limpeza: {{error}}"
   },
   "common": {
     "stop": "Parar",

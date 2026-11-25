@@ -2773,7 +2773,15 @@
     "unskipError": "Error unskipping item: {{error}}",
     "noSkippedItems": "No skipped items found.",
     "skippedInfoTitle": "About Skipped Items",
-    "skippedInfoDesc": "This view shows all assets that have the 'skip_posterizarr' label applied in your media server, as well as items manually skipped via the Posterizarr UI. Items listed here will be ignored by Posterizarr during background syncs."
+    "skippedInfoDesc": "This view shows all assets that have the 'skip_posterizarr' label applied in your media server, as well as items manually skipped via the Posterizarr UI. Items listed here will be ignored by Posterizarr during background syncs.",
+    "pruneDeleted": "Cleanup Deleted",
+    "pruneDeletedTooltip": "Check active media server libraries and remove orphaned Action Center entries for deleted media (files on disk are untouched)",
+    "pruneDeletedTitle": "Remove Orphaned Entries?",
+    "pruneDeletedConfirm": "This queries your configured media server libraries and removes Action Center database records for items that no longer exist on the server.\n\nNo media or artwork files on disk will be deleted.",
+    "pruneDeletedConfirmButton": "Check & Cleanup",
+    "pruneDeletedSuccess": "Removed {{count}} orphaned Action Center entry/entries across {{libraries}} library/libraries.",
+    "pruneDeletedNone": "No orphaned Action Center entries found.",
+    "pruneDeletedError": "Cleanup failed: {{error}}"
   },
   "common": {
     "stop": "Stop",

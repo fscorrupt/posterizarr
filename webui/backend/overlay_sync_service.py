@@ -1388,7 +1388,7 @@ def get_server_credentials(config_path: Path) -> Dict[str, Any]:
 
         # Plex
         p_url = cfg.get("PlexUrl") or cfg.get("PlexPart", {}).get("PlexUrl")
-        p_tok = cfg.get("PlexToken") or cfg.get("ApiPart", {}).get("PlexToken")
+        p_tok = cfg.get("PlexToken") or cfg.get("PlexPart", {}).get("PlexToken") or cfg.get("ApiPart", {}).get("PlexToken")
         p_use = cfg.get("UsePlex") or cfg.get("PlexPart", {}).get("UsePlex")
         p_ex = cfg.get("PlexLibstoExclude") or cfg.get("PlexPart", {}).get("LibstoExclude", [])
         if p_url and is_safe_url(p_url):
@@ -1404,6 +1404,8 @@ def get_server_credentials(config_path: Path) -> Dict[str, Any]:
         jf_key = (
             cfg.get("JellyfinAPIKey")
             or cfg.get("JellyfinApiKey")
+            or cfg.get("JellyfinPart", {}).get("JellyfinToken")
+            or cfg.get("JellyfinPart", {}).get("JellyfinAPIKey")
             or cfg.get("ApiPart", {}).get("JellyfinAPIKey")
             or cfg.get("ApiPart", {}).get("JellyfinApiKey")
         )
@@ -1422,6 +1424,8 @@ def get_server_credentials(config_path: Path) -> Dict[str, Any]:
         em_key = (
             cfg.get("EmbyAPIKey")
             or cfg.get("EmbyApiKey")
+            or cfg.get("EmbyPart", {}).get("EmbyToken")
+            or cfg.get("EmbyPart", {}).get("EmbyAPIKey")
             or cfg.get("ApiPart", {}).get("EmbyAPIKey")
             or cfg.get("ApiPart", {}).get("EmbyApiKey")
         )

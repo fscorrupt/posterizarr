@@ -2330,8 +2330,16 @@ async def lifespan(app: FastAPI):
     from ratings_refresh import ratings_refresh_service
 
     def cleanup_deleted_media_item(server_type, item_id):
+        identity = None
+        if MEDIA_EXPORT_DB_AVAILABLE and media_export_db is not None:
+            identity = media_export_db.lookup_item_identity(server_type, item_id)
+            media_export_db.delete_item(server_type, item_id)
         if db is not None:
             db.delete_skipped_items_for_media(server_type, item_id)
+            if identity:
+                lib_name, rootfolder = identity
+                db.delete_choices_by_library_rootfolder(lib_name, rootfolder)
+                db.delete_skipped_items_by_library_rootfolder(lib_name, rootfolder)
         if dynamic_overlay_cache is not None:
             dynamic_overlay_cache.prune_recipe_snapshots()
 
@@ -7209,6 +7217,11 @@ async def import_plex_csvs():
             }
 
         results = media_export_db.import_latest_csvs()
+        if results.get("library_count", 0) > 0 and DATABASE_AVAILABLE and db is not None:
+            from action_center_cleanup import prune_action_center_from_export
+            results["prune_stats"] = prune_action_center_from_export(
+                db, media_export_db, "plex", results.get("run_timestamp")
+            )
 
         return {
             "success": True,
@@ -7349,6 +7362,11 @@ async def import_other_media_csvs():
             }
 
         results = media_export_db.import_other_latest_csvs()
+        if results.get("library_count", 0) > 0 and DATABASE_AVAILABLE and db is not None:
+            from action_center_cleanup import prune_action_center_from_export
+            results["prune_stats"] = prune_action_center_from_export(
+                db, media_export_db, "jellyfin", results.get("run_timestamp")
+            )
 
         return {
             "success": True,
@@ -15927,6 +15945,28 @@ async def bulk_delete_assets_and_records(request: BulkDeleteAssetsRequest):
         "failed_items": failed_items,
         "message": f"Deleted {deleted_count} assets. {len(failed_items)} failed."
     }
+
+
+@app.post("/api/assets/prune-deleted")
+async def prune_deleted_action_center_items():
+    """
+    Query active media servers and remove Action Center / export DB entries
+    for media items that no longer exist on the server.
+    """
+    if not DATABASE_AVAILABLE or db is None:
+        raise HTTPException(status_code=503, detail="Database not available")
+
+    from action_center_cleanup import prune_stale_action_center_entries
+
+    export_db = media_export_db if (MEDIA_EXPORT_DB_AVAILABLE and media_export_db is not None) else None
+    result = await prune_stale_action_center_entries(db, export_db, CONFIG_PATH)
+    if not result.get("success"):
+        raise HTTPException(
+            status_code=400,
+            detail=result.get("error") or "No active media server libraries available for cleanup",
+        )
+    return result
+
 
 class SkipAssetRequest(BaseModel):
     asset_id: int

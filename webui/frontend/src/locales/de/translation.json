@@ -2813,7 +2813,15 @@
     "unskipError": "Fehler beim Wiederherstellen des Elements: {{error}}",
     "noSkippedItems": "Keine übersprungenen Elemente gefunden.",
     "skippedInfoTitle": "Informationen zu übersprungenen Elementen",
-    "skippedInfoDesc": "Diese Ansicht zeigt alle Assets, denen in Ihrem Medienserver das Label 'skip_posterizarr' zugewiesen wurde, sowie Elemente, die manuell über die Posterizarr-Benutzeroberfläche übersprungen wurden. Die hier aufgelisteten Elemente werden von Posterizarr bei Hintergrundsynchronisierungen ignoriert."
+    "skippedInfoDesc": "Diese Ansicht zeigt alle Assets, denen in Ihrem Medienserver das Label 'skip_posterizarr' zugewiesen wurde, sowie Elemente, die manuell über die Posterizarr-Benutzeroberfläche übersprungen wurden. Die hier aufgelisteten Elemente werden von Posterizarr bei Hintergrundsynchronisierungen ignoriert.",
+    "pruneDeleted": "Gelöschte bereinigen",
+    "pruneDeletedTooltip": "Prüft aktive Medienserver-Bibliotheken und entfernt verwaiste Aktionszentrum-Einträge gelöschter Medien (Dateien bleiben unangetastet)",
+    "pruneDeletedTitle": "Verwaiste Einträge bereinigen?",
+    "pruneDeletedConfirm": "Dabei werden die konfigurierten Medienserver-Bibliotheken abgefragt und Aktionszentrum-Datenbankeinträge entfernt, die auf dem Server nicht mehr existieren.\n\nEs werden keine Dateien auf dem Datenträger gelöscht.",
+    "pruneDeletedConfirmButton": "Prüfen & bereinigen",
+    "pruneDeletedSuccess": "{{count}} verwaiste Aktionszentrum-Einträge in {{libraries}} Bibliothek(en) bereinigt.",
+    "pruneDeletedNone": "Keine verwaisten Aktionszentrum-Einträge gefunden.",
+    "pruneDeletedError": "Bereinigung fehlgeschlagen: {{error}}"
   },
   "common": {
     "stop": "Stoppen",

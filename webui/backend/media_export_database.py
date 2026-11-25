@@ -6,7 +6,7 @@ Handles media library export data (Plex, Jellyfin, Emby) with run history
 import sqlite3
 from datetime import datetime
 from pathlib import Path
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Set, Tuple
 import logging
 import csv
 import os
@@ -600,14 +600,26 @@ class MediaExportDatabase:
                         """,
                         records_to_insert
                     )
+                    imported_count = cursor.rowcount
+                    imported_libs = {rec[1].strip().lower() for rec in records_to_insert if rec[1] and rec[1].strip()}
+                    pruned_stale = 0
+                    for lib_lower in imported_libs:
+                        cursor.execute(
+                            """
+                            DELETE FROM plex_library_export
+                            WHERE LOWER(TRIM(library_name)) = ?
+                              AND run_timestamp != ?
+                            """,
+                            (lib_lower, run_timestamp),
+                        )
+                        pruned_stale += max(0, cursor.rowcount)
                     conn.commit()
                     conn.close()
 
-                    imported_count = cursor.rowcount
                     skipped_count = len(records_to_insert) - imported_count
 
                     logger.info(
-                        f"✓ Imported {imported_count} library records (skipped {skipped_count} duplicates)"
+                        f"✓ Imported {imported_count} library records (skipped {skipped_count} duplicates, pruned {pruned_stale} stale)"
                     )
                     return imported_count
             else:
@@ -821,14 +833,26 @@ class MediaExportDatabase:
                         """,
                         records_to_insert,
                     )
+                    imported_count = cursor.rowcount
+                    imported_libs = {rec[1].strip().lower() for rec in records_to_insert if rec[1] and rec[1].strip()}
+                    pruned_stale = 0
+                    for lib_lower in imported_libs:
+                        cursor.execute(
+                            """
+                            DELETE FROM other_media_library_export
+                            WHERE LOWER(TRIM(library_name)) = ?
+                              AND run_timestamp != ?
+                            """,
+                            (lib_lower, run_timestamp),
+                        )
+                        pruned_stale += max(0, cursor.rowcount)
                     conn.commit()
                     conn.close()
 
-                    imported_count = cursor.rowcount
                     skipped_count = len(records_to_insert) - imported_count
 
                     logger.info(
-                        f"✓ Imported {imported_count} OtherMedia library records (skipped {skipped_count} duplicates)"
+                        f"✓ Imported {imported_count} OtherMedia library records (skipped {skipped_count} duplicates, pruned {pruned_stale} stale)"
                     )
                     return imported_count
             else:
@@ -1053,6 +1077,148 @@ class MediaExportDatabase:
                 if 'conn' in locals():
                     conn.close()
                 return None
+
+    def _table_and_id_col(self, server_type: str) -> Tuple[str, str]:
+        if str(server_type or "").strip().lower() == "plex":
+            return "plex_library_export", "rating_key"
+        return "other_media_library_export", "media_id"
+
+    def lookup_item_identity(self, server_type: str, item_id: str) -> Optional[Tuple[str, str]]:
+        """Look up (library_name, root_foldername) for a media item ID."""
+        table, id_col = self._table_and_id_col(server_type)
+        with self.lock:
+            conn = None
+            try:
+                conn = self._get_connection()
+                cursor = conn.cursor()
+                cursor.execute(
+                    f"SELECT library_name, root_foldername FROM {table} WHERE {id_col} = ? ORDER BY id DESC LIMIT 1",
+                    (str(item_id),),
+                )
+                row = cursor.fetchone()
+                if row:
+                    lib = str(row["library_name"] or "").strip()
+                    root = str(row["root_foldername"] or "").strip()
+                    if lib and root:
+                        return (lib, root)
+                return None
+            except Exception as e:
+                logger.error("Error looking up item identity %s/%s: %s", server_type, item_id, e)
+                return None
+            finally:
+                if conn is not None:
+                    conn.close()
+
+    def delete_item(self, server_type: str, item_id: str) -> int:
+        """Delete a single media item from its library export table by server item ID."""
+        table, id_col = self._table_and_id_col(server_type)
+        with self.lock:
+            conn = None
+            try:
+                conn = self._get_connection()
+                cursor = conn.execute(
+                    f"DELETE FROM {table} WHERE {id_col} = ?",
+                    (str(item_id),),
+                )
+                deleted = max(0, cursor.rowcount)
+                conn.commit()
+                return deleted
+            except Exception as e:
+                logger.error("Error deleting %s item %s from %s: %s", server_type, item_id, table, e)
+                if conn is not None:
+                    conn.rollback()
+                return 0
+            finally:
+                if conn is not None:
+                    conn.close()
+
+    def get_active_rootfolders_by_library(
+        self,
+        server_type: str,
+        run_timestamp: Optional[str] = None,
+    ) -> Dict[str, Set[str]]:
+        """Return active root_foldername sets grouped by library_name."""
+        table, _ = self._table_and_id_col(server_type)
+        with self.lock:
+            conn = None
+            try:
+                conn = self._get_connection()
+                cursor = conn.cursor()
+                if run_timestamp:
+                    cursor.execute(
+                        f"SELECT library_name, root_foldername FROM {table} WHERE run_timestamp = ?",
+                        (run_timestamp,),
+                    )
+                else:
+                    cursor.execute(f"SELECT library_name, root_foldername FROM {table}")
+                active: Dict[str, Set[str]] = {}
+                for row in cursor.fetchall():
+                    lib = str(row["library_name"] or "").strip()
+                    root = str(row["root_foldername"] or "").strip()
+                    if lib and root:
+                        active.setdefault(lib, set()).add(root)
+                return active
+            except Exception as e:
+                logger.error("Error reading active rootfolders from %s: %s", table, e)
+                return {}
+            finally:
+                if conn is not None:
+                    conn.close()
+
+    def prune_missing_from_libraries(
+        self,
+        server_type: str,
+        active_by_library: Dict[str, Set[str]],
+    ) -> int:
+        """Remove export rows whose root_foldername is no longer present in the checked libraries."""
+        table, _ = self._table_and_id_col(server_type)
+        normalized: Dict[str, Set[str]] = {}
+        for lib_name, roots in (active_by_library or {}).items():
+            lib_norm = str(lib_name or "").strip().lower()
+            root_set = {str(r).strip().lower() for r in (roots or ()) if r is not None and str(r).strip()}
+            if lib_norm and root_set:
+                normalized.setdefault(lib_norm, set()).update(root_set)
+
+        if not normalized:
+            return 0
+
+        deleted_total = 0
+        chunk_size = 500
+        with self.lock:
+            conn = None
+            try:
+                conn = self._get_connection()
+                cursor = conn.cursor()
+                for lib_norm, active_roots in normalized.items():
+                    cursor.execute(
+                        f"""
+                        SELECT id, root_foldername FROM {table}
+                        WHERE LOWER(TRIM(library_name)) = ?
+                          AND root_foldername IS NOT NULL
+                          AND TRIM(root_foldername) != ''
+                        """,
+                        (lib_norm,),
+                    )
+                    stale_ids = [
+                        row["id"]
+                        for row in cursor.fetchall()
+                        if str(row["root_foldername"]).strip().lower() not in active_roots
+                    ]
+                    for start in range(0, len(stale_ids), chunk_size):
+                        batch = stale_ids[start:start + chunk_size]
+                        placeholders = ",".join("?" for _ in batch)
+                        cursor.execute(f"DELETE FROM {table} WHERE id IN ({placeholders})", batch)
+                        deleted_total += max(0, cursor.rowcount)
+                conn.commit()
+                return deleted_total
+            except Exception as e:
+                logger.error("Error pruning missing items from %s: %s", table, e)
+                if conn is not None:
+                    conn.rollback()
+                return 0
+            finally:
+                if conn is not None:
+                    conn.close()
 
     def get_all_runs(self) -> List[str]:
         """Get list of all unique run timestamps from both library and episode tables"""
