@@ -2580,7 +2580,7 @@ def is_resolution_tier_enabled(variables: Dict[str, Any], tier: str) -> bool:
         normalized_tiers = {str(item).strip().lower() for item in raw_tiers if str(item).strip()}
         return norm_tier in normalized_tiers
 
-    if _parse_overlay_bool(vars_lower.get(f"{norm_tier}_banner")) is False:
+    if str(vars_lower.get("mode") or "").strip().lower() == "banner" and _parse_overlay_bool(vars_lower.get(f"{norm_tier}_banner")) is False:
         return False
 
     return True

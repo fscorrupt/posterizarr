@@ -4538,11 +4538,13 @@ export default function DynamicOverlays() {
     const firstEnabledRes = Array.isArray(badges.resolution?.tiers) && badges.resolution.tiers.length > 0
       ? (tierToPreviewLabel[String(badges.resolution.tiers[0]).toLowerCase()] || "4K")
       : "4K";
-    const isResBanner = !isLandscape && Boolean(
-      badges.resolution?.banner_4k ||
+    const isResBanner = !isLandscape && (
       badges.resolution?.mode === "banner" ||
       badges.resolution?.mode === "ribbon" ||
-      (!badges.resolution?.offset_y && badges.resolution?.position?.includes("top"))
+      (
+        !["corner_badge", "badge"].includes(badges.resolution?.mode) &&
+        Boolean(badges.resolution?.banner_4k || (!badges.resolution?.offset_y && badges.resolution?.position?.includes("top")))
+      )
     );
     setResolutionMode(isLandscape ? "corner_badge" : (isResBanner ? "banner" : "corner_badge"));
     if (badges.resolution?.preview_scope_matches && (badges.resolution?.enabled || badges.resolution?.banner_4k || badges.resolution?.banner_1080p || badges.resolution?.titlecard_enabled)) {
@@ -6008,9 +6010,9 @@ export default function DynamicOverlays() {
                 const ordered = ["4k", "1080p", "720p", "576p", "480p"].filter((t) => nextTiers.includes(t));
                 updateBadge("resolution", {
                   tiers: ordered,
-                  banner_4k: ordered.includes("4k"),
-                  banner_1080p: ordered.includes("1080p"),
-                  banner_720p: ordered.includes("720p")
+                  banner_4k: isBannerMode && ordered.includes("4k"),
+                  banner_1080p: isBannerMode && ordered.includes("1080p"),
+                  banner_720p: isBannerMode && ordered.includes("720p")
                 });
               };
 
@@ -6071,7 +6073,7 @@ export default function DynamicOverlays() {
                         <div className="grid grid-cols-2 gap-1.5">
                           <button
                             type="button"
-                            onClick={() => updateBadge("resolution", { mode: "corner_badge", banner_4k: false })}
+                            onClick={() => updateBadge("resolution", { mode: "corner_badge", banner_4k: false, banner_1080p: false, banner_720p: false })}
                             className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
                               !isBannerMode
                                 ? "bg-theme-primary text-white border-theme-primary shadow-sm"
@@ -6082,7 +6084,12 @@ export default function DynamicOverlays() {
                           </button>
                           <button
                             type="button"
-                            onClick={() => updateBadge("resolution", { mode: "banner", banner_4k: activeTiers.includes("4k") })}
+                            onClick={() => updateBadge("resolution", {
+                              mode: "banner",
+                              banner_4k: activeTiers.includes("4k"),
+                              banner_1080p: activeTiers.includes("1080p"),
+                              banner_720p: activeTiers.includes("720p")
+                            })}
                             className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
                               isBannerMode
                                 ? "bg-theme-primary text-white border-theme-primary shadow-sm"
