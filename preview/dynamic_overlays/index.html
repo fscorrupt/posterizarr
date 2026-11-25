@@ -2005,10 +2005,10 @@ overlays itself; it does not start Kometa.</p>
 </thead>
 <tbody>
 <tr>
-<td><strong>4K Quality Banner</strong></td>
-<td>Movie Posters &amp; Titlecards</td>
-<td>Stream video resolution (<code>width &gt;= 3840</code> or <code>4K</code>)</td>
-<td>Diagonal top banner on posters or corner badge on episode cards.</td>
+<td><strong>Resolution / Quality Banner</strong></td>
+<td>Movie Posters, Show/Season Posters &amp; Titlecards</td>
+<td>Stream video resolution, HDR/Dolby Vision (<code>4K</code>, <code>1080p</code>, <code>720p</code>, <code>576p</code>, <code>480p</code>)</td>
+<td>Portrait top ribbon banner or corner badge styles with configurable tier filtering (e.g., <code>4K</code> only) and HDR/DV variants.</td>
 </tr>
 <tr>
 <td><strong>Audience Rating</strong></td>
@@ -2032,7 +2032,7 @@ overlays itself; it does not start Kometa.</p>
 <td><strong>Audio Languages</strong></td>
 <td>Movies &amp; Titlecards (plus optional Show/Season)</td>
 <td>Audio streams present in media item</td>
-<td>Square badges or flags (<code>round</code>, <code>square</code>, <code>half</code>) for audio languages (e.g. <code>de</code>, <code>en</code>, <code>ja</code>).</td>
+<td>Square badges or flags (<code>round</code>, <code>square</code>, <code>half</code>) with uncapped flag limits (<code>&gt;= 1</code>), bundled regional flags (<code>ca</code>, <code>ca-valencia</code>, <code>eu</code>, <code>gl</code>), and custom flag overrides in <code>assets/flag/custom/</code>.</td>
 </tr>
 <tr>
 <td><strong>Subtitle Languages</strong></td>
@@ -2087,6 +2087,18 @@ overlays itself; it does not start Kometa.</p>
 <td>Movies</td>
 <td>Common Sense Media age rating</td>
 <td>Age rating badge (e.g., <code>10+</code>, <code>14+</code>, <code>18+</code>).</td>
+</tr>
+<tr>
+<td><strong>Award / Chart Ribbon</strong></td>
+<td>Movies &amp; Shows</td>
+<td>IMDb Charts, Kometa IMDb-Awards, and MDBList lists (<code>default: ribbon</code>)</td>
+<td>Corner ribbons (<code>IMDb Top 250</code>, <code>Oscars</code>, <code>Emmys</code>, <code>Golden Globes</code>, <code>Rotten Tomatoes</code>, <code>Metacritic</code>, etc.) in <code>yellow</code>, <code>red</code>, <code>black</code>, or <code>gray</code> styles.</td>
+</tr>
+<tr>
+<td><strong>Media Stinger</strong></td>
+<td>Movies</td>
+<td>TMDb keywords (<code>aftercreditsstinger</code>, <code>duringcreditsstinger</code>) via <code>default: mediastinger</code></td>
+<td>Post-/mid-credits scene indicator badge with configurable backdrop color and size.</td>
 </tr>
 <tr>
 <td><strong>Custom PNG Images</strong></td>
@@ -2172,6 +2184,7 @@ episode/season mapping, see <a href="../dynamic_overlays_reference/#local-imdb-d
 <li><a href="../dynamic_overlays_reference/#provider-ratings-and-score-layout">Provider Ratings and Score Layout</a>, <a href="../dynamic_overlays_reference/#simkl-catalog-ratings">SIMKL Catalog Ratings</a>, <a href="../dynamic_overlays_reference/#local-imdb-dataset">Local IMDb Dataset</a>, and <a href="../dynamic_overlays_reference/#anime-season-ratings">Anime Season Ratings</a></li>
 <li><a href="../dynamic_overlays_reference/#omdb-run-protection">OMDb Run Protection</a> &amp; <a href="../dynamic_overlays_reference/#automatic-retry-schedule">Automatic Retry Schedule</a></li>
 <li><a href="../dynamic_overlays_reference/#rule-artwork-targets">Rule Artwork Targets</a>, <a href="../dynamic_overlays_reference/#episode-ratings">Episode Ratings</a>, <a href="../dynamic_overlays_reference/#language-priority-and-parent-video-formats">Language Priority and Parent Video Formats</a>, and <a href="../dynamic_overlays_reference/#jellyfin-emby-box-sets">Jellyfin / Emby Box Sets</a></li>
+<li><a href="../dynamic_overlays_reference/#resolution-tier-and-variant-filtering">Resolution Tier and Variant Filtering</a> &amp; <a href="../dynamic_overlays_reference/#external-builders-for-ribbons-and-mediastinger">External Builders for Ribbons and MediaStinger</a></li>
 <li><a href="../dynamic_overlays_reference/#live-preview-template-variables-and-flag-styles">Live Preview, Template Variables, and Flag Styles</a> &amp; <a href="../dynamic_overlays_reference/#detailed-web-ui-controls-technical-notes">Detailed Web UI Controls &amp; Technical Notes</a></li>
 <li><a href="../dynamic_overlays_reference/#security-architecture">Security Architecture</a></li>
 </ul>
