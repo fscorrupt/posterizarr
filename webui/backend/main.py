@@ -2311,6 +2311,16 @@ async def lifespan(app: FastAPI):
     else:
         logger.info("Scheduler module not available, skipping scheduler initialization")
 
+    # Seed bundled overlay assets non-destructively (e.g. regional flags on Docker upgrades)
+    try:
+        from dynamic_overlays_service import get_overlays_dir
+        from overlay_resolver import seed_bundled_overlay_assets
+        seeded_assets = seed_bundled_overlay_assets(get_overlays_dir() / "assets")
+        if seeded_assets > 0:
+            logger.info(f"Seeded {seeded_assets} bundled overlay asset file(s)")
+    except Exception as e:
+        logger.warning(f"Could not seed bundled overlay assets: {e}")
+
     # Start Dynamic Overlays background change detector
     try:
         from asset_title_changes import configure_title_regenerator, configure_episode_title_queue

@@ -135,6 +135,9 @@ def get_candidate_asset_dirs() -> List[Path]:
         ]:
             if sub.exists() and sub not in dirs:
                 dirs.append(sub)
+    bundled_assets = Path(__file__).resolve().parent / "bundled_assets"
+    if bundled_assets.exists() and bundled_assets not in dirs:
+        dirs.append(bundled_assets)
     if not dirs:
         dirs.append(PROJECT_ROOT / "Overlayfiles" / "dynamic_overlays" / "assets")
     return dirs

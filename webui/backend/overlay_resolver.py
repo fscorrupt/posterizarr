@@ -37,6 +37,27 @@ from overlay_external_lists import (
 
 logger = logging.getLogger("overlay_resolver")
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+BUNDLED_ASSETS_DIR = Path(__file__).resolve().parent / "bundled_assets"
+
+
+def seed_bundled_overlay_assets(target_assets_dir: Path) -> int:
+    """Copy missing bundled fallback assets (e.g. regional flags) without overwriting existing files."""
+    if not BUNDLED_ASSETS_DIR.is_dir():
+        return 0
+    copied = 0
+    for src in BUNDLED_ASSETS_DIR.rglob("*"):
+        if not src.is_file():
+            continue
+        dest = target_assets_dir / src.relative_to(BUNDLED_ASSETS_DIR)
+        if dest.exists():
+            continue
+        try:
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, dest)
+            copied += 1
+        except OSError as exc:
+            logger.warning("[OverlayAssets] Could not seed bundled asset %s -> %s: %s", src, dest, exc)
+    return copied
 
 def matches_artwork_type(rule: Dict[str, Any], metadata: Dict[str, Any]) -> bool:
     variables = rule.get("template_variables") or rule.get("variables") or {}
@@ -3166,6 +3187,8 @@ class OverlayConfigEngine:
             defaults_images_dir = self.defaults_dir / "images"
             if defaults_images_dir not in self.candidate_asset_dirs:
                 self.candidate_asset_dirs.append(defaults_images_dir)
+        if BUNDLED_ASSETS_DIR.exists() and BUNDLED_ASSETS_DIR not in self.candidate_asset_dirs:
+            self.candidate_asset_dirs.append(BUNDLED_ASSETS_DIR)
 
         # Keep self.defaults_dir first even if it does not exist yet so later imports are picked up without restart.
         self.candidate_default_dirs: List[Path] = [self.defaults_dir]
