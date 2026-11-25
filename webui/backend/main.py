@@ -20506,6 +20506,25 @@ def preview_dynamic_overlay(
                 return None
             return s[:max_len]
 
+        def _clean_font_name(v):
+            """Extract and sanitize a font filename while rejecting traversal segments."""
+            if v is None or not isinstance(v, (str, int, float)):
+                return None
+            s = str(v).strip()
+            if s.lower() in ("none", "off", "false", "", "null"):
+                return None
+            for _ in range(3):
+                dec = urllib.parse.unquote(s)
+                if dec == s:
+                    break
+                s = dec
+            if "\x00" in s:
+                return None
+            parts = [part for part in re.split(r"[/\\]+", s) if part]
+            if not parts or any(part == ".." for part in parts):
+                return None
+            return _clean_str(parts[-1], max_len=128)
+
         def _clean_int(v):
             if v is None:
                 return None
@@ -20550,15 +20569,15 @@ def preview_dynamic_overlay(
         resolution_back_width = _clean_int(resolution_back_width)
         resolution_back_height = _clean_int(resolution_back_height)
 
-        runtime_font = _clean_str(runtime_font)
+        runtime_font = _clean_font_name(runtime_font)
         runtime_font_size = _clean_int(runtime_font_size)
-        rating_font = _clean_str(rating_font)
+        rating_font = _clean_font_name(rating_font)
         rating_font_size = _clean_int(rating_font_size)
-        age_rating_font = _clean_str(age_rating_font)
+        age_rating_font = _clean_font_name(age_rating_font)
         age_rating_font_size = _clean_int(age_rating_font_size)
-        status_font = _clean_str(status_font)
+        status_font = _clean_font_name(status_font)
         status_font_size = _clean_int(status_font_size)
-        languages_font = _clean_str(languages_font)
+        languages_font = _clean_font_name(languages_font)
         languages_font_size = _clean_int(languages_font_size)
 
         rating_x = _clean_int(rating_x)

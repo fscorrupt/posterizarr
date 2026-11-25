@@ -3320,7 +3320,11 @@ class OverlayConfigEngine:
 
         # Multi-root resolution: Collect all viable base candidate directories across Docker, project, and config
         self.candidate_roots: List[Path] = []
-        for r in [self.project_root, PROJECT_ROOT, Path("/app"), Path("/config")]:
+        raw_roots = [self.project_root, PROJECT_ROOT, Path("/app"), Path("/config")]
+        app_data = os.environ.get("APP_DATA")
+        if app_data:
+            raw_roots.append(Path(app_data))
+        for r in raw_roots:
             if r and Path(r).exists() and Path(r) not in self.candidate_roots:
                 self.candidate_roots.append(Path(r))
 
@@ -3331,6 +3335,8 @@ class OverlayConfigEngine:
                 cr / "Overlayfiles" / "kometa" / "fonts",
                 cr / "Overlayfiles" / "dynamic_overlays" / "configs" / "fonts",
                 cr / "Overlayfiles" / "kometa" / "configs" / "fonts",
+                cr / "Overlayfiles" / "fonts",
+                cr / "Overlayfiles",
                 cr / "fonts",
             ]:
                 if sub not in self.candidate_font_dirs:

@@ -191,6 +191,11 @@ def get_candidate_font_dirs() -> List[Path]:
     """Return all valid candidate directories for fonts across Docker, system, and project roots."""
     dirs: List[Path] = []
     roots = [PROJECT_ROOT, Path("/config"), Path("/app")]
+    app_data = os.environ.get("APP_DATA")
+    if app_data:
+        app_data_path = Path(app_data)
+        if app_data_path not in roots:
+            roots.append(app_data_path)
     for r in roots:
         for sub in [
             r / "Overlayfiles" / "dynamic_overlays" / "fonts",

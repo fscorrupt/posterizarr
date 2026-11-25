@@ -436,6 +436,13 @@ const PositionPicker = ({ value, onChange, label = "Position" }) => {
   );
 };
 
+const normalizeFontFilename = (raw) => {
+  const s = String(raw || "").trim();
+  if (!s) return "";
+  const parts = s.split(/[\\/]+/).filter(Boolean);
+  return parts.length > 0 ? parts[parts.length - 1] : "";
+};
+
 const BadgeOffsetControls = ({ itemKey, offset = {}, onChange, fonts = [] }) => {
   const [isOpen, setIsOpen] = useState(false);
   const align = offset.align || "right";
@@ -443,7 +450,7 @@ const BadgeOffsetControls = ({ itemKey, offset = {}, onChange, fonts = [] }) => 
   const x = offset.x ?? 0;
   const y = offset.y ?? 0;
   const fontSize = offset.font_size ?? "";
-  const font = offset.font || "";
+  const font = normalizeFontFilename(offset.font);
   const isTextBadge = ["resolution", "rating", "age_rating", "runtime", "status"].includes(itemKey);
 
   return (
@@ -538,6 +545,11 @@ const BadgeOffsetControls = ({ itemKey, offset = {}, onChange, fonts = [] }) => 
                   className="w-full bg-theme-card border border-theme rounded-lg px-2 py-1 text-xs text-theme-text font-medium focus:ring-1 focus:ring-theme-primary focus:outline-none truncate"
                 >
                   <option value="">Default Font</option>
+                  {font && !(fonts || []).includes(font) && (
+                    <option value={font}>
+                      {font.replace(/\.(ttf|otf|woff2?)$/i, "")}
+                    </option>
+                  )}
                   {(fonts || []).map((f) => (
                     <option key={f} value={f}>
                       {f.replace(/\.(ttf|otf|woff2?)$/i, "")}
@@ -3738,13 +3750,14 @@ export default function DynamicOverlays() {
       initStatusColors[meta.key] = String(vars[`font_color_${meta.key}`] || "").trim() || fallbackStatusColor || meta.defaultColor;
       initStatusTexts[meta.key] = String(vars[`text_${meta.key}`] || "");
     }
+    const normalizedFont = normalizeFontFilename(vars.font);
     visualVariableBaseline.current = templateVisualValues(ov.name, {
       level: vars.builder_level || "", artworkType: vars.artwork_type || "both",
       hAlign: vars.horizontal_align || vars.horizontal_position || "center",
       vAlign: vars.vertical_align || vars.vertical_position || "bottom",
       hOffset: vars.horizontal_offset !== undefined ? String(vars.horizontal_offset) : "0",
       vOffset: vars.vertical_offset !== undefined ? String(vars.vertical_offset) : "0",
-      backColor: vars.back_color || "#00000000", font: vars.font || "",
+      backColor: vars.back_color || "#00000000", font: normalizedFont,
       fontSize: vars.font_size !== undefined && vars.font_size !== null ? String(vars.font_size) : "",
       fontColor: vars.font_color || "", languages: Array.isArray(vars.languages) ? vars.languages.join(", ") : "de, en, ja",
       useSubtitles: vars.use_subtitles === true || vars.use_subtitles === "true",
@@ -3766,7 +3779,7 @@ export default function DynamicOverlays() {
     setVisualStatusStates(initStatusStates);
     setVisualStatusColors(initStatusColors);
     setVisualStatusTexts(initStatusTexts);
-    setVisualFont(vars.font || "");
+    setVisualFont(normalizedFont);
     setVisualFontSize(vars.font_size !== undefined && vars.font_size !== null ? String(vars.font_size) : "");
     setVisualFontColor(vars.font_color || "");
   };
@@ -4704,7 +4717,7 @@ export default function DynamicOverlays() {
         align: p.align,
         valign: p.valign,
         font_size: badges.status?.font_size ?? "",
-        font: badges.status?.font ?? ""
+        font: normalizeFontFilename(badges.status?.font)
       };
       const savedColors = {
         ...DEFAULT_STATUS_COLORS,
@@ -4746,7 +4759,7 @@ export default function DynamicOverlays() {
         align: p.align,
         valign: p.valign,
         font_size: badges.audio_languages?.font_size ?? "",
-        font: badges.audio_languages?.font ?? ""
+        font: normalizeFontFilename(badges.audio_languages?.font)
       };
       const langs = badges.audio_languages.languages?.length > 0
         ? badges.audio_languages.languages.join(",")
@@ -4816,7 +4829,7 @@ export default function DynamicOverlays() {
         align: p.align,
         valign: p.valign,
         font_size: badges.runtime?.font_size ?? (isLandscape ? 52 : 40),
-        font: badges.runtime?.font ?? ""
+        font: normalizeFontFilename(badges.runtime?.font)
       };
       setPreviewRuntime(targetFormat === "episode_card" ? "45 min" : "1h 58m");
       setPreviewRuntimePrefix(badges.runtime.text || "");
@@ -4845,7 +4858,7 @@ export default function DynamicOverlays() {
         align: p.align,
         valign: p.valign,
         font_size: ratingBadge?.font_size ?? "",
-        font: ratingBadge?.font ?? ""
+        font: normalizeFontFilename(ratingBadge?.font)
       };
       setPreviewRating("8.4");
     } else {
@@ -4864,7 +4877,7 @@ export default function DynamicOverlays() {
         align: p.align,
         valign: p.valign,
         font_size: ageBadge?.font_size ?? "",
-        font: ageBadge?.font ?? ""
+        font: normalizeFontFilename(ageBadge?.font)
       };
       const src = ageBadge.source || "commonsense";
       setPreviewAgeSource(src);
@@ -4899,7 +4912,7 @@ export default function DynamicOverlays() {
         align: p.align,
         valign: p.valign,
         font_size: badges.anime?.font_size ?? "",
-        font: badges.anime?.font ?? ""
+        font: normalizeFontFilename(badges.anime?.font)
       };
       setPreviewAnimeTag("Canon");
     } else {
@@ -13854,6 +13867,11 @@ export default function DynamicOverlays() {
                       className="w-full bg-theme-hover border border-theme rounded-xl px-3 py-2 text-xs text-theme-text font-medium"
                     >
                       <option value="">Default Font</option>
+                      {visualFont && !(availableFonts || []).includes(visualFont) && (
+                        <option value={visualFont}>
+                          {visualFont.replace(/\.(ttf|otf|woff2?)$/i, "")}
+                        </option>
+                      )}
                       {(availableFonts || []).map((f) => (
                         <option key={f} value={f}>
                           {f.replace(/\.(ttf|otf|woff2?)$/i, "")}
