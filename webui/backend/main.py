@@ -11111,17 +11111,79 @@ async def get_folder_view_browse(path: Optional[str] = Query(None)):
         logger.exception("Full traceback:")
         return {"success": False, "error": str(e), "items": []}
 
+_last_recent_assets_csv_mtime: float = 0.0
+_RECENT_ASSET_EXTENSIONS = (".jpg", ".png", ".webp", ".jpeg", ".tbn")
+_RECENT_ASSETS_NO_STORE_HEADERS = {
+    "Cache-Control": "no-cache, no-store, must-revalidate",
+    "Pragma": "no-cache",
+}
+
+
+def _resolve_recent_asset_from_disk(library: str, rootfolder: str, asset_stem: str) -> Optional[Dict[str, Any]]:
+    """Resolve an asset file by stem and supported extensions safely within ASSETS_DIR."""
+    lib_part = str(library or "").strip()
+    root_part = str(rootfolder or "").strip()
+    if (
+        not lib_part or not root_part or not asset_stem
+        or "\x00" in lib_part or "\x00" in root_part
+        or "/" in lib_part or "\\" in lib_part or lib_part in (".", "..")
+        or "/" in root_part or "\\" in root_part or root_part in (".", "..")
+    ):
+        return None
+    try:
+        assets_root = ASSETS_DIR.resolve()
+        folder_raw = ASSETS_DIR / lib_part / root_part
+        folder = folder_raw.resolve()
+        if not folder.is_relative_to(assets_root) or not folder.is_dir():
+            return None
+        for ext in _RECENT_ASSET_EXTENSIONS:
+            candidate_raw = folder_raw / f"{asset_stem}{ext}"
+            candidate_resolved = candidate_raw.resolve()
+            if candidate_resolved.is_relative_to(assets_root) and candidate_resolved.is_file():
+                return process_image_path(candidate_raw)
+        stem_lower = asset_stem.lower()
+        for entry in folder.iterdir():
+            if (
+                entry.is_file()
+                and entry.stem.lower() == stem_lower
+                and entry.suffix.lower() in _RECENT_ASSET_EXTENSIONS
+            ):
+                resolved_entry = entry.resolve()
+                if resolved_entry.is_relative_to(assets_root):
+                    return process_image_path(folder_raw / entry.name)
+    except Exception as err:
+        logger.debug(f"Disk fallback lookup skipped for {library}/{rootfolder}/{asset_stem}: {err}")
+    return None
+
+
+def _get_live_asset_times(rel_path: str) -> Optional[tuple]:
+    """Return live (created, modified) timestamps for a relative asset path inside ASSETS_DIR."""
+    if not rel_path or not ASSETS_DIR.exists():
+        return None
+    try:
+        assets_root = ASSETS_DIR.resolve()
+        candidate = (ASSETS_DIR / rel_path).resolve()
+        if candidate.is_relative_to(assets_root) and candidate.is_file():
+            st = candidate.stat()
+            return (st.st_ctime, st.st_mtime)
+    except Exception:
+        return None
+    return None
+
+
 @app.get("/api/recent-assets")
 async def get_recent_assets(
     limit: int = Query(100, ge=1, le=100),
     offset: int = Query(0, ge=0),
     tab: str = Query("All", pattern="^(All|Posters|Collections|Backgrounds|Seasons|TitleCards)$"),
+    refresh: bool = Query(False),
 ):
     """
     Get recently created assets from the imagechoices database
     Returns the most recent assets with their poster images from assets folder
     USES FAST CACHE FOR IMAGE LOOKUPS
     """
+    global _last_recent_assets_csv_mtime
     tab_names = ("All", "Posters", "Collections", "Backgrounds", "Seasons", "TitleCards")
     empty_result = {
         "success": True,
@@ -11133,23 +11195,31 @@ async def get_recent_assets(
     try:
         if not DATABASE_AVAILABLE or db is None:
             # Return empty list instead of crashing if DB isn't ready
-            return empty_result
+            return JSONResponse(content=empty_result, headers=_RECENT_ASSETS_NO_STORE_HEADERS)
 
-        # CSV import is handled by logs_watcher, no import needed here
-        try:
-            pass # Keep block for safety
-        except Exception as e:
-            logger.warning(f"Could not import CSV to database: {e}")
+        if refresh:
+            csv_path = LOGS_DIR / "ImageChoices.csv"
+            try:
+                if csv_path.exists():
+                    csv_mtime = csv_path.stat().st_mtime
+                    if csv_mtime > _last_recent_assets_csv_mtime:
+                        await asyncio.to_thread(db.import_from_csv, csv_path)
+                        _last_recent_assets_csv_mtime = csv_mtime
+            except Exception as e:
+                logger.warning(f"Could not import CSV to database on refresh: {e}")
+
+            if not cache_scan_in_progress and time.time() - asset_cache.get("last_scanned", 0) > 15:
+                threading.Thread(target=scan_and_cache_assets, daemon=True).start()
 
         # Get all assets from database (already sorted by id DESC - newest first)
-        db_records = db.get_all_choices()
+        db_records = await asyncio.to_thread(db.get_all_choices)
 
         logger.info(f"Found {len(db_records)} total assets in database")
 
         # If no assets found, return early
         if not db_records:
             logger.warning(" No assets found in database")
-            return empty_result
+            return JSONResponse(content=empty_result, headers=_RECENT_ASSETS_NO_STORE_HEADERS)
 
         # Create a fast lookup map from the asset cache
         # This scans the cache (memory) not the disk
@@ -11157,167 +11227,192 @@ async def get_recent_assets(
         cache = get_fresh_assets()
         # Combine all asset types into one lookup
         all_cached_assets = (
-            cache["posters"]
-            + cache["backgrounds"]
-            + cache["seasons"]
-            + cache["titlecards"]
+            cache.get("posters", [])
+            + cache.get("backgrounds", [])
+            + cache.get("seasons", [])
+            + cache.get("titlecards", [])
         )
 
-        # Create a map: { "Library/Folder/poster.jpg": { ... asset data ... } }
+        # Create maps: { "Library/Folder/poster.jpg": { ... asset data ... } }
         # Use normalized paths for lookup
-        asset_map = {
-            img["path"].replace("\\", "/"): img for img in all_cached_assets
-        }
+        asset_map = {}
+        asset_map_lower = {}
+        for img in all_cached_assets:
+            norm_path = str(img.get("path") or "").replace("\\", "/")
+            if norm_path:
+                asset_map[norm_path] = img
+                asset_map_lower.setdefault(norm_path.lower(), img)
         logger.debug(f"Asset map created with {len(asset_map)} items")
 
-        # Convert database records to asset format and find poster files
-        all_assets_with_mtime = []
+        def _build_recent_assets_payload() -> Dict[str, Any]:
+            all_assets_with_mtime = []
+            assets_dir_exists = ASSETS_DIR.exists()
+            disk_fallback_checks = 0
+            live_stat_checks = 0
 
-        # Process records until we have 100 valid assets (not just first 100 records)
-        for record in db_records:
+            # Process records until we have 100 valid assets (not just first 100 records)
+            for record in db_records:
+                asset_dict = dict(record)
 
-            # Convert database record (sqlite3.Row) to dict
-            asset_dict = dict(record)
+                rootfolder = str(asset_dict.get("Rootfolder") or "")
+                asset_type_from_db = str(asset_dict.get("Type") or "Poster")
+                title = str(asset_dict.get("Title") or "")
+                download_source = str(asset_dict.get("DownloadSource") or "")
+                library = str(asset_dict.get("LibraryName") or "")
 
-            rootfolder = asset_dict.get("Rootfolder", "")
-            asset_type_from_db = asset_dict.get("Type", "Poster")
-            title = asset_dict.get("Title", "")
-            download_source = asset_dict.get("DownloadSource", "") # Corrected key
-            library = asset_dict.get("LibraryName", "")
-
-            manual_field = asset_dict.get("Manual", "N/A")
-            if manual_field in ["Yes", "true", True]:
-                is_manually_created = True
-            else:
-                # For "No", "false", False, or N/A - check download_source as fallback
-                is_manually_created = download_source == "N/A" or (
-                    download_source
-                    and (
-                        download_source.startswith("C:")
-                        or download_source.startswith("/")
-                        or download_source.startswith("\\")
+                manual_field = asset_dict.get("Manual", "N/A")
+                if manual_field in ["Yes", "true", True]:
+                    is_manually_created = True
+                else:
+                    # For "No", "false", False, or N/A - check download_source as fallback
+                    is_manually_created = download_source == "N/A" or (
+                        download_source
+                        and (
+                            download_source.startswith("C:")
+                            or download_source.startswith("/")
+                            or download_source.startswith("\\")
+                        )
                     )
-                )
 
-            if rootfolder:
-                # Find the asset file path in our fast cache map
-                # This is the new, fast part.
+                if not rootfolder:
+                    continue
 
-                # Determine asset filename (poster.jpg, background.jpg, Season01.jpg, S01E01.jpg)
-                asset_filename = "poster.jpg" # Default
-                asset_type_lower = (asset_type_from_db or "").lower()
-
+                asset_type_lower = asset_type_from_db.lower()
                 if "background" in asset_type_lower:
-                    asset_filename = "background.jpg"
+                    asset_stem = "background"
                 elif "season" in asset_type_lower:
                     season_match = re.search(r"season\s*(\d+)", title, re.IGNORECASE)
-                    if season_match:
-                        season_num = season_match.group(1).zfill(2)
-                        asset_filename = f"Season{season_num}.jpg"
-                    else:
-                        asset_filename = "Season_unknown.jpg" # Will not match
+                    asset_stem = f"Season{season_match.group(1).zfill(2)}" if season_match else None
                 elif "titlecard" in asset_type_lower or "episode" in asset_type_lower:
                     episode_match = re.search(r"(S\d+E\d+)", title, re.IGNORECASE)
-                    if episode_match:
-                        episode_code = episode_match.group(1).upper()
-                        asset_filename = f"{episode_code}.jpg"
-                    else:
-                        asset_filename = "Episode_unknown.jpg" # Will not match
+                    asset_stem = episode_match.group(1).upper() if episode_match else None
+                else:
+                    asset_stem = "poster"
 
-                # Construct the relative path we expect to find in the cache
-                # Use forward slashes for normalized lookup
-                relative_path_key = f"{library}/{rootfolder}/{asset_filename}"
+                if not asset_stem:
+                    continue
 
-                poster_data = asset_map.get(relative_path_key)
+                poster_data = None
+                from_disk_fallback = False
+                for ext in _RECENT_ASSET_EXTENSIONS:
+                    relative_path_key = f"{library}/{rootfolder}/{asset_stem}{ext}"
+                    poster_data = asset_map.get(relative_path_key) or asset_map_lower.get(relative_path_key.lower())
+                    if poster_data is not None:
+                        break
+
+                if poster_data is None and disk_fallback_checks < 100 and assets_dir_exists:
+                    disk_fallback_checks += 1
+                    poster_data = _resolve_recent_asset_from_disk(library, rootfolder, asset_stem)
+                    if poster_data is not None:
+                        from_disk_fallback = True
+                        norm_found = str(poster_data.get("path") or "").replace("\\", "/")
+                        if norm_found:
+                            asset_map[norm_found] = poster_data
+                            asset_map_lower.setdefault(norm_found.lower(), poster_data)
 
                 if poster_data:
-                    # Format asset for frontend (match old CSV format)
+                    created_ts = poster_data["created"]
+                    modified_ts = poster_data["modified"]
+                    rel_path = poster_data.get("path", f"{library}/{rootfolder}/{poster_data.get('name', asset_stem)}")
+                    if refresh and not from_disk_fallback and live_stat_checks < 100 and assets_dir_exists:
+                        live_stat_checks += 1
+                        live_times = _get_live_asset_times(rel_path)
+                        if live_times is None:
+                            logger.debug(f"[SKIP] Asset removed from disk: {rel_path}")
+                            continue
+                        created_ts, modified_ts = live_times
+
+                    fav_link = str(asset_dict.get("FavProviderLink") or "")
                     asset = {
-                        "title": asset_dict.get("Title", ""),
+                        "title": title,
                         "type": asset_type_from_db,
                         "rootfolder": rootfolder,
                         "library": library,
-                        "language": asset_dict.get("Language", ""),
+                        "language": str(asset_dict.get("Language") or ""),
                         "fallback": False,
-                        "text_truncated": asset_dict.get("TextTruncated", "").lower()
-                        == "true",
+                        "text_truncated": str(asset_dict.get("TextTruncated") or "").lower() == "true",
                         "download_source": download_source,
-                        "provider_link": (
-                            asset_dict.get("FavProviderLink", "")
-                            if asset_dict.get("FavProviderLink", "") != "N/A"
-                            else ""
-                        ),
+                        "provider_link": fav_link if fav_link != "N/A" else "",
                         "is_manually_created": is_manually_created,
-                        "LogoSource": asset_dict.get("LogoSource", ""),
-                        "LogoLanguage": asset_dict.get("LogoLanguage", ""),
-                        "LogoTextFallback": asset_dict.get("LogoTextFallback", ""),
-                        # Use data directly from the cache
+                        "LogoSource": str(asset_dict.get("LogoSource") or ""),
+                        "LogoLanguage": str(asset_dict.get("LogoLanguage") or ""),
+                        "LogoTextFallback": str(asset_dict.get("LogoTextFallback") or ""),
                         "poster_url": poster_data["url"],
-                        "path": poster_data.get("path", relative_path_key),
+                        "path": rel_path,
                         "has_poster": True,
-                        "created": poster_data["created"],
-                        "modified": poster_data["modified"],
+                        "created": created_ts,
+                        "modified": modified_ts,
                     }
                     all_assets_with_mtime.append(asset)
                 else:
-                    logger.debug(f"[SKIP] Skipping asset (poster not found in cache): {title} at {relative_path_key}")
+                    logger.debug(f"[SKIP] Skipping asset (poster not found in cache): {title} at {library}/{rootfolder}/{asset_stem}")
 
-        # Add sorting and limiting *after* the loop
-        logger.info(f"Sorting {len(all_assets_with_mtime)} assets by modification time...")
+            logger.info(f"Sorting {len(all_assets_with_mtime)} assets by modification time...")
+            all_assets_with_mtime.sort(key=lambda x: x.get("modified", 0), reverse=True)
 
-        # Sort the list by the 'modified' timestamp (newest first)
-        # Use a default value of 0 for any assets that somehow lack a modified time
-        all_assets_with_mtime.sort(key=lambda x: x.get("modified", 0), reverse=True)
+            recent_assets = all_assets_with_mtime[:100]
+            logger.info(
+                f"Returning {len(recent_assets)} most recent assets with existing images from database"
+            )
 
-        # Now, take the top 100
-        max_assets = 100
-        recent_assets = all_assets_with_mtime[:max_assets]
+            unique_assets = {}
+            for asset in recent_assets:
+                key = str(
+                    asset.get("path")
+                    or f"{asset['library']}/{asset['rootfolder']}/{asset['type']}/{asset['title']}"
+                ).replace("\\", "/").lower()
+                existing = unique_assets.get(key)
+                if existing is None or (
+                    existing["title"].startswith("http") and not asset["title"].startswith("http")
+                ):
+                    unique_assets[key] = asset
 
-        logger.info(
-            f"Returning {len(recent_assets)} most recent assets with existing images from database"
-        )
+            categories = {name: [] for name in tab_names}
+            for asset in unique_assets.values():
+                categories["All"].append(asset)
+                asset_type = (asset["type"] or "").lower()
+                if asset_type in ("movie", "poster", "show", "collection"):
+                    categories["Posters"].append(asset)
+                if asset_type == "collection":
+                    categories["Collections"].append(asset)
+                if "background" in asset_type:
+                    categories["Backgrounds"].append(asset)
+                if asset_type == "season":
+                    categories["Seasons"].append(asset)
+                if asset_type in ("episode", "titlecard", "title_card"):
+                    categories["TitleCards"].append(asset)
 
-        unique_assets = {}
-        for asset in recent_assets:
-            key = (asset["rootfolder"], asset["type"], asset["created"])
-            existing = unique_assets.get(key)
-            if existing is None or (
-                existing["title"].startswith("http") and not asset["title"].startswith("http")
-            ):
-                unique_assets[key] = asset
+            filtered_assets = categories[tab]
+            total_count = len(filtered_assets)
+            page_offset = min(offset, max(0, ((total_count - 1) // limit) * limit))
+            page_items = filtered_assets[page_offset:page_offset + limit]
 
-        categories = {name: [] for name in tab_names}
-        for asset in unique_assets.values():
-            categories["All"].append(asset)
-            asset_type = (asset["type"] or "").lower()
-            if asset_type in ("movie", "poster", "show", "collection"):
-                categories["Posters"].append(asset)
-            if asset_type == "collection":
-                categories["Collections"].append(asset)
-            if "background" in asset_type:
-                categories["Backgrounds"].append(asset)
-            if asset_type == "season":
-                categories["Seasons"].append(asset)
-            if asset_type in ("episode", "titlecard", "title_card"):
-                categories["TitleCards"].append(asset)
+            if not refresh and assets_dir_exists:
+                for item in page_items:
+                    live_times = _get_live_asset_times(item.get("path", ""))
+                    if live_times is not None:
+                        item["created"], item["modified"] = live_times
 
-        filtered_assets = categories[tab]
-        total_count = len(filtered_assets)
-        page_offset = min(offset, max(0, ((total_count - 1) // limit) * limit))
-        return {
-            "success": True,
-            "assets": filtered_assets[page_offset:page_offset + limit],
-            "total_count": total_count,
-            "offset": page_offset,
-            "counts": {name: len(items) for name, items in categories.items()},
-        }
+            return {
+                "success": True,
+                "assets": page_items,
+                "total_count": total_count,
+                "offset": page_offset,
+                "counts": {name: len(items) for name, items in categories.items()},
+            }
+
+        payload = await asyncio.to_thread(_build_recent_assets_payload)
+        return JSONResponse(content=payload, headers=_RECENT_ASSETS_NO_STORE_HEADERS)
 
     except Exception as e:
         logger.error(f"[ERROR] Error getting recent assets from database: {e}")
         import traceback
 
         logger.error(traceback.format_exc())
-        return {"success": False, "error": str(e), "assets": [], "total_count": 0}
+        return JSONResponse(
+            content={"success": False, "error": str(e), "assets": [], "total_count": 0},
+            headers=_RECENT_ASSETS_NO_STORE_HEADERS,
+        )
 
 @app.get("/api/asset-type-lookup")
 async def get_asset_type_lookup(
