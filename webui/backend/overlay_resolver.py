@@ -1654,40 +1654,90 @@ class OverlayResolver:
 
             # 3. Images
             elif cat == "image":
-                name_lower = name.lower()
+                name_posix = name.replace("\\", "/")
+                name_lower = name_posix.lower()
                 target_stem = Path(name_lower).stem
                 found_local = None
                 search_roots = [self.assets_dir, self.defaults_dir / "images", self.overlayfiles_dir]
-                for root in search_roots:
-                    direct_match = safe_resolve_overlay_path(root, name, ALLOWED_IMAGE_EXTS)
-                    if direct_match and direct_match.is_file() and not direct_match.is_symlink():
-                        found_local = direct_match
-                        break
-                sub_folders = [
-                    "", "network", "network/color", "network/white",
-                    "streaming", "streaming/color", "streaming/white",
-                    "studio", "studio/standard", "studio/bigger",
-                    "resolution", "rating", "flags/square", "flag/square",
-                    "flags/round", "flag/round",
-                    "ribbon/red", "ribbon/black", "ribbon", "ribbon/yellow", "ribbon/gray",
-                    "audio_codec", "audio_codec/compact", "audio_codec/standard",
-                    "cr", "edition", "logo", "logo/round", "logo/square"
-                ]
-                for root in search_roots:
-                    for sub in sub_folders:
-                        check_dir = root / sub if sub else root
-                        if check_dir.exists() and check_dir.is_dir():
-                            try:
-                                for f in check_dir.iterdir():
-                                    if f.is_file() and (f.name.lower() == name_lower or f.stem.lower() == target_stem):
-                                        found_local = f
-                                        break
-                            except Exception:
-                                pass
+                scoped_flag_match = re.match(r"^(?:assets/)?(flags?)/(round|square|custom)/([^/]+)$", name_posix, re.IGNORECASE)
+                scoped_variant_match = re.match(
+                    r"^(?:assets/)?("
+                    r"streaming/(?:color|white)|"
+                    r"ribbon/(?:red|black|yellow|gray)|"
+                    r"logo/(?:round|square)|"
+                    r"network/(?:color|white)|"
+                    r"studio/(?:standard|bigger)|"
+                    r"audio_codec/(?:compact|standard)"
+                    r")/([^/]+)$",
+                    name_posix,
+                    re.IGNORECASE,
+                )
+
+                if scoped_flag_match:
+                    flag_style = scoped_flag_match.group(2).lower()
+                    raw_leaf = scoped_flag_match.group(3)
+                    leaf_lower = raw_leaf.lower()
+                    leaf_stem = Path(leaf_lower).stem
+                    candidate_names = {leaf_lower, f"{leaf_stem}.png"}
+                    if leaf_stem in FLAG_CODE_ALIASES:
+                        candidate_names.add(f"{FLAG_CODE_ALIASES[leaf_stem]}.png")
+                    flag_search_roots = list(search_roots)
+                    if BUNDLED_ASSETS_DIR.is_dir() and BUNDLED_ASSETS_DIR not in flag_search_roots:
+                        flag_search_roots.append(BUNDLED_ASSETS_DIR)
+                    for root in flag_search_roots:
+                        for family in ("flag", "flags"):
+                            style_dir = root / family / flag_style
+                            if style_dir.exists() and style_dir.is_dir():
+                                try:
+                                    for f in style_dir.iterdir():
+                                        if f.is_file() and not f.is_symlink() and f.name.lower() in candidate_names:
+                                            found_local = f
+                                            break
+                                except Exception:
+                                    pass
+                            if found_local:
+                                break
                         if found_local:
                             break
-                    if found_local:
-                        break
+                elif scoped_variant_match:
+                    rel_variant = f"{scoped_variant_match.group(1)}/{scoped_variant_match.group(2)}"
+                    for root in search_roots:
+                        direct_match = safe_resolve_overlay_path(root, rel_variant, ALLOWED_IMAGE_EXTS)
+                        if direct_match and direct_match.is_file() and not direct_match.is_symlink():
+                            found_local = direct_match
+                            break
+                else:
+                    for root in search_roots:
+                        direct_match = safe_resolve_overlay_path(root, name, ALLOWED_IMAGE_EXTS)
+                        if direct_match and direct_match.is_file() and not direct_match.is_symlink():
+                            found_local = direct_match
+                            break
+                    if not found_local:
+                        sub_folders = [
+                            "", "network", "network/color", "network/white",
+                            "streaming", "streaming/color", "streaming/white",
+                            "studio", "studio/standard", "studio/bigger",
+                            "resolution", "rating", "flags/square", "flag/square",
+                            "flags/round", "flag/round",
+                            "ribbon/red", "ribbon/black", "ribbon", "ribbon/yellow", "ribbon/gray",
+                            "audio_codec", "audio_codec/compact", "audio_codec/standard",
+                            "cr", "edition", "logo", "logo/round", "logo/square"
+                        ]
+                        for root in search_roots:
+                            for sub in sub_folders:
+                                check_dir = root / sub if sub else root
+                                if check_dir.exists() and check_dir.is_dir():
+                                    try:
+                                        for f in check_dir.iterdir():
+                                            if f.is_file() and (f.name.lower() == name_lower or f.stem.lower() == target_stem):
+                                                found_local = f
+                                                break
+                                    except Exception:
+                                        pass
+                                if found_local:
+                                    break
+                            if found_local:
+                                break
 
                 found_url = resolve_official_kometa_image_url(name)
                 if found_local:
@@ -1847,11 +1897,19 @@ class OverlayResolver:
                 with open(safe_dest, "wb") as fp:
                     fp.write(content)
 
-                # Also save copy in root of assets_dir if safe_dest was in a subfolder
+                # Also save copy in root of assets_dir only for unscoped assets (never duplicate flag/round vs flag/square)
+                _style_scoped_prefixes = (
+                    "flag/", "flags/", "streaming/", "ribbon/", "logo/", "network/", "studio/", "audio_codec/",
+                )
+                is_style_scoped = (
+                    (rel_sub or "").lower().startswith(_style_scoped_prefixes)
+                    or asset_name.replace("\\", "/").lower().startswith(_style_scoped_prefixes)
+                )
                 assets_base = os.path.normpath(os.path.abspath(str(self.assets_dir)))
                 base_dest_str = os.path.normpath(os.path.join(assets_base, Path(asset_name).name))
                 if (
-                    base_dest_str.startswith(assets_base + os.sep)
+                    not is_style_scoped
+                    and base_dest_str.startswith(assets_base + os.sep)
                     and os.path.normpath(os.path.abspath(str(safe_dest))) != base_dest_str
                     and not os.path.exists(base_dest_str)
                 ):
