@@ -21990,8 +21990,8 @@ async def _build_overlay_bundle_preview_response(payload: bytes) -> dict:
     summary = await asyncio.to_thread(inspect_profile, payload, context["overlays"], context["libraries"])
     warnings = []
     warning_codes = []
-    if summary.get("official_dependency_count"):
-        warnings.append("Official Kometa dependencies are not bundled. Download missing defaults, images, and fonts before syncing.")
+    if summary.get("missing_official_dependency_count"):
+        warnings.append("Missing official Kometa dependencies are not included in the bundle and can be downloaded automatically during import.")
         warning_codes.append("officialDependencies")
     if summary["features"]["animetafill"] and not context["anime"].get("simkl_client_id"):
         warnings.append("AniMetaFill needs a SIMKL Client ID configured on this installation.")
@@ -22012,8 +22012,10 @@ async def _execute_overlay_bundle_import(
     season_targets: list,
     import_settings: bool,
     replace_files: bool,
+    fetch_dependencies: bool = True,
 ) -> dict:
-    from overlay_bundle import IMPORT_LOCK, commit_import, prepare_import
+    from overlay_bundle import IMPORT_LOCK, commit_import, fetch_official_dependencies, prepare_import
+    from overlay_resolver import OverlayResolver, clear_yaml_cache
     from overlay_sync_service import is_overlay_sync_running, stop_overlay_change_detector_background, start_overlay_change_detector_background
     from animetafill_service import is_animetafill_running, _write_to_config_db
     if not IMPORT_LOCK.acquire(blocking=False):
@@ -22037,11 +22039,79 @@ async def _execute_overlay_bundle_import(
         if plan["imdb_dataset"] is not None:
             from ratings_service import imdb_dataset
             await asyncio.to_thread(imdb_dataset.configure, plan["imdb_dataset"])
+
+        await asyncio.to_thread(clear_yaml_cache)
+
+        official_deps = plan.get("official_dependencies") or {}
+        if fetch_dependencies:
+            manifest_deps = await fetch_official_dependencies(official_deps, context["overlays"])
+            await asyncio.to_thread(clear_yaml_cache)
+            resolver_res = {}
+            stage2_errors = []
+            try:
+                resolver = OverlayResolver(context["root"], overlays_dir=context["overlays"])
+                resolver_res = await resolver.fetch_all_missing()
+            except Exception as dep_err:
+                logger.warning("Secondary dependency fetch after bundle import failed: %s", dep_err)
+                stage2_errors.append({"path": "resolver", "error": str(dep_err)})
+
+            overlays_root = Path(context["overlays"]).resolve()
+            downloaded = list(manifest_deps["downloaded"])
+            seen_downloaded = set(downloaded)
+            failed = list(manifest_deps["failed"]) + stage2_errors
+            for detail in resolver_res.get("details") or []:
+                res = detail.get("result") or {}
+                raw_name = str(detail.get("name") or "")
+                rel_name = raw_name
+                dest_path_str = res.get("path")
+                if isinstance(dest_path_str, str) and dest_path_str:
+                    try:
+                        rel_name = Path(dest_path_str).resolve().relative_to(overlays_root).as_posix()
+                    except ValueError:
+                        rel_name = raw_name
+                if res.get("success"):
+                    if rel_name and rel_name not in seen_downloaded:
+                        seen_downloaded.add(rel_name)
+                        downloaded.append(rel_name)
+                else:
+                    failed.append({
+                        "path": rel_name or raw_name or "unknown",
+                        "error": str(res.get("error") or "Download failed"),
+                    })
+
+            dependencies_summary = {
+                "enabled": True,
+                "requested": manifest_deps["requested"],
+                "downloaded_count": len(downloaded),
+                "already_present_count": len(manifest_deps["already_present"]),
+                "failed_count": len(failed),
+                "downloaded": downloaded,
+                "failed": failed,
+                "sha_changed_count": manifest_deps["sha_changed"],
+                "readiness": resolver_res.get("readiness"),
+            }
+        else:
+            dependencies_summary = {
+                "enabled": False,
+                "requested": len(official_deps),
+                "downloaded_count": 0,
+                "already_present_count": 0,
+                "failed_count": 0,
+                "downloaded": [],
+                "failed": [],
+                "sha_changed_count": 0,
+            }
+
         from dynamic_overlays_service import get_dynamic_overlays_settings
         saved = await asyncio.to_thread(get_dynamic_overlays_settings)
         if (saved.get("enabled", False) and saved.get("change_detection_enabled", True)) or saved.get("regenerate_assets_on_title_change", False):
             start_overlay_change_detector_background(base_dir=BASE_DIR, config_path=CONFIG_PATH, logs_dir=UI_LOGS_DIR)
-        return {"success": True, **result, "message": "Overlay bundle imported in Dry Run. No artwork was uploaded."}
+        return {
+            "success": True,
+            **result,
+            "dependencies": dependencies_summary,
+            "message": "Overlay bundle imported in Dry Run. No artwork was uploaded.",
+        }
     finally:
         IMPORT_LOCK.release()
 
@@ -22064,6 +22134,7 @@ async def import_dynamic_overlay_bundle(
     file: UploadFile = File(...), mapping: str = Form(...),
     anime_libraries: str = Form("[]"), season_libraries: str = Form("[]"),
     import_settings: bool = Form(True), replace_files: bool = Form(False),
+    fetch_dependencies: bool = Form(True),
 ):
     from overlay_bundle import BundleError, MAX_BUNDLE_BYTES
     try:
@@ -22075,7 +22146,13 @@ async def import_dynamic_overlay_bundle(
             raise BundleError("Invalid library mapping JSON.")
         payload = await file.read(MAX_BUNDLE_BYTES + 1)
         return await _execute_overlay_bundle_import(
-            payload, library_mapping, anime_targets, season_targets, import_settings, replace_files
+            payload,
+            library_mapping,
+            anime_targets,
+            season_targets,
+            import_settings,
+            replace_files,
+            fetch_dependencies,
         )
     except BundleError as error:
         raise HTTPException(status_code=400, detail={"code": error.code, "message": str(error)})
@@ -22110,6 +22187,7 @@ class CommunityBundleImportRequest(BaseModel):
     season_libraries: List[str] = []
     import_settings: bool = True
     replace_files: bool = False
+    fetch_dependencies: bool = True
 
 
 def _community_error_http_status(code: str) -> int:
@@ -22293,7 +22371,13 @@ async def import_community_overlay_bundle(body: CommunityBundleImportRequest):
     try:
         _, payload = await asyncio.to_thread(resolve_community_bundle_payload, body.id, body.bundle_token)
         return await _execute_overlay_bundle_import(
-            payload, body.mapping, body.anime_libraries, body.season_libraries, body.import_settings, body.replace_files
+            payload,
+            body.mapping,
+            body.anime_libraries,
+            body.season_libraries,
+            body.import_settings,
+            body.replace_files,
+            body.fetch_dependencies,
         )
     except CommunityGalleryError as error:
         raise HTTPException(

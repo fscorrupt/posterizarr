@@ -38,6 +38,8 @@ export default function OverlayBundleTransfer({
   const [targets, setTargets] = useState({});
   const [includeSettings, setIncludeSettings] = useState(true);
   const [replaceFiles, setReplaceFiles] = useState(false);
+  const [fetchDependencies, setFetchDependencies] = useState(true);
+  const [importResult, setImportResult] = useState(null);
   const [showCommunityModal, setShowCommunityModal] = useState(false);
   const [communitySource, setCommunitySource] = useState(null);
   const [busyCommunityId, setBusyCommunityId] = useState(null);
@@ -51,6 +53,8 @@ export default function OverlayBundleTransfer({
     }])));
     setIncludeSettings(true);
     setReplaceFiles(false);
+    setFetchDependencies(true);
+    setImportResult(null);
     setPreview({ ...data, warning_codes: data.warning_codes || (data.warnings?.length ? ["unknown"] : []) });
   }, []);
 
@@ -58,7 +62,13 @@ export default function OverlayBundleTransfer({
     setPreview(null);
     setFile(null);
     setCommunitySource(null);
+    setImportResult(null);
   }, []);
+
+  const finishAndReload = useCallback(() => {
+    closePreview();
+    onImported?.();
+  }, [closePreview, onImported]);
 
   useEffect(() => {
     if (!showCommunityModal) return undefined;
@@ -81,7 +91,10 @@ export default function OverlayBundleTransfer({
     document.body.style.overflow = "hidden";
     dialogRef.current?.focus();
     const escape = (event) => {
-      if (event.key === "Escape" && !busy) closePreview();
+      if (event.key === "Escape" && !busy) {
+        if (importResult) finishAndReload();
+        else closePreview();
+      }
       if (event.key !== "Tab") return;
       const dialog = dialogRef.current;
       const controls = [...(dialog?.querySelectorAll("button:not([disabled]), input:not([disabled]), select:not([disabled]), a[href], summary") || [])];
@@ -102,7 +115,7 @@ export default function OverlayBundleTransfer({
       document.removeEventListener("keydown", escape);
       if (previousFocus?.isConnected) previousFocus.focus({ preventScroll: true });
     };
-  }, [preview, busy, closePreview]);
+  }, [preview, busy, importResult, closePreview, finishAndReload]);
 
   const exportBundle = async () => {
     setBusy("export");
@@ -189,8 +202,9 @@ export default function OverlayBundleTransfer({
           && preview.local_libraries.some((library) => library.name === mapping[profile.name] && library.type === "show"))
         .map((profile) => mapping[profile.name]) : [];
 
+      let data;
       if (communitySource) {
-        await responseData(
+        data = await responseData(
           await fetch(`${COMMUNITY_API}/import`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -202,6 +216,7 @@ export default function OverlayBundleTransfer({
               season_libraries: featureLibraries("seasons"),
               import_settings: includeSettings,
               replace_files: replaceFiles,
+              fetch_dependencies: fetchDependencies,
             }),
           }),
           t
@@ -214,11 +229,21 @@ export default function OverlayBundleTransfer({
         form.append("season_libraries", JSON.stringify(featureLibraries("seasons")));
         form.append("import_settings", String(includeSettings));
         form.append("replace_files", String(replaceFiles));
-        await responseData(await fetch(`${API}/import`, { method: "POST", body: form }), t);
+        form.append("fetch_dependencies", String(fetchDependencies));
+        data = await responseData(await fetch(`${API}/import`, { method: "POST", body: form }), t);
       }
-      showSuccess(t("overlayBundle.imported"));
+      const deps = data?.dependencies;
+      if (deps?.failed_count > 0) {
+        setImportResult(data);
+        return;
+      }
+      if (deps?.downloaded_count > 0) {
+        showSuccess(t("overlayBundle.importedWithDeps", { count: deps.downloaded_count }));
+      } else {
+        showSuccess(t("overlayBundle.imported"));
+      }
       closePreview();
-      onImported?.();
+      window.setTimeout(() => onImported?.(), 900);
     } catch (error) {
       showError(error.localized ? error.message : t("overlayBundle.errors.requestFailed"));
     } finally {
@@ -228,6 +253,11 @@ export default function OverlayBundleTransfer({
 
   const selected = Object.values(mapping).filter(Boolean);
   const duplicates = new Set(selected).size !== selected.length;
+  const totalOfficialDeps = preview?.official_dependency_count || 0;
+  const missingOfficialDeps = preview?.missing_official_dependency_count ?? totalOfficialDeps;
+  const missingBreakdown = preview?.missing_official_dependencies || { defaults: 0, images: 0, fonts: 0 };
+  const hasOverlayRules = (preview?.libraries || []).some((profile) => profile.rule_count > 0);
+  const showFetchDepsOption = totalOfficialDeps > 0 || hasOverlayRules;
   const buttonClass = "flex items-center gap-1.5 rounded-lg border border-theme bg-theme-bg px-3 py-1.5 text-xs font-semibold text-theme-text hover:bg-theme-hover disabled:opacity-50";
 
   return <>
@@ -297,45 +327,110 @@ export default function OverlayBundleTransfer({
             )}
             <p className="mt-1 text-xs text-theme-muted">{t("overlayBundle.stats", { files: preview.file_count, assets: preview.asset_count, server: preview.destination_server })}</p>
           </div>
-          <button type="button" title={t("overlayBundle.close")} aria-label={t("overlayBundle.close")} disabled={Boolean(busy)} onClick={closePreview} className="flex h-11 w-11 shrink-0 items-center justify-center rounded border border-theme hover:bg-theme-hover disabled:opacity-50"><X className="h-5 w-5" /></button>
+          <button type="button" title={t("overlayBundle.close")} aria-label={t("overlayBundle.close")} disabled={Boolean(busy)} onClick={importResult ? finishAndReload : closePreview} className="flex h-11 w-11 shrink-0 items-center justify-center rounded border border-theme hover:bg-theme-hover disabled:opacity-50"><X className="h-5 w-5" /></button>
         </header>
-        <div className="min-h-0 space-y-4 overflow-y-auto p-4">
-          <div className="flex gap-2 text-xs text-amber-400"><AlertTriangle className="h-4 w-4 shrink-0" /><p>{t("overlayBundle.safety")}</p></div>
-          {preview.warning_codes.map((code) => <p key={code} className="text-xs text-amber-400">{t(`overlayBundle.warnings.${code}`, { defaultValue: t("overlayBundle.warnings.unknown") })}</p>)}
-          <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={includeSettings} onChange={(event) => setIncludeSettings(event.target.checked)} disabled={Boolean(busy)} />{t("overlayBundle.restoreSettings")}</label>
-          {preview.features.rating_sources.length > 0 && <p className="text-xs text-theme-muted">{t("overlayBundle.ratingSources", { sources: preview.features.rating_sources.join(", ") })}</p>}
-          {preview.features.imdb_dataset && <p className="text-xs text-theme-muted">{t("overlayBundle.imdbEnabled")}</p>}
-          <div className="divide-y divide-theme border-y border-theme">
-            {preview.libraries.map((profile) => {
-              const target = mapping[profile.name] || "";
-              const showLibrary = preview.local_libraries.some((library) => library.name === target && library.type === "show");
-              return <div key={profile.name} className="grid grid-cols-1 items-start gap-3 py-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)]">
-                <div className="min-w-0 break-words"><h3 className="text-sm font-semibold">{profile.name}</h3><p className="mt-1 text-xs text-theme-muted">{t("overlayBundle.profileSummary", { type: t(`overlayBundle.types.${["movie", "show"].includes(profile.media_type) ? profile.media_type : "mixed"}`), count: profile.rule_count })}</p></div>
-                <label className="min-w-0 text-xs text-theme-muted">{t("overlayBundle.destination")}
-                  <select aria-label={t("overlayBundle.destinationFor", { library: profile.name })} value={target} onChange={(event) => setMapping((current) => ({ ...current, [profile.name]: event.target.value }))} disabled={Boolean(busy)} className="mt-1 w-full min-w-0 rounded border border-theme bg-theme-bg p-2 text-sm text-theme-text">
-                    <option value="">{t("overlayBundle.skip")}</option>
-                    {preview.local_libraries.filter((library) => !profile.media_type || library.type === profile.media_type).map((library) => <option key={library.name} value={library.name}>{library.name}</option>)}
-                  </select>
-                </label>
-                <div className="space-y-2 text-xs">
-                  <label className="flex items-center gap-2"><input type="checkbox" aria-label={t("overlayBundle.animeFor", { library: profile.name })} checked={Boolean(targets[profile.name]?.anime)} disabled={Boolean(busy) || !includeSettings || !showLibrary} onChange={(event) => setTargets((current) => ({ ...current, [profile.name]: { ...current[profile.name], anime: event.target.checked } }))} />AniMetaFill</label>
-                  <label className="flex items-center gap-2"><input type="checkbox" aria-label={t("overlayBundle.seasonFor", { library: profile.name })} checked={Boolean(targets[profile.name]?.seasons)} disabled={Boolean(busy) || !includeSettings || !showLibrary} onChange={(event) => setTargets((current) => ({ ...current, [profile.name]: { ...current[profile.name], seasons: event.target.checked } }))} />{t("overlayBundle.seasonRatings")}</label>
+        {importResult ? (
+          <>
+            <div className="min-h-0 space-y-4 overflow-y-auto p-4">
+              <div className="flex gap-2.5 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-300">
+                <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5 text-amber-400" />
+                <div className="space-y-1">
+                  <p className="font-semibold text-theme-text">{t("overlayBundle.partialDepsTitle")}</p>
+                  <p className="text-theme-muted">
+                    {t("overlayBundle.partialDepsSummary", {
+                      downloaded: importResult.dependencies?.downloaded_count || 0,
+                      failed: importResult.dependencies?.failed_count || 0,
+                    })}
+                  </p>
                 </div>
-              </div>;
-            })}
-          </div>
-          {duplicates && <p role="alert" className="text-xs text-red-400">{t("overlayBundle.duplicate")}</p>}
-          {preview.conflicts.length > 0 && <div className="space-y-2">
-            <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={replaceFiles} onChange={(event) => setReplaceFiles(event.target.checked)} disabled={Boolean(busy)} />{t("overlayBundle.replaceFiles", { count: preview.conflicts.length })}</label>
-            <details className="text-xs text-theme-muted"><summary className="cursor-pointer">{t("overlayBundle.conflicts")}</summary><ul className="mt-2 space-y-1">{preview.conflicts.map((path) => <li key={path} className="break-all font-mono">{path}</li>)}</ul></details>
-          </div>}
-        </div>
-        <footer className="flex shrink-0 flex-wrap justify-end gap-2 border-t border-theme p-4">
-          <button type="button" className={buttonClass} disabled={Boolean(busy)} onClick={closePreview}>{t("overlayBundle.cancel")}</button>
-          <button type="button" onClick={importBundle} disabled={Boolean(busy) || !selected.length || duplicates || (preview.conflicts.length > 0 && !replaceFiles)} className="flex items-center gap-2 rounded-lg bg-theme-primary px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
-            {busy === "import" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}{t("overlayBundle.import")}
-          </button>
-        </footer>
+              </div>
+              {Array.isArray(importResult.dependencies?.failed) && importResult.dependencies.failed.length > 0 && (
+                <details open className="text-xs text-theme-muted">
+                  <summary className="cursor-pointer font-medium text-theme-text">{t("overlayBundle.failedDependencies")}</summary>
+                  <ul className="mt-2 space-y-1.5 rounded-lg border border-theme bg-theme-bg p-3">
+                    {importResult.dependencies.failed.map((item, idx) => (
+                      <li key={`${item.path || idx}-${idx}`} className="break-all">
+                        <span className="font-mono text-theme-text">{item.path}</span>
+                        {item.error ? <span className="text-red-400"> — {item.error}</span> : null}
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              )}
+            </div>
+            <footer className="flex shrink-0 flex-wrap justify-end gap-2 border-t border-theme p-4">
+              <button type="button" onClick={finishAndReload} className="flex items-center gap-2 rounded-lg bg-theme-primary px-4 py-2 text-sm font-semibold text-white">
+                {t("overlayBundle.doneReload")}
+              </button>
+            </footer>
+          </>
+        ) : (
+          <>
+            <div className="min-h-0 space-y-4 overflow-y-auto p-4">
+              <div className="flex gap-2 text-xs text-amber-400"><AlertTriangle className="h-4 w-4 shrink-0" /><p>{t("overlayBundle.safety")}</p></div>
+              {preview.warning_codes
+                .filter((code) => !(code === "officialDependencies" && fetchDependencies))
+                .map((code) => <p key={code} className="text-xs text-amber-400">{t(`overlayBundle.warnings.${code}`, { defaultValue: t("overlayBundle.warnings.unknown") })}</p>)}
+              <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={includeSettings} onChange={(event) => setIncludeSettings(event.target.checked)} disabled={Boolean(busy)} />{t("overlayBundle.restoreSettings")}</label>
+              {showFetchDepsOption && (
+                <div className="space-y-1">
+                  <label className="flex items-center gap-2 text-sm">
+                    <input type="checkbox" checked={fetchDependencies} onChange={(event) => setFetchDependencies(event.target.checked)} disabled={Boolean(busy)} />
+                    {t("overlayBundle.fetchDependencies")}
+                  </label>
+                  {totalOfficialDeps > 0 && (
+                    <p className="pl-6 text-xs text-theme-muted">
+                      {missingOfficialDeps > 0
+                        ? t("overlayBundle.fetchDependenciesMissing", {
+                            missing: missingOfficialDeps,
+                            total: totalOfficialDeps,
+                            defaults: missingBreakdown.defaults || 0,
+                            images: missingBreakdown.images || 0,
+                            fonts: missingBreakdown.fonts || 0,
+                          })
+                        : t("overlayBundle.fetchDependenciesReady", { total: totalOfficialDeps })}
+                    </p>
+                  )}
+                </div>
+              )}
+              {preview.features.rating_sources.length > 0 && <p className="text-xs text-theme-muted">{t("overlayBundle.ratingSources", { sources: preview.features.rating_sources.join(", ") })}</p>}
+              {preview.features.imdb_dataset && <p className="text-xs text-theme-muted">{t("overlayBundle.imdbEnabled")}</p>}
+              <div className="divide-y divide-theme border-y border-theme">
+                {preview.libraries.map((profile) => {
+                  const target = mapping[profile.name] || "";
+                  const showLibrary = preview.local_libraries.some((library) => library.name === target && library.type === "show");
+                  return <div key={profile.name} className="grid grid-cols-1 items-start gap-3 py-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)]">
+                    <div className="min-w-0 break-words"><h3 className="text-sm font-semibold">{profile.name}</h3><p className="mt-1 text-xs text-theme-muted">{t("overlayBundle.profileSummary", { type: t(`overlayBundle.types.${["movie", "show"].includes(profile.media_type) ? profile.media_type : "mixed"}`), count: profile.rule_count })}</p></div>
+                    <label className="min-w-0 text-xs text-theme-muted">{t("overlayBundle.destination")}
+                      <select aria-label={t("overlayBundle.destinationFor", { library: profile.name })} value={target} onChange={(event) => setMapping((current) => ({ ...current, [profile.name]: event.target.value }))} disabled={Boolean(busy)} className="mt-1 w-full min-w-0 rounded border border-theme bg-theme-bg p-2 text-sm text-theme-text">
+                        <option value="">{t("overlayBundle.skip")}</option>
+                        {preview.local_libraries.filter((library) => !profile.media_type || library.type === profile.media_type).map((library) => <option key={library.name} value={library.name}>{library.name}</option>)}
+                      </select>
+                    </label>
+                    <div className="space-y-2 text-xs">
+                      <label className="flex items-center gap-2"><input type="checkbox" aria-label={t("overlayBundle.animeFor", { library: profile.name })} checked={Boolean(targets[profile.name]?.anime)} disabled={Boolean(busy) || !includeSettings || !showLibrary} onChange={(event) => setTargets((current) => ({ ...current, [profile.name]: { ...current[profile.name], anime: event.target.checked } }))} />AniMetaFill</label>
+                      <label className="flex items-center gap-2"><input type="checkbox" aria-label={t("overlayBundle.seasonFor", { library: profile.name })} checked={Boolean(targets[profile.name]?.seasons)} disabled={Boolean(busy) || !includeSettings || !showLibrary} onChange={(event) => setTargets((current) => ({ ...current, [profile.name]: { ...current[profile.name], seasons: event.target.checked } }))} />{t("overlayBundle.seasonRatings")}</label>
+                    </div>
+                  </div>;
+                })}
+              </div>
+              {duplicates && <p role="alert" className="text-xs text-red-400">{t("overlayBundle.duplicate")}</p>}
+              {preview.conflicts.length > 0 && <div className="space-y-2">
+                <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={replaceFiles} onChange={(event) => setReplaceFiles(event.target.checked)} disabled={Boolean(busy)} />{t("overlayBundle.replaceFiles", { count: preview.conflicts.length })}</label>
+                <details className="text-xs text-theme-muted"><summary className="cursor-pointer">{t("overlayBundle.conflicts")}</summary><ul className="mt-2 space-y-1">{preview.conflicts.map((path) => <li key={path} className="break-all font-mono">{path}</li>)}</ul></details>
+              </div>}
+            </div>
+            <footer className="flex shrink-0 flex-wrap justify-end gap-2 border-t border-theme p-4">
+              <button type="button" className={buttonClass} disabled={Boolean(busy)} onClick={closePreview}>{t("overlayBundle.cancel")}</button>
+              <button type="button" onClick={importBundle} disabled={Boolean(busy) || !selected.length || duplicates || (preview.conflicts.length > 0 && !replaceFiles)} className="flex items-center gap-2 rounded-lg bg-theme-primary px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
+                {busy === "import" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                {busy === "import"
+                  ? (fetchDependencies ? t("overlayBundle.importingWithDeps") : t("overlayBundle.importing"))
+                  : t("overlayBundle.import")}
+              </button>
+            </footer>
+          </>
+        )}
       </section>
     </div>, document.body)}
   </>;

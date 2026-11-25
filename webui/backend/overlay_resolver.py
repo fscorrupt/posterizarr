@@ -831,6 +831,11 @@ def load_cached_yaml_file(file_path: Path) -> Dict[str, Any]:
         return {}
 
 
+def clear_yaml_cache() -> None:
+    """Invalidate cached YAML documents after external writes."""
+    _YAML_MTIME_CACHE.clear()
+
+
 _images_import_progress: Dict[str, Any] = {
     "is_running": False,
     "phase": "idle",
@@ -857,14 +862,17 @@ def is_images_import_running() -> bool:
 class OverlayResolver:
     """Manages Kometa configuration files, dependencies, and asset resolution."""
 
-    def __init__(self, project_root: Union[Path, str]):
+    def __init__(self, project_root: Union[Path, str], overlays_dir: Optional[Union[Path, str]] = None):
         self.project_root = Path(project_root)
         self.overlayfiles_dir = self.project_root / "Overlayfiles"
-        self.overlays_dir = self.overlayfiles_dir / "dynamic_overlays"
-        if not self.overlays_dir.exists():
-            legacy = self.overlayfiles_dir / "kometa"
-            if legacy.exists():
-                self.overlays_dir = legacy
+        if overlays_dir is not None:
+            self.overlays_dir = Path(overlays_dir)
+        else:
+            self.overlays_dir = self.overlayfiles_dir / "dynamic_overlays"
+            if not self.overlays_dir.exists():
+                legacy = self.overlayfiles_dir / "kometa"
+                if legacy.exists():
+                    self.overlays_dir = legacy
         self.kometa_dir = self.overlays_dir
         self.configs_dir = self.overlays_dir / "configs"
         self.defaults_dir = self.overlays_dir / "defaults"
