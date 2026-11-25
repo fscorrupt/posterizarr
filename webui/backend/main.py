@@ -2211,27 +2211,31 @@ async def lifespan(app: FastAPI):
             # Initialize database (creates if not exists)
             db = init_database(IMAGECHOICES_DB_PATH)
 
-            # If database was just created (first start), check for existing CSV to import
-            if not db_existed_before:
-                csv_path = LOGS_DIR / "ImageChoices.csv"
-                if csv_path.exists():
-                    logger.info(
-                        "Found existing ImageChoices.csv - importing to new database..."
+            # Always sync existing CSV on startup so missed watcher events catch up idempotently
+            csv_path = LOGS_DIR / "ImageChoices.csv"
+            if csv_path.exists():
+                logger.info(
+                    "Found existing ImageChoices.csv - syncing records to database..."
+                )
+                try:
+                    stats = db.import_from_csv(csv_path)
+                    csv_stat = csv_path.stat()
+                    global _last_recent_assets_csv_sig
+                    _last_recent_assets_csv_sig = (
+                        csv_stat.st_mtime_ns,
+                        csv_stat.st_size,
+                        getattr(csv_stat, "st_ino", 0),
                     )
-                    try:
-                        stats = db.import_from_csv(csv_path)
-                        if stats["added"] > 0:
-                            logger.info(
-                                f"Initialized database with {stats['added']} records from existing CSV"
-                            )
-                        else:
-                            logger.info(
-                                "No records imported from CSV (all empty or invalid)"
-                            )
-                    except Exception as csv_error:
-                        logger.warning(f"Could not import existing CSV: {csv_error}")
-                else:
-                    logger.info("No existing CSV found - database initialized empty")
+                    if stats.get("added", 0) > 0 or stats.get("updated", 0) > 0:
+                        logger.info(
+                            f"Synced database from ImageChoices.csv (added: {stats.get('added', 0)}, updated: {stats.get('updated', 0)})"
+                        )
+                    else:
+                        logger.info("Database already up to date with ImageChoices.csv")
+                except Exception as csv_error:
+                    logger.warning(f"Could not import existing CSV: {csv_error}")
+            else:
+                logger.info("No existing CSV found - database ready")
 
             # Check if database has any records
             try:
@@ -11111,46 +11115,106 @@ async def get_folder_view_browse(path: Optional[str] = Query(None)):
         logger.exception("Full traceback:")
         return {"success": False, "error": str(e), "items": []}
 
-_last_recent_assets_csv_mtime: float = 0.0
+_last_recent_assets_csv_sig: Optional[tuple] = None
 _RECENT_ASSET_EXTENSIONS = (".jpg", ".png", ".webp", ".jpeg", ".tbn")
 _RECENT_ASSETS_NO_STORE_HEADERS = {
     "Cache-Control": "no-cache, no-store, must-revalidate",
     "Pragma": "no-cache",
 }
+_SEASON_SPECIALS_RE = re.compile(
+    r"\b(?:specials?|sonderfolgen|sp[eé]ciaux|especiales)\b",
+    re.IGNORECASE,
+)
+_SEASON_LABEL_RE = re.compile(
+    r"(?:season|staffel|saison|temporada|stagione|sezon|seizoen|s[äa]song|sesong|s[æa]son|kausi|сезон|シーズン|季)[\s#:.-]*0*(\d+)",
+    re.IGNORECASE,
+)
 
 
-def _resolve_recent_asset_from_disk(library: str, rootfolder: str, asset_stem: str) -> Optional[Dict[str, Any]]:
+def _extract_season_stem(title: str) -> Optional[str]:
+    """Resolve localized season/special titles to canonical SeasonXX filename stem."""
+    raw = str(title or "").strip()
+    if not raw:
+        return None
+    match = _SEASON_LABEL_RE.search(raw)
+    if match:
+        return f"Season{match.group(1).zfill(2)}"
+    tail = raw.split("|")[-1].strip() if "|" in raw else raw
+    if _SEASON_SPECIALS_RE.search(tail):
+        return "Season00"
+    if "|" in raw:
+        num_match = re.search(r"\b0*(\d{1,4})\s*$", tail)
+        if num_match:
+            return f"Season{num_match.group(1).zfill(2)}"
+    return None
+
+
+def _get_recent_asset_candidate_stems(root_part: str, asset_stem: str, asset_type_lower: str) -> tuple:
+    """Build folder-mode stems and flat-mode stems for an asset DB record."""
+    stems = [asset_stem]
+    if asset_stem.lower().startswith("season"):
+        suffix = asset_stem[6:]
+        if suffix.isdigit():
+            unpadded = f"Season{int(suffix)}"
+            if unpadded not in stems:
+                stems.append(unpadded)
+    if "background" in asset_type_lower:
+        flat_stems = [f"{root_part}_background"]
+    elif "season" in asset_type_lower or "titlecard" in asset_type_lower or "episode" in asset_type_lower:
+        flat_stems = [f"{root_part}_{s}" for s in stems]
+    else:
+        flat_stems = [root_part]
+    return stems, flat_stems
+
+
+def _resolve_recent_asset_from_disk(
+    library: str,
+    rootfolder: str,
+    asset_stem: str,
+    asset_type_lower: str = "",
+) -> Optional[Dict[str, Any]]:
     """Resolve an asset file by stem and supported extensions safely within ASSETS_DIR."""
     lib_part = str(library or "").strip()
     root_part = str(rootfolder or "").strip()
     if (
-        not lib_part or not root_part or not asset_stem
-        or "\x00" in lib_part or "\x00" in root_part
-        or "/" in lib_part or "\\" in lib_part or lib_part in (".", "..")
-        or "/" in root_part or "\\" in root_part or root_part in (".", "..")
+        not root_part or not asset_stem
+        or "\x00" in root_part or "/" in root_part or "\\" in root_part or root_part in (".", "..")
+        or (lib_part and ("\x00" in lib_part or "/" in lib_part or "\\" in lib_part or lib_part in (".", "..")))
     ):
         return None
     try:
         assets_root = ASSETS_DIR.resolve()
-        folder_raw = ASSETS_DIR / lib_part / root_part
-        folder = folder_raw.resolve()
-        if not folder.is_relative_to(assets_root) or not folder.is_dir():
-            return None
-        for ext in _RECENT_ASSET_EXTENSIONS:
-            candidate_raw = folder_raw / f"{asset_stem}{ext}"
-            candidate_resolved = candidate_raw.resolve()
-            if candidate_resolved.is_relative_to(assets_root) and candidate_resolved.is_file():
-                return process_image_path(candidate_raw)
-        stem_lower = asset_stem.lower()
-        for entry in folder.iterdir():
-            if (
-                entry.is_file()
-                and entry.stem.lower() == stem_lower
-                and entry.suffix.lower() in _RECENT_ASSET_EXTENSIONS
-            ):
-                resolved_entry = entry.resolve()
-                if resolved_entry.is_relative_to(assets_root):
-                    return process_image_path(folder_raw / entry.name)
+        candidate_stems, flat_stems = _get_recent_asset_candidate_stems(
+            root_part, asset_stem, asset_type_lower
+        )
+        if lib_part:
+            folder_raw = ASSETS_DIR / lib_part / root_part
+            folder = folder_raw.resolve()
+            if folder.is_relative_to(assets_root) and folder.is_dir():
+                for stem in candidate_stems:
+                    for ext in _RECENT_ASSET_EXTENSIONS:
+                        candidate_raw = folder_raw / f"{stem}{ext}"
+                        candidate_resolved = candidate_raw.resolve()
+                        if candidate_resolved.is_relative_to(assets_root) and candidate_resolved.is_file():
+                            return process_image_path(candidate_raw)
+                stem_lowers = {s.lower() for s in candidate_stems}
+                for entry in folder.iterdir():
+                    if (
+                        entry.is_file()
+                        and entry.stem.lower() in stem_lowers
+                        and entry.suffix.lower() in _RECENT_ASSET_EXTENSIONS
+                    ):
+                        resolved_entry = entry.resolve()
+                        if resolved_entry.is_relative_to(assets_root):
+                            return process_image_path(folder_raw / entry.name)
+
+        # Flat layout fallback (LibraryFolders=false directly in ASSETS_DIR)
+        for flat_stem in flat_stems:
+            for ext in _RECENT_ASSET_EXTENSIONS:
+                flat_raw = ASSETS_DIR / f"{flat_stem}{ext}"
+                flat_resolved = flat_raw.resolve()
+                if flat_resolved.is_relative_to(assets_root) and flat_resolved.is_file():
+                    return process_image_path(flat_raw)
     except Exception as err:
         logger.debug(f"Disk fallback lookup skipped for {library}/{rootfolder}/{asset_stem}: {err}")
     return None
@@ -11183,7 +11247,7 @@ async def get_recent_assets(
     Returns the most recent assets with their poster images from assets folder
     USES FAST CACHE FOR IMAGE LOOKUPS
     """
-    global _last_recent_assets_csv_mtime
+    global _last_recent_assets_csv_sig
     tab_names = ("All", "Posters", "Collections", "Backgrounds", "Seasons", "TitleCards")
     empty_result = {
         "success": True,
@@ -11197,17 +11261,21 @@ async def get_recent_assets(
             # Return empty list instead of crashing if DB isn't ready
             return JSONResponse(content=empty_result, headers=_RECENT_ASSETS_NO_STORE_HEADERS)
 
-        if refresh:
-            csv_path = LOGS_DIR / "ImageChoices.csv"
-            try:
-                if csv_path.exists():
-                    csv_mtime = csv_path.stat().st_mtime
-                    if csv_mtime > _last_recent_assets_csv_mtime:
-                        await asyncio.to_thread(db.import_from_csv, csv_path)
-                        _last_recent_assets_csv_mtime = csv_mtime
-            except Exception as e:
-                logger.warning(f"Could not import CSV to database on refresh: {e}")
+        # Always keep DB caught up with ImageChoices.csv via lightweight signature stat check
+        csv_path = LOGS_DIR / "ImageChoices.csv"
+        try:
+            if csv_path.exists():
+                csv_stat = csv_path.stat()
+                csv_sig = (csv_stat.st_mtime_ns, csv_stat.st_size, getattr(csv_stat, "st_ino", 0))
+                if csv_sig != _last_recent_assets_csv_sig:
+                    await asyncio.to_thread(db.import_from_csv, csv_path)
+                    _last_recent_assets_csv_sig = csv_sig
+            else:
+                _last_recent_assets_csv_sig = None
+        except Exception as e:
+            logger.warning(f"Could not sync ImageChoices.csv to database: {e}")
 
+        if refresh:
             if not cache_scan_in_progress and time.time() - asset_cache.get("last_scanned", 0) > 15:
                 threading.Thread(target=scan_and_cache_assets, daemon=True).start()
 
@@ -11221,11 +11289,9 @@ async def get_recent_assets(
             logger.warning(" No assets found in database")
             return JSONResponse(content=empty_result, headers=_RECENT_ASSETS_NO_STORE_HEADERS)
 
-        # Create a fast lookup map from the asset cache
-        # This scans the cache (memory) not the disk
+        # Create fast lookup maps from the asset cache (supports standard, nested extraFolder, and flat layouts)
         logger.debug("Creating fast asset lookup map from cache...")
         cache = get_fresh_assets()
-        # Combine all asset types into one lookup
         all_cached_assets = (
             cache.get("posters", [])
             + cache.get("backgrounds", [])
@@ -11233,15 +11299,26 @@ async def get_recent_assets(
             + cache.get("titlecards", [])
         )
 
-        # Create maps: { "Library/Folder/poster.jpg": { ... asset data ... } }
-        # Use normalized paths for lookup
         asset_map = {}
         asset_map_lower = {}
+        nested_lib_folder_map = {}
+        folder_file_map = {}
+        flat_file_map = {}
         for img in all_cached_assets:
             norm_path = str(img.get("path") or "").replace("\\", "/")
-            if norm_path:
-                asset_map[norm_path] = img
-                asset_map_lower.setdefault(norm_path.lower(), img)
+            if not norm_path:
+                continue
+            asset_map[norm_path] = img
+            asset_map_lower.setdefault(norm_path.lower(), img)
+            parts = norm_path.split("/")
+            filename_lower = parts[-1].lower()
+            flat_file_map.setdefault(filename_lower, img)
+            if len(parts) >= 2:
+                folder_file_map.setdefault((parts[-2].lower(), filename_lower), img)
+            if len(parts) >= 3:
+                nested_lib_folder_map.setdefault(
+                    (parts[0].lower(), parts[-2].lower(), filename_lower), img
+                )
         logger.debug(f"Asset map created with {len(asset_map)} items")
 
         def _build_recent_assets_payload() -> Dict[str, Any]:
@@ -11254,11 +11331,11 @@ async def get_recent_assets(
             for record in db_records:
                 asset_dict = dict(record)
 
-                rootfolder = str(asset_dict.get("Rootfolder") or "")
+                rootfolder = str(asset_dict.get("Rootfolder") or "").strip()
                 asset_type_from_db = str(asset_dict.get("Type") or "Poster")
                 title = str(asset_dict.get("Title") or "")
                 download_source = str(asset_dict.get("DownloadSource") or "")
-                library = str(asset_dict.get("LibraryName") or "")
+                library = str(asset_dict.get("LibraryName") or "").strip()
 
                 manual_field = asset_dict.get("Manual", "N/A")
                 if manual_field in ["Yes", "true", True]:
@@ -11274,15 +11351,21 @@ async def get_recent_assets(
                         )
                     )
 
-                if not rootfolder:
+                if (
+                    not rootfolder
+                    or "\x00" in rootfolder
+                    or "/" in rootfolder
+                    or "\\" in rootfolder
+                    or rootfolder in (".", "..")
+                    or (library and ("\x00" in library or "/" in library or "\\" in library or library in (".", "..")))
+                ):
                     continue
 
                 asset_type_lower = asset_type_from_db.lower()
                 if "background" in asset_type_lower:
                     asset_stem = "background"
                 elif "season" in asset_type_lower:
-                    season_match = re.search(r"season\s*(\d+)", title, re.IGNORECASE)
-                    asset_stem = f"Season{season_match.group(1).zfill(2)}" if season_match else None
+                    asset_stem = _extract_season_stem(title)
                 elif "titlecard" in asset_type_lower or "episode" in asset_type_lower:
                     episode_match = re.search(r"(S\d+E\d+)", title, re.IGNORECASE)
                     asset_stem = episode_match.group(1).upper() if episode_match else None
@@ -11292,17 +11375,44 @@ async def get_recent_assets(
                 if not asset_stem:
                     continue
 
+                candidate_stems, flat_stems = _get_recent_asset_candidate_stems(
+                    rootfolder, asset_stem, asset_type_lower
+                )
+
                 poster_data = None
                 from_disk_fallback = False
-                for ext in _RECENT_ASSET_EXTENSIONS:
-                    relative_path_key = f"{library}/{rootfolder}/{asset_stem}{ext}"
-                    poster_data = asset_map.get(relative_path_key) or asset_map_lower.get(relative_path_key.lower())
+                for stem in candidate_stems:
+                    for ext in _RECENT_ASSET_EXTENSIONS:
+                        filename = f"{stem}{ext}"
+                        filename_lower = filename.lower()
+                        if library:
+                            relative_path_key = f"{library}/{rootfolder}/{filename}"
+                            poster_data = (
+                                asset_map.get(relative_path_key)
+                                or asset_map_lower.get(relative_path_key.lower())
+                                or nested_lib_folder_map.get((library.lower(), rootfolder.lower(), filename_lower))
+                            )
+                        if poster_data is None:
+                            poster_data = folder_file_map.get((rootfolder.lower(), filename_lower))
+                        if poster_data is not None:
+                            break
                     if poster_data is not None:
                         break
 
+                if poster_data is None:
+                    for flat_stem in flat_stems:
+                        for ext in _RECENT_ASSET_EXTENSIONS:
+                            poster_data = flat_file_map.get(f"{flat_stem}{ext}".lower())
+                            if poster_data is not None:
+                                break
+                        if poster_data is not None:
+                            break
+
                 if poster_data is None and disk_fallback_checks < 100 and assets_dir_exists:
                     disk_fallback_checks += 1
-                    poster_data = _resolve_recent_asset_from_disk(library, rootfolder, asset_stem)
+                    poster_data = _resolve_recent_asset_from_disk(
+                        library, rootfolder, asset_stem, asset_type_lower
+                    )
                     if poster_data is not None:
                         from_disk_fallback = True
                         norm_found = str(poster_data.get("path") or "").replace("\\", "/")
@@ -17130,12 +17240,8 @@ def _build_assets_overview(counts_only=False):
             if "background" in asset_type_lower:
                 asset_filename = "background.jpg"
             elif "season" in asset_type_lower:
-                season_match = re.search(r"season\s*(\d+)", title, re.IGNORECASE)
-                if season_match:
-                    season_num = season_match.group(1).zfill(2)
-                    asset_filename = f"Season{season_num}.jpg"
-                else:
-                    asset_filename = "Season_unknown.jpg"
+                season_stem = _extract_season_stem(title)
+                asset_filename = f"{season_stem}.jpg" if season_stem else "Season_unknown.jpg"
             elif "titlecard" in asset_type_lower or "episode" in asset_type_lower:
                 episode_match = re.search(r"(S\d+E\d+)", title, re.IGNORECASE)
                 if episode_match:

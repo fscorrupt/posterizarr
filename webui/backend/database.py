@@ -655,13 +655,19 @@ class ImageChoicesDB:
                 errors = 0
                 error_details = []
 
-                with open(csv_path, "r", encoding="utf-8", errors="ignore") as f:
+                with open(csv_path, "r", encoding="utf-8-sig", errors="ignore") as f:
                     reader = csv.DictReader(f, delimiter=";")
 
                     for i, row in enumerate(reader):
                         try:
-                            # Clean up quotes from values
-                            clean_row = {k.strip('"'): v.strip('"') for k, v in row.items()}
+                            # Clean up quotes from values and ignore None keys from trailing semicolons
+                            clean_row = {
+                                str(k).strip('"').strip(): (
+                                    v.strip('"').strip() if isinstance(v, str) else ""
+                                )
+                                for k, v in row.items()
+                                if k is not None
+                            }
 
                             if not clean_row.get("Title") and not clean_row.get("Rootfolder"):
                                 continue

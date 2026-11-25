@@ -83,6 +83,8 @@ class LogsWatcher:
         # Debouncing: Track last import times
         self.lock = threading.RLock()
         self.last_csv_import: float = 0
+        self._csv_debounce_timer: Optional[threading.Timer] = None
+        self.last_csv_sig: Optional[tuple] = None
         self.last_json_imports: Dict[str, float] = {}
         self.last_plex_import: float = 0
         self.last_other_media_import: float = 0
@@ -188,10 +190,16 @@ class LogsWatcher:
                 try:
                     stat = csv_path.stat()
                     self.last_csv_inode = stat.st_ino if hasattr(stat, "st_ino") and stat.st_ino != 0 else None
-                    with open(csv_path, "r", encoding="utf-8", errors="ignore") as f:
+                    with open(csv_path, "r", encoding="utf-8-sig", errors="ignore") as f:
                         reader = csv.DictReader(f, delimiter=";")
                         rows = [
-                            {k.strip('"').strip(): v.strip('"').strip() for k, v in row.items() if k}
+                            {
+                                str(k).strip('"').strip(): (
+                                    v.strip('"').strip() if isinstance(v, str) else ""
+                                )
+                                for k, v in row.items()
+                                if k is not None
+                            }
                             for row in reader
                         ]
                         rows = [r for r in rows if r.get("Title") or r.get("Rootfolder")]
@@ -259,6 +267,14 @@ class LogsWatcher:
     def stop(self):
         """Stop watching the logs directory"""
         logger.debug(f"stop() called - current running state: {self.is_running}")
+
+        with self.lock:
+            if getattr(self, "_csv_debounce_timer", None):
+                try:
+                    self._csv_debounce_timer.cancel()
+                except Exception:
+                    pass
+                self._csv_debounce_timer = None
 
         if not self.is_running:
             logger.debug("LogsWatcher is not running, nothing to stop")
@@ -331,7 +347,9 @@ class LogsWatcher:
                         if file.is_file() and file.name.lower() == "imagechoices.csv":
                             csv_found = True
                             try:
-                                mtime = file.stat().st_mtime
+                                st = file.stat()
+                                mtime = st.st_mtime
+                                csv_sig = (st.st_mtime_ns, st.st_size, getattr(st, "st_ino", 0))
                                 last_mtime = self.last_file_mtimes.get("csv", 0)
 
                                 if poll_count % 12 == 1:
@@ -339,34 +357,31 @@ class LogsWatcher:
                                         f"  CSV: {file.name} (mtime: {mtime}, last: {last_mtime})"
                                     )
 
-                                # Only trigger import on MODIFICATION (mtime > last_mtime)
+                                # Only trigger import on MODIFICATION (csv_sig != self.last_csv_sig)
                                 # OR if this is a NEW file (didn't exist at startup)
-                                if last_mtime == 0:
+                                if self.last_csv_sig is None:
                                     # First detection - check if file existed at startup
                                     if file.name.lower() in self.files_at_startup:
                                         # File existed at startup - skip to prevent restart duplicates
                                         if poll_count % 12 == 1:
                                             logger.debug(
-                                                f"  [SKIP] {file.name} existed at startup, recording mtime only"
+                                                f"  [SKIP] {file.name} existed at startup, recording signature only"
                                             )
                                     else:
-                                        # NEW file created after startup - import it!
+                                        # NEW file created after startup (or after log rotation) - import it!
                                         logger.info(
                                             f"POLLING DETECTED: NEW CSV FILE {file.name} created after startup!"
                                         )
                                         logger.debug(f"  File mtime: {mtime}")
-                                        logger.debug(
-                                            "  First detection of new file - triggering import"
-                                        )
                                         self.on_csv_modified()
-                                elif mtime > last_mtime:
-                                    logger.info(f"POLLING DETECTED: CSV modification!")
+                                elif csv_sig != self.last_csv_sig:
+                                    logger.info("POLLING DETECTED: CSV modification!")
                                     logger.debug(f"  File: {file.name}")
                                     logger.debug(f"  Current mtime: {mtime}")
                                     logger.debug(f"  Last mtime: {last_mtime}")
-                                    logger.debug(f"  Delta: {mtime - last_mtime}s")
                                     self.on_csv_modified()
 
+                                self.last_csv_sig = csv_sig
                                 self.last_file_mtimes["csv"] = mtime
                                 break  # Found the file, stop checking
                             except Exception as e:
@@ -374,8 +389,12 @@ class LogsWatcher:
                                     f"Error checking CSV mtime: {e}", exc_info=True
                                 )
 
-                    if not csv_found and poll_count % 12 == 1:
-                        logger.debug("  CSV: ImageChoices.csv not found")
+                    if not csv_found:
+                        self.last_csv_sig = None
+                        self.last_file_mtimes.pop("csv", None)
+                        self.files_at_startup.discard("imagechoices.csv")
+                        if poll_count % 12 == 1:
+                            logger.debug("  CSV: ImageChoices.csv not found")
 
                 except Exception as e:
                     logger.error(
@@ -591,29 +610,50 @@ class LogsWatcher:
             self.last_first_row_sig = ""
             self.last_csv_inode = None
 
+    def _run_trailing_csv_import(self):
+        """Execute a deferred trailing-edge CSV import after consecutive modifications."""
+        with self.lock:
+            self._csv_debounce_timer = None
+            self.last_csv_import = time.time()
+        self._safe_import_csv()
+
     def on_csv_modified(self):
-        """Handle ImageChoices.csv modification"""
+        """Handle ImageChoices.csv modification with trailing debounce so rapid writes are never dropped."""
         with self.lock:
             current_time = time.time()
             logger.info("=" * 80)
             logger.info("CSV MODIFICATION DETECTED")
-            logger.info(f"  File: ImageChoices.csv")
-            logger.info(f"  Timestamp: {datetime.fromtimestamp(current_time)}")
-            logger.debug(f"  on_csv_modified() triggered at {current_time}")
+            logger.info("  File: ImageChoices.csv")
+            logger.info(f"  Timestamp: {datetime.fromtimestamp(current_time)}")
+            logger.debug(f"  on_csv_modified() triggered at {current_time}")
 
-            # Debounce: Skip if we imported recently
+            # Schedule trailing import instead of dropping rapid updates inside debounce window
             time_since_last = current_time - self.last_csv_import
-            logger.debug(f"  Last CSV import: {self.last_csv_import}")
-            logger.debug(f"  Time since last import: {time_since_last:.2f}s")
-            logger.debug(f"  Debounce threshold: {self.debounce_seconds}s")
+            logger.debug(f"  Last CSV import: {self.last_csv_import}")
+            logger.debug(f"  Time since last import: {time_since_last:.2f}s")
+            logger.debug(f"  Debounce threshold: {self.debounce_seconds}s")
 
             if time_since_last < self.debounce_seconds:
-                logger.warning(f"DEBOUNCED: Skipping CSV import")
-                logger.debug(
-                    f"  Reason: Last import was {time_since_last:.2f}s ago (need {self.debounce_seconds}s)"
-                )
+                delay = max(0.25, self.debounce_seconds - time_since_last + 0.1)
+                if getattr(self, "_csv_debounce_timer", None):
+                    try:
+                        self._csv_debounce_timer.cancel()
+                    except Exception:
+                        pass
+                timer = threading.Timer(delay, self._run_trailing_csv_import)
+                timer.daemon = True
+                self._csv_debounce_timer = timer
+                timer.start()
+                logger.info(f"DEBOUNCED: Scheduled trailing CSV import in {delay:.2f}s")
                 logger.info("=" * 80)
                 return
+
+            if getattr(self, "_csv_debounce_timer", None):
+                try:
+                    self._csv_debounce_timer.cancel()
+                except Exception:
+                    pass
+                self._csv_debounce_timer = None
 
             self.last_csv_import = current_time
             logger.info(
@@ -622,7 +662,7 @@ class LogsWatcher:
 
             try:
                 logger.info("Triggering CSV import in background thread...")
-                logger.debug("  Creating thread...")
+                logger.debug("  Creating thread...")
                 thread = threading.Thread(
                     target=self._safe_import_csv, daemon=True, name="CSVImport"
                 )
@@ -635,7 +675,7 @@ class LogsWatcher:
             except Exception as e:
                 logger.error("=" * 80)
                 logger.error("ERROR handling CSV modification")
-                logger.error(f"  Error: {e}", exc_info=True)
+                logger.error(f"  Error: {e}", exc_info=True)
                 logger.error("=" * 80)
 
     def on_runtime_json_modified(self, json_filename: str):
@@ -1050,10 +1090,16 @@ class LogsWatcher:
                 stat = csv_path.stat()
                 current_inode = stat.st_ino if hasattr(stat, "st_ino") and stat.st_ino != 0 else None
 
-                with open(csv_path, "r", encoding="utf-8", errors="ignore") as f:
+                with open(csv_path, "r", encoding="utf-8-sig", errors="ignore") as f:
                     reader = csv.DictReader(f, delimiter=";")
                     all_rows = [
-                        {k.strip('"').strip(): v.strip('"').strip() for k, v in row.items() if k}
+                        {
+                            str(k).strip('"').strip(): (
+                                v.strip('"').strip() if isinstance(v, str) else ""
+                            )
+                            for k, v in row.items()
+                            if k is not None
+                        }
                         for row in reader
                     ]
                     all_rows = [r for r in all_rows if r.get("Title") or r.get("Rootfolder")]
