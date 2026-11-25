@@ -30,9 +30,9 @@ ASSET_OVERRIDE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
 VISUAL_MANAGED_OVERLAY_DEFAULTS = {
     "aspect", "audio_codec", "audiocodec", "commonsense", "content_rating", "content_rating_au",
     "content_rating_de", "content_rating_nz", "content_rating_uk", "content_rating_us_movie",
-    "content_rating_us_show", "languages", "network", "ratings", "rating", "resolution",
-    "runtimes", "runtime", "single_rating", "status", "streaming", "studio", "video_format",
-    "videoformat", "format"
+    "content_rating_us_show", "languages", "mediastinger", "network", "ratings", "rating",
+    "resolution", "ribbon", "runtimes", "runtime", "single_rating", "status", "streaming",
+    "studio", "video_format", "videoformat", "format"
 }
 VISUAL_MANAGED_OVERLAY_FILES = ("overlays_movies.yml", "overlays_tv.yml", "anime_overlays.yml")
 
@@ -991,6 +991,24 @@ def parse_config_yml_to_visual(config_path: Optional[Path] = None, auto_seed: bo
             "anime": {
                 "enabled": False,
                 "level": "episode"
+            },
+            "ribbon": {
+                "enabled": False,
+                "level": "movie" if media_type == "movie" else "show",
+                "style": "yellow",
+                "position": "bottom-right",
+                "offset_x": 0,
+                "offset_y": 0
+            },
+            "mediastinger": {
+                "enabled": False,
+                "level": "movie",
+                "position": "top-right",
+                "offset_x": 15,
+                "offset_y": 15,
+                "back_color": "#00000099",
+                "back_width": 105,
+                "back_height": 105
             }
         }
 
@@ -1278,6 +1296,41 @@ def parse_config_yml_to_visual(config_path: Optional[Path] = None, auto_seed: bo
                     } if default_name == "streaming" else {})
                 }
 
+            elif default_name == "ribbon":
+                h_pos = vars_dict.get("horizontal_align") or vars_dict.get("horizontal_position", "right")
+                v_pos = vars_dict.get("vertical_align") or vars_dict.get("vertical_position", "bottom")
+                raw_x = vars_dict.get("horizontal_offset")
+                raw_y = vars_dict.get("vertical_offset")
+                style_val = str(vars_dict.get("style") or "yellow").strip().lower()
+                if style_val not in ("yellow", "red", "black", "gray"):
+                    style_val = "yellow"
+                badges["ribbon"] = {
+                    "enabled": True,
+                    "level": vars_dict.get("builder_level", "movie" if media_type == "movie" else "show"),
+                    "style": style_val,
+                    "position": _to_unified_position(h_pos, v_pos),
+                    "offset_x": int(raw_x) if raw_x is not None else 0,
+                    "offset_y": int(raw_y) if raw_y is not None else 0,
+                    "template_variables": dict(vars_dict)
+                }
+
+            elif default_name == "mediastinger":
+                h_pos = vars_dict.get("horizontal_align") or vars_dict.get("horizontal_position", "right")
+                v_pos = vars_dict.get("vertical_align") or vars_dict.get("vertical_position", "top")
+                raw_x = vars_dict.get("horizontal_offset")
+                raw_y = vars_dict.get("vertical_offset")
+                badges["mediastinger"] = {
+                    "enabled": True,
+                    "level": vars_dict.get("builder_level", "movie"),
+                    "position": _to_unified_position(h_pos, v_pos),
+                    "offset_x": int(raw_x) if raw_x is not None else 15,
+                    "offset_y": int(raw_y) if raw_y is not None else 15,
+                    "back_color": vars_dict.get("back_color", "#00000099"),
+                    "back_width": int(vars_dict.get("back_width", 105)),
+                    "back_height": int(vars_dict.get("back_height", 105)),
+                    "template_variables": dict(vars_dict)
+                }
+
             # 9. Anime Overlays
             elif "anime_overlays.yml" in file_name or default_name == "anime":
                 h_pos = vars_dict.get("horizontal_align") or vars_dict.get("horizontal_position", "left")
@@ -1476,6 +1529,51 @@ def compile_visual_to_config_yml(visual_data: Dict[str, Any], output_path: Optio
                 }
             })
 
+        # 3b. Award / Chart Ribbon (Movies & TV Shows)
+        b_ribbon = badges.get("ribbon", {})
+        if b_ribbon.get("enabled"):
+            h, v = _split_unified_position(b_ribbon.get("position", "bottom-right"))
+            style_val = str(b_ribbon.get("style") or "yellow").strip().lower()
+            if style_val not in ("yellow", "red", "black", "gray"):
+                style_val = "yellow"
+            ribbon_vars: Dict[str, Any] = {
+                **b_ribbon.get("template_variables", {}),
+                "builder_level": b_ribbon.get("level", "movie" if media_type == "movie" else "show"),
+                "style": style_val,
+                "horizontal_align": h,
+                "vertical_align": v,
+                "horizontal_offset": int(b_ribbon.get("offset_x", 0)),
+                "vertical_offset": int(b_ribbon.get("offset_y", 0))
+            }
+            ribbon_vars.pop("horizontal_position", None)
+            ribbon_vars.pop("vertical_position", None)
+            overlay_files.append({
+                "default": "ribbon",
+                "template_variables": ribbon_vars
+            })
+
+        # 3c. Media Stinger (Movies only)
+        b_stinger = badges.get("mediastinger", {})
+        if media_type == "movie" and b_stinger.get("enabled"):
+            h, v = _split_unified_position(b_stinger.get("position", "top-right"))
+            stinger_vars: Dict[str, Any] = {
+                **b_stinger.get("template_variables", {}),
+                "builder_level": b_stinger.get("level", "movie"),
+                "horizontal_align": h,
+                "vertical_align": v,
+                "horizontal_offset": int(b_stinger.get("offset_x", 15)),
+                "vertical_offset": int(b_stinger.get("offset_y", 15)),
+                "back_color": b_stinger.get("back_color", "#00000099"),
+                "back_width": int(b_stinger.get("back_width", 105)),
+                "back_height": int(b_stinger.get("back_height", 105))
+            }
+            stinger_vars.pop("horizontal_position", None)
+            stinger_vars.pop("vertical_position", None)
+            overlay_files.append({
+                "default": "mediastinger",
+                "template_variables": stinger_vars
+            })
+
         # 4. Show Status (TV only)
         b_stat = badges.get("status", {})
         if media_type == "show" and b_stat.get("enabled"):
@@ -1658,6 +1756,9 @@ def compile_visual_to_config_yml(visual_data: Dict[str, Any], output_path: Optio
                     position = max(0, min(int(position), len(overlay_files)))
                 except (TypeError, ValueError):
                     position = len(overlay_files)
+                # Drop legacy preserved copies for rules that are now managed directly via badges
+                if str(rule.get("default") or "").strip().lower() in VISUAL_MANAGED_OVERLAY_DEFAULTS:
+                    continue
                 anchored_rules.append((position, rule))
 
             if anchored_rules:

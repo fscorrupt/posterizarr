@@ -20402,6 +20402,12 @@ def preview_dynamic_overlay(
     supplemental_layout: Optional[str] = Query(None),
     streaming: Optional[str] = Query(None),
     streaming_options: Optional[str] = Query(None),
+    ribbon: Optional[str] = Query(None),
+    ribbon_style: Optional[str] = Query(None, pattern="^(yellow|red|black|gray)$"),
+    mediastinger: Optional[str] = Query(None),
+    mediastinger_back_color: Optional[str] = Query(None),
+    mediastinger_back_width: Optional[int] = Query(None),
+    mediastinger_back_height: Optional[int] = Query(None),
     anime_tag: Optional[str] = Query(None),
     network: Optional[str] = Query(None),
     multi_ratings: Optional[str] = Query(None),
@@ -20521,6 +20527,14 @@ def preview_dynamic_overlay(
         subtitle_languages = _clean_str(subtitle_languages)
         studio = _clean_str(studio)
         streaming = _clean_str(streaming)
+        ribbon_explicit = ribbon is not None
+        mediastinger_explicit = mediastinger is not None
+        ribbon = _clean_str(ribbon)
+        ribbon_style = _clean_str(ribbon_style)
+        mediastinger = _clean_str(mediastinger)
+        mediastinger_back_color = _clean_str(mediastinger_back_color)
+        mediastinger_back_width = _clean_int(mediastinger_back_width)
+        mediastinger_back_height = _clean_int(mediastinger_back_height)
         anime_tag = _clean_str(anime_tag)
         network = _clean_str(network)
         multi_ratings = _clean_str(multi_ratings)
@@ -20594,14 +20608,23 @@ def preview_dynamic_overlay(
                 placements[key] = {"x": offset_x or 0, "y": offset_y or 0,
                                    "align": align or "left", "valign": valign or "top", "font_size": font_size}
         extra_layout = json.loads(supplemental_layout or "{}")
-        for key, value in (("subtitle_languages", subtitle_languages), ("aspect", aspect_ratio), ("studio", studio), ("streaming", streaming)):
+        for key, value, def_x, def_y, def_align, def_valign in (
+            ("subtitle_languages", subtitle_languages, 0, 0, "center", "bottom"),
+            ("aspect", aspect_ratio, 0, 0, "center", "bottom"),
+            ("studio", studio, 0, 0, "center", "bottom"),
+            ("streaming", streaming, 0, 0, "center", "bottom"),
+            ("ribbon", ribbon, 0, 0, "right", "bottom"),
+            ("mediastinger", mediastinger, 15, 15, "right", "top"),
+        ):
             if value:
                 position = extra_layout.get(key) or {}
+                px = _clean_int(position.get("x"))
+                py = _clean_int(position.get("y"))
                 placements[key] = {
-                    "x": _clean_int(position.get("x")) or 0,
-                    "y": _clean_int(position.get("y")) or 0,
-                    "align": position.get("align") if position.get("align") in ("left", "center", "right") else "center",
-                    "valign": position.get("valign") if position.get("valign") in ("top", "center", "bottom") else "bottom",
+                    "x": px if px is not None else def_x,
+                    "y": py if py is not None else def_y,
+                    "align": position.get("align") if position.get("align") in ("left", "center", "right") else def_align,
+                    "valign": position.get("valign") if position.get("valign") in ("top", "center", "bottom") else def_valign,
                 }
         for key, font_name in (("rating", rating_font), ("status", status_font), ("runtime", runtime_font),
                                ("languages", languages_font), ("age_rating", age_rating_font)):
@@ -20637,6 +20660,12 @@ def preview_dynamic_overlay(
             "resolution_back_width": resolution_back_width, "resolution_back_height": resolution_back_height,
             "audio_codec_style": audio_codec_style,
             "streaming": streaming, "streaming_options": json.loads(streaming_options or "{}"),
+            "ribbon_style": ribbon_style,
+            "mediastinger_back_color": mediastinger_back_color,
+            "mediastinger_back_width": mediastinger_back_width,
+            "mediastinger_back_height": mediastinger_back_height,
+            **({"ribbon": ribbon or ""} if ribbon_explicit else {}),
+            **({"mediastinger": mediastinger or ""} if mediastinger_explicit else {}),
         }, placements, library_rules, get_overlays_dir(), build_overlay_layers_for_item,
             animetafill_config=get_animetafill_config())
 

@@ -266,32 +266,41 @@ const AssetPreviewLegend = ({ config, template, showAssetGuides, guideMode, snap
 
 const DEFAULT_OVERLAY_PRESETS = [
   // User's core favorites
-  { id: "runtimes", label: "Media Runtime", desc: "Duration badge (e.g. 124 min) - Recommended for Titlecards / Movies", level: "episode", category: "Core Overlays" },
-  { id: "languages", label: "Audio Languages", desc: "Flags/badges for available audio tracks (DE, EN, JA, etc.) - Recommended for Titlecards / Movies", level: "episode", category: "Core Overlays" },
-  { id: "aspect", label: "Aspect Ratio", desc: "Video display ratio (1.33, 1.78, 2.35, etc.)", level: "movie", category: "Quality & Codecs" },
-  { id: "ratings", label: "Audience / Critic Rating", desc: "IMDb / Rotten Tomatoes / TMDB / Metacritic score badges", level: "movie", category: "Core Overlays" },
+  { id: "runtimes", label: "Media Runtime", desc: "Duration badge (e.g. 124 min) - Recommended for Titlecards / Movies", level: "library_media", category: "Core Overlays" },
+  { id: "languages", label: "Audio Languages", desc: "Flags/badges for available audio tracks (DE, EN, JA, etc.) - Recommended for Titlecards / Movies", level: "library_media", category: "Core Overlays" },
+  { id: "aspect", label: "Aspect Ratio", desc: "Video display ratio (1.33, 1.78, 2.35, etc.)", level: "library", category: "Quality & Codecs" },
+  { id: "ratings", label: "Audience / Critic Rating", desc: "IMDb / Rotten Tomatoes / TMDB / Metacritic score badges", level: "library", category: "Core Overlays" },
   { id: "network", label: "Network Logo", desc: "TV network logos on season posters (HBO, Netflix, Apple TV+, etc.)", level: "season", category: "Core Overlays" },
   { id: "status", label: "Series Status", desc: "Airing, Returning, Ended, Canceled banner for TV series", level: "show", category: "Core Overlays" },
-  { id: "commonsense", label: "Common Sense Media", desc: "Age rating badge (e.g. 10+, 14+, 18+)", level: "movie", category: "Core Overlays" },
-  { id: "resolution", label: "Quality / Resolution Ribbon", desc: "4K, 1080p, HDR badges (used in overlays_movies.yml / overlays_tv.yml)", level: "movie", category: "Quality & Codecs" },
-  { id: "ribbon", label: "Corner Ribbon", desc: "Corner ribbons for 4K UHD, Remux, HDR10+", level: "movie", category: "Quality & Codecs" },
-  { id: "audio_codec", label: "Audio Codec", desc: "Dolby Atmos, TrueHD, DTS:X, DTS-HD MA, EAC3 badges", level: "movie", category: "Quality & Codecs" },
-  { id: "video_format", label: "Video Source", desc: "WEB, Blu-ray, Remux, HDTV, DVD from the media filename", level: "movie", category: "Quality & Codecs" },
-  { id: "streaming", label: "Streaming Service", desc: "Platform badges (Netflix, Prime, Disney+, Apple TV+, Paramount+)", level: "show", category: "Branding" },
-  { id: "studio", label: "Movie Studio", desc: "Studio logo overlays (Universal, Warner Bros, 20th Century, etc.)", level: "movie", category: "Branding" },
+  { id: "commonsense", label: "Common Sense Media", desc: "Age rating badge (e.g. 10+, 14+, 18+)", level: "library", category: "Core Overlays" },
+  { id: "resolution", label: "Quality / Resolution Ribbon", desc: "4K, 1080p, HDR badges (used in overlays_movies.yml / overlays_tv.yml)", level: "library", category: "Quality & Codecs" },
+  { id: "ribbon", label: "Award / Chart Ribbon", desc: "Corner ribbons for awards & charts (Oscars, Emmys, Golden Globes, IMDb Top 250, Rotten Tomatoes, Metacritic)", level: "library", category: "Core Overlays" },
+  { id: "audio_codec", label: "Audio Codec", desc: "Dolby Atmos, TrueHD, DTS:X, DTS-HD MA, EAC3 badges", level: "library", category: "Quality & Codecs" },
+  { id: "video_format", label: "Video Source", desc: "WEB, Blu-ray, Remux, HDTV, DVD from the media filename", level: "library", category: "Quality & Codecs" },
+  { id: "streaming", label: "Streaming Service", desc: "Platform badges (Netflix, Prime, Disney+, Apple TV+, Paramount+)", level: "library", category: "Branding" },
+  { id: "studio", label: "Movie Studio", desc: "Studio logo overlays (Universal, Warner Bros, 20th Century, etc.)", level: "library", category: "Branding" },
   { id: "content_rating_us_movie", label: "US Content Rating (Movie)", desc: "MPAA age rating (G, PG, PG-13, R, NC-17)", level: "movie", category: "Content Ratings" },
   { id: "content_rating_us_show", label: "US Content Rating (TV)", desc: "TV Parental Guidelines (TV-MA, TV-14, TV-PG)", level: "show", category: "Content Ratings" },
-  { id: "content_rating_de", label: "German FSK Rating", desc: "FSK 0, 6, 12, 16, 18 badges", level: "movie", category: "Content Ratings" },
-  { id: "content_rating_au", label: "Australian Content Rating", desc: "Australian classification badges", level: "movie", category: "Content Ratings" },
-  { id: "content_rating_nz", label: "New Zealand Content Rating", desc: "New Zealand classification badges", level: "movie", category: "Content Ratings" },
-  { id: "content_rating_uk", label: "UK Content Rating", desc: "BBFC classification badges", level: "movie", category: "Content Ratings" },
+  { id: "content_rating_de", label: "German FSK Rating", desc: "FSK 0, 6, 12, 16, 18 badges", level: "library", category: "Content Ratings" },
+  { id: "content_rating_au", label: "Australian Content Rating", desc: "Australian classification badges", level: "library", category: "Content Ratings" },
+  { id: "content_rating_nz", label: "New Zealand Content Rating", desc: "New Zealand classification badges", level: "library", category: "Content Ratings" },
+  { id: "content_rating_uk", label: "UK Content Rating", desc: "BBFC classification badges", level: "library", category: "Content Ratings" },
   { id: "direct_play", label: "Direct Play", desc: "Direct-play compatibility overlay", level: "all", category: "Core Overlays" },
   { id: "episode_info", label: "Episode Info", desc: "Episode information overlay", level: "episode", category: "Core Overlays" },
   { id: "language_count", label: "Language Count", desc: "Count of available audio languages", level: "all", category: "Core Overlays" },
-  { id: "mediastinger", label: "Media Stinger", desc: "Media stinger indicator", level: "all", category: "Core Overlays" },
+  { id: "mediastinger", label: "Media Stinger", desc: "Post-credits scene indicator via TMDb keywords (Movies only)", level: "movie", category: "Core Overlays" },
   { id: "templates", label: "Templates", desc: "Kometa overlay template definitions", level: "all", category: "Core Overlays" },
-  { id: "versions", label: "Versions", desc: "Media version badges", level: "movie", category: "Core Overlays" },
+  { id: "versions", label: "Versions", desc: "Media version badges", level: "library", category: "Core Overlays" },
 ];
+
+function resolvePresetBuilderLevel(presetId, libraryMediaType = "movie") {
+  const preset = DEFAULT_OVERLAY_PRESETS.find((p) => p.id === presetId);
+  const isShow = libraryMediaType === "show";
+  if (!preset?.level) return isShow ? "show" : "movie";
+  if (preset.level === "library_media") return isShow ? "episode" : "movie";
+  if (preset.level === "library") return isShow ? "show" : "movie";
+  return preset.level;
+}
 
 const ASSET_OVERRIDE_DEFAULTS = [
   { value: "resolution", label: "Resolution" },
@@ -918,6 +927,9 @@ export default function DynamicOverlays() {
   const [previewAspect, setPreviewAspect] = useState("");
   const [previewStudio, setPreviewStudio] = useState("");
   const [previewStreaming, setPreviewStreaming] = useState("");
+  const [previewRibbon, setPreviewRibbon] = useState("");
+  const [previewRibbonStyle, setPreviewRibbonStyle] = useState("yellow");
+  const [previewMediastinger, setPreviewMediastinger] = useState(false);
   const [previewNetwork, setPreviewNetwork] = useState("");
   const [previewAnimeTag, setPreviewAnimeTag] = useState("");
   const [previewAgeRating, setPreviewAgeRating] = useState("15+");
@@ -988,6 +1000,8 @@ export default function DynamicOverlays() {
     aspect: { x: 0, y: 150, align: "center", valign: "bottom" },
     studio: { x: 30, y: 150, align: "right", valign: "top" },
     streaming: { x: 30, y: 250, align: "left", valign: "bottom" },
+    ribbon: { x: 0, y: 0, align: "right", valign: "bottom" },
+    mediastinger: { x: 15, y: 15, align: "right", valign: "top" },
     network: { x: 25, y: 25, align: "right", valign: "top" },
     anime: { x: 20, y: 20, align: "left", valign: "top", font_size: "", font: "" },
     age_rating: { x: 255, y: 37, align: "left", valign: "bottom", font_size: "", font: "" },
@@ -1004,6 +1018,8 @@ export default function DynamicOverlays() {
     aspect: { x: 0, y: 100, align: "center", valign: "bottom" },
     studio: { x: 30, y: 100, align: "right", valign: "top" },
     streaming: { x: 30, y: 150, align: "left", valign: "bottom" },
+    ribbon: { x: 0, y: 0, align: "right", valign: "bottom" },
+    mediastinger: { x: 15, y: 15, align: "right", valign: "top" },
     network: { x: 25, y: 25, align: "right", valign: "top" },
     anime: { x: 20, y: 20, align: "left", valign: "top" },
     age_rating: { x: 110, y: 30, align: "left", valign: "bottom" },
@@ -1098,6 +1114,12 @@ export default function DynamicOverlays() {
 
     return list;
   }, [serverConfig, t]);
+
+  const getLibraryMediaType = (libName) => {
+    const explicit = visualConfig?.libraries?.[libName]?.media_type || scanData?.libraries?.[libName]?.media_type;
+    if (explicit === "show" || explicit === "movie") return explicit;
+    return /tv|show|serie/i.test(libName || "") ? "show" : "movie";
+  };
 
   // Dynamically compute user-configured libraries from visual studio and scanned rules
   const configuredLibraries = useMemo(() => {
@@ -1758,7 +1780,9 @@ export default function DynamicOverlays() {
       anime: { w: 240, h: 80 },
       age_rating: { w: 120, h: 48 },
       audio_codec: { w: 140, h: 42 },
-      video_format: { w: 120, h: 36 }
+      video_format: { w: 120, h: 36 },
+      ribbon: { w: 300, h: 300 },
+      mediastinger: { w: 105, h: 105 }
     },
     landscape: {
       resolution: { w: 240, h: 80 },
@@ -1770,7 +1794,9 @@ export default function DynamicOverlays() {
       anime: { w: 280, h: 90 },
       age_rating: { w: 140, h: 55 },
       audio_codec: { w: 160, h: 48 },
-      video_format: { w: 140, h: 40 }
+      video_format: { w: 140, h: 40 },
+      ribbon: { w: 220, h: 220 },
+      mediastinger: { w: 105, h: 105 }
     }
   };
 
@@ -1868,6 +1894,8 @@ export default function DynamicOverlays() {
     aspect: "Aspect Ratio",
     studio: "Studio Logo",
     streaming: "Streaming Services",
+    ribbon: "Award / Chart Ribbon",
+    mediastinger: "Media Stinger",
     network: "Network Logo",
     anime: "Anime Tag",
     status: "Show Status",
@@ -1893,6 +1921,8 @@ export default function DynamicOverlays() {
     if (previewAspect) list.push("aspect");
     if (previewStudio) list.push("studio");
     if (previewStreaming) list.push("streaming");
+    if (previewRibbon) list.push("ribbon");
+    if (previewMediastinger && !["show_poster", "season_poster", "episode_card", "titlecard"].includes(previewTemplate)) list.push("mediastinger");
     if (previewNetwork && previewNetwork !== "Off") list.push("network");
     if (previewAnimeTag && previewAnimeTag !== "Off" && isLandscapeFormat(previewTemplate)) list.push("anime");
     if (previewStatus) list.push("status");
@@ -3421,6 +3451,8 @@ export default function DynamicOverlays() {
       if (data.success) {
         showToast(`Removed overlay from ${libraryName}.`, "success");
         if (data.scan) setScanData(data.scan);
+        await fetchVisualConfig();
+        setPreviewTimestamp(Date.now());
       } else {
         showToast(data.error || "Failed to remove overlay", "error");
       }
@@ -3529,6 +3561,8 @@ export default function DynamicOverlays() {
         showToast(`Added ${newOverlayName} to ${addOverlayModal.libraryName}!`, "success");
         setAddOverlayModal(null);
         if (data.scan) setScanData(data.scan);
+        await fetchVisualConfig();
+        setPreviewTimestamp(Date.now());
       } else {
         showToast(data.error || "Failed to add overlay", "error");
       }
@@ -4275,6 +4309,27 @@ export default function DynamicOverlays() {
           ...(key === "streaming" ? previewStreamingOptions : {})
         };
       }
+      if (previewRibbon) {
+        layoutPayload.ribbon = {
+          horizontal_offset: offsets.ribbon?.x ?? 0,
+          vertical_offset: offsets.ribbon?.y ?? 0,
+          horizontal_align: offsets.ribbon?.align || "right",
+          vertical_align: offsets.ribbon?.valign || "bottom",
+          style: previewRibbonStyle || "yellow"
+        };
+      }
+      if (previewMediastinger && !["show_poster", "season_poster", "episode_card", "titlecard"].includes(previewTemplate)) {
+        const stingerBadge = curBadgesForSave?.mediastinger;
+        layoutPayload.mediastinger = {
+          horizontal_offset: offsets.mediastinger?.x ?? 15,
+          vertical_offset: offsets.mediastinger?.y ?? 15,
+          horizontal_align: offsets.mediastinger?.align || "right",
+          vertical_align: offsets.mediastinger?.valign || "top",
+          ...(stingerBadge?.back_color ? { back_color: stingerBadge.back_color } : {}),
+          ...(stingerBadge?.back_width ? { back_width: Number(stingerBadge.back_width) } : {}),
+          ...(stingerBadge?.back_height ? { back_height: Number(stingerBadge.back_height) } : {})
+        };
+      }
       if (previewNetwork && previewNetwork !== "Off") {
         layoutPayload.network = {
           horizontal_offset: offsets.network?.x ?? 25,
@@ -4453,6 +4508,8 @@ export default function DynamicOverlays() {
       setPreviewAspect("");
       setPreviewStudio("");
       setPreviewStreaming("");
+      setPreviewRibbon("");
+      setPreviewMediastinger(false);
       setPreviewRuntime("");
       setPreviewRating("");
       setPreviewAgeRating("Off");
@@ -4596,6 +4653,34 @@ export default function DynamicOverlays() {
         };
       }
     }
+
+    const ribbonBadge = badges.ribbon;
+    setPreviewRibbonStyle(ribbonBadge?.style || "yellow");
+    if (ribbonBadge?.enabled) {
+      const p = parsePos(ribbonBadge.position, "right", "bottom");
+      nextOffsets.ribbon = {
+        x: ribbonBadge.offset_x ?? 0,
+        y: ribbonBadge.offset_y ?? 0,
+        align: p.align,
+        valign: p.valign
+      };
+      setPreviewRibbon("imdb");
+    } else {
+      setPreviewRibbon("");
+    }
+
+    const stingerBadge = badges.mediastinger;
+    const showStinger = Boolean(!isTv && stingerBadge?.enabled);
+    if (showStinger) {
+      const p = parsePos(stingerBadge.position, "right", "top");
+      nextOffsets.mediastinger = {
+        x: stingerBadge.offset_x ?? 15,
+        y: stingerBadge.offset_y ?? 15,
+        align: p.align,
+        valign: p.valign
+      };
+    }
+    setPreviewMediastinger(showStinger);
 
     // 4. RUNTIME DURATION
     const shouldShowRuntime = Boolean(badges.runtime?.enabled);
@@ -4854,6 +4939,8 @@ export default function DynamicOverlays() {
 
   const selectedScoreBadge = visualConfig?.libraries?.[selectedSaveLibrary || selectedVisualLib]?.badges?.critic_rating;
   const selectedStreamingBadge = visualConfig?.libraries?.[selectedSaveLibrary || selectedVisualLib]?.badges?.streaming;
+  const selectedRibbonBadge = visualConfig?.libraries?.[selectedSaveLibrary || selectedVisualLib]?.badges?.ribbon;
+  const selectedMediastingerBadge = visualConfig?.libraries?.[selectedSaveLibrary || selectedVisualLib]?.badges?.mediastinger;
   const previewStreamingOptions = {
     region: selectedStreamingBadge?.region || "US",
     availability_types: selectedStreamingBadge?.availability_types || ["flatrate"],
@@ -4893,9 +4980,14 @@ export default function DynamicOverlays() {
     `&runtime_prefix=${encodeURIComponent(previewRuntimePrefix)}&runtime_format=${encodeURIComponent(previewRuntimeFormat)}&language_labels=${previewLanguageLabels}&subtitle_labels=${previewSubtitleLabels}`,
     `&language_style=${encodeURIComponent(previewLanguageStyle)}&subtitle_style=${encodeURIComponent(previewSubtitleStyle)}`,
     `&streaming=${encodeURIComponent(previewStreaming)}&streaming_options=${encodeURIComponent(JSON.stringify(previewStreamingOptions))}`,
+    `&ribbon=${encodeURIComponent(previewRibbon || "off")}&ribbon_style=${encodeURIComponent(previewRibbonStyle || selectedRibbonBadge?.style || "yellow")}`,
+    `&mediastinger=${previewMediastinger ? "on" : "off"}`,
+    selectedMediastingerBadge?.back_color ? `&mediastinger_back_color=${encodeURIComponent(selectedMediastingerBadge.back_color)}` : "",
+    selectedMediastingerBadge?.back_width ? `&mediastinger_back_width=${encodeURIComponent(selectedMediastingerBadge.back_width)}` : "",
+    selectedMediastingerBadge?.back_height ? `&mediastinger_back_height=${encodeURIComponent(selectedMediastingerBadge.back_height)}` : "",
     `&rating_options=${encodeURIComponent(JSON.stringify(previewRatingOptions))}`,
     `&subtitle_languages=${encodeURIComponent(previewSubtitles)}&studio=${encodeURIComponent(previewStudio)}${previewAspect ? `&aspect_ratio=${encodeURIComponent(previewAspect)}` : ""}`,
-    `&supplemental_layout=${encodeURIComponent(JSON.stringify({ subtitle_languages: offsets.subtitle_languages, aspect: offsets.aspect, studio: offsets.studio, streaming: offsets.streaming }))}`,
+    `&supplemental_layout=${encodeURIComponent(JSON.stringify({ subtitle_languages: offsets.subtitle_languages, aspect: offsets.aspect, studio: offsets.studio, streaming: offsets.streaming, ribbon: offsets.ribbon, mediastinger: offsets.mediastinger }))}`,
     offsets.runtime?.font_size ? `&runtime_font_size=${offsets.runtime.font_size}` : (isLandscapeFormat(previewTemplate) ? `&runtime_font_size=52` : `&runtime_font_size=40`),
     offsets.runtime?.font ? `&runtime_font=${encodeURIComponent(offsets.runtime.font)}` : "",
     offsets.rating?.font_size ? `&rating_font_size=${offsets.rating.font_size}` : "",
@@ -6848,20 +6940,149 @@ export default function DynamicOverlays() {
 
             const renderSupplementalBadges = () => (
               <div className="space-y-4">
-                {[["subtitle_languages", "Subtitle Languages"], ["aspect", "Aspect Ratio"], ["studio", "Studio Logo"], ["streaming", "Streaming Services"]].map(([key, label]) => {
+                {[
+                  ["subtitle_languages", "Subtitle Languages"],
+                  ["aspect", "Aspect Ratio"],
+                  ["studio", "Studio Logo"],
+                  ["streaming", "Streaming Services"],
+                  ["ribbon", "Award / Chart Ribbon"],
+                  ...(!isTv ? [["mediastinger", "Media Stinger"]] : [])
+                ].map(([key, label]) => {
                   const badge = badges[key] || {};
+                  const defaultLevel = key === "subtitle_languages"
+                    ? (isTv ? "episode" : "movie")
+                    : (key === "mediastinger" ? "movie" : (isTv ? "show" : "movie"));
+                  const defaultPosition = key === "ribbon"
+                    ? "bottom-right"
+                    : (key === "mediastinger" ? "top-right" : "bottom-center");
+                  const defaultOffsetX = key === "ribbon" ? 0 : (key === "mediastinger" ? 15 : (key === "subtitle_languages" ? 48 : 0));
+                  const defaultOffsetY = key === "ribbon" ? 0 : (key === "mediastinger" ? 15 : (key === "subtitle_languages" ? 37 : 150));
+                  const levelOptions = key === "mediastinger" ? ["movie", "all"] : ["movie", "show", "season", "episode", "all"];
                   return (
                     <section key={key} className="border border-theme rounded-lg p-3 space-y-3">
                       <label className="flex items-center justify-between gap-3 text-xs font-semibold text-theme-text">
                         {label}
-                        <input type="checkbox" checked={Boolean(badge.enabled)} onChange={(event) => updateBadge(key, { enabled: event.target.checked })} />
+                        <input
+                          type="checkbox"
+                          checked={Boolean(badge.enabled)}
+                          onChange={(event) => {
+                            const checked = event.target.checked;
+                            if (checked && key === "ribbon") {
+                              updateBadge(key, {
+                                enabled: true,
+                                level: badge.level || defaultLevel,
+                                style: badge.style || "yellow",
+                                position: badge.position || defaultPosition,
+                                offset_x: badge.offset_x ?? defaultOffsetX,
+                                offset_y: badge.offset_y ?? defaultOffsetY
+                              });
+                            } else if (checked && key === "mediastinger") {
+                              updateBadge(key, {
+                                enabled: true,
+                                level: badge.level || defaultLevel,
+                                position: badge.position || defaultPosition,
+                                offset_x: badge.offset_x ?? defaultOffsetX,
+                                offset_y: badge.offset_y ?? defaultOffsetY,
+                                back_color: badge.back_color ?? "#00000099",
+                                back_width: badge.back_width ?? 105,
+                                back_height: badge.back_height ?? 105
+                              });
+                            } else {
+                              updateBadge(key, { enabled: checked });
+                            }
+                          }}
+                        />
                       </label>
                       {badge.enabled && <>
-                        <select aria-label={`${label} target`} value={badge.level || (isTv ? "episode" : "movie")} onChange={(event) => updateBadge(key, { level: event.target.value })} className="w-full bg-theme-hover border border-theme rounded-lg p-2 text-xs text-theme-text">
-                          {["movie", "show", "season", "episode", "all"].map(level => <option key={level} value={level}>{level}</option>)}
+                        <select aria-label={`${label} target`} value={badge.level || defaultLevel} onChange={(event) => updateBadge(key, { level: event.target.value })} className="w-full bg-theme-hover border border-theme rounded-lg p-2 text-xs text-theme-text">
+                          {levelOptions.map(level => <option key={level} value={level}>{level}</option>)}
                         </select>
                         {key === "subtitle_languages" && <input aria-label="Subtitle language codes" value={(badge.languages || ["de", "en"]).join(", ")} onChange={(event) => updateBadge(key, { languages: event.target.value.split(",").map(code => code.trim()).filter(Boolean) })} className="w-full bg-theme-hover border border-theme rounded-lg p-2 text-xs text-theme-text" />}
                         {key === "subtitle_languages" && <label className="flex items-center gap-2 text-xs text-theme-text"><input type="checkbox" checked={Boolean(badge.show_labels)} onChange={event => updateBadge(key, { show_labels: event.target.checked })} />Show Language Codes</label>}
+                        {key === "ribbon" && (
+                          <div className="space-y-2">
+                            <label className="text-xs text-theme-muted block">
+                              Ribbon Style
+                              <select
+                                aria-label="Ribbon style"
+                                value={badge.style || "yellow"}
+                                onChange={(event) => updateBadge(key, { style: event.target.value })}
+                                className="mt-1 w-full bg-theme-hover border border-theme rounded-lg p-2 text-xs text-theme-text"
+                              >
+                                <option value="yellow">Yellow (Default)</option>
+                                <option value="red">Red</option>
+                                <option value="black">Black</option>
+                                <option value="gray">Gray</option>
+                              </select>
+                            </label>
+                            <p className="text-[11px] text-theme-muted">
+                              Highlights winners &amp; top lists (Oscars, Emmys, Golden Globes, IMDb Top 250, Rotten Tomatoes, Metacritic).
+                            </p>
+                          </div>
+                        )}
+                        {key === "mediastinger" && (
+                          <div className="space-y-2">
+                            <div className="space-y-1">
+                              <label className="text-xs text-theme-muted block">
+                                Background Color
+                                <input
+                                  aria-label="Media Stinger background color"
+                                  type="text"
+                                  value={badge.back_color ?? "#00000099"}
+                                  onChange={(event) => updateBadge(key, { back_color: event.target.value })}
+                                  className="mt-1 w-full bg-theme-hover border border-theme rounded-lg p-2 text-xs text-theme-text font-mono"
+                                />
+                              </label>
+                              <div className="flex flex-wrap gap-1">
+                                {[
+                                  { label: "Dark Glass", val: "#00000099" },
+                                  { label: "Solid Dark", val: "#000000E6" },
+                                  { label: "Transparent", val: "#00000000" }
+                                ].map((preset) => (
+                                  <button
+                                    key={preset.val}
+                                    type="button"
+                                    onClick={() => updateBadge(key, { back_color: preset.val })}
+                                    className={`px-2 py-0.5 rounded text-[10px] font-semibold border ${
+                                      String(badge.back_color ?? "#00000099").toLowerCase() === preset.val.toLowerCase()
+                                        ? "bg-theme-primary text-white border-theme-primary"
+                                        : "bg-theme-hover border-theme text-theme-muted hover:text-theme-text"
+                                    }`}
+                                  >
+                                    {preset.label}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-2">
+                              <label className="text-xs text-theme-muted">
+                                Width (px)
+                                <input
+                                  aria-label="Media Stinger width"
+                                  type="number"
+                                  min="1"
+                                  value={badge.back_width ?? 105}
+                                  onChange={(event) => updateBadge(key, { back_width: Number(event.target.value) })}
+                                  className="mt-1 w-full bg-theme-hover border border-theme rounded-lg p-2 text-xs text-theme-text font-mono"
+                                />
+                              </label>
+                              <label className="text-xs text-theme-muted">
+                                Height (px)
+                                <input
+                                  aria-label="Media Stinger height"
+                                  type="number"
+                                  min="1"
+                                  value={badge.back_height ?? 105}
+                                  onChange={(event) => updateBadge(key, { back_height: Number(event.target.value) })}
+                                  className="mt-1 w-full bg-theme-hover border border-theme rounded-lg p-2 text-xs text-theme-text font-mono"
+                                />
+                              </label>
+                            </div>
+                            <p className="text-[11px] text-theme-muted">
+                              Shown when TMDb keywords include <span className="font-mono">aftercreditsstinger</span> or <span className="font-mono">duringcreditsstinger</span> (Movies only).
+                            </p>
+                          </div>
+                        )}
                         {key === "streaming" && <>
                           <label className="text-xs text-theme-muted">Country
                             <input aria-label="Streaming country code" maxLength={2} value={badge.region || "US"} onChange={event => updateBadge(key, { region: event.target.value.toUpperCase() })} className="mt-1 w-full bg-theme-hover border border-theme rounded-lg p-2 text-xs text-theme-text" />
@@ -6879,9 +7100,9 @@ export default function DynamicOverlays() {
                           </div>
                           <a href="https://www.justwatch.com/" target="_blank" rel="noreferrer" className="text-xs text-theme-muted underline">Availability: TMDb / JustWatch</a>
                         </>}
-                        <PositionPicker value={badge.position || "bottom-center"} onChange={position => updateBadge(key, { position })} />
+                        <PositionPicker value={badge.position || defaultPosition} onChange={position => updateBadge(key, { position })} />
                         <div className="grid grid-cols-2 gap-2">
-                          {["x", "y"].map(axis => <label key={axis} className="text-xs text-theme-muted">{axis.toUpperCase()}<input type="number" value={badge[`offset_${axis}`] ?? (axis === "y" ? 150 : 0)} onChange={event => updateBadge(key, { [`offset_${axis}`]: Number(event.target.value) })} className="w-full bg-theme-hover border border-theme rounded-lg p-2 text-theme-text" /></label>)}
+                          {["x", "y"].map(axis => <label key={axis} className="text-xs text-theme-muted">{axis.toUpperCase()}<input type="number" value={badge[`offset_${axis}`] ?? (axis === "x" ? defaultOffsetX : defaultOffsetY)} onChange={event => updateBadge(key, { [`offset_${axis}`]: Number(event.target.value) })} className="w-full bg-theme-hover border border-theme rounded-lg p-2 text-theme-text" /></label>)}
                         </div>
                       </>}
                     </section>
@@ -8771,7 +8992,7 @@ export default function DynamicOverlays() {
                         setAddOverlayModal({ libraryName: libName });
                         setNewOverlayType("default");
                         setNewOverlayName("runtimes");
-                        setNewOverlayLevel("episode");
+                        setNewOverlayLevel(resolvePresetBuilderLevel("runtimes", getLibraryMediaType(libName)));
                       }}
                       className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-theme-card hover:bg-theme-hover border border-theme hover:border-theme-primary/50 text-theme-text text-xs font-medium transition-all shadow-sm"
                     >
@@ -9611,6 +9832,99 @@ export default function DynamicOverlays() {
                   {value && <BadgeOffsetControls itemKey={key} offset={offsets[key]} onChange={handleOffsetChange} fonts={availableFonts} />}
                 </div>
               ))}
+
+              {/* Award / Chart Ribbon Preview */}
+              <div hidden={!isPreviewControlConfigured("ribbon")} className="space-y-2 border border-theme rounded-lg p-3">
+                <label className="flex items-center justify-between gap-2 text-xs font-semibold text-theme-text" htmlFor="enable-preview-ribbon">
+                  Award / Chart Ribbon
+                  <input
+                    id="enable-preview-ribbon"
+                    type="checkbox"
+                    checked={Boolean(previewRibbon)}
+                    onChange={(event) => {
+                      setPreviewRibbon(event.target.checked ? "imdb" : "");
+                      setPreviewTimestamp(Date.now());
+                    }}
+                  />
+                </label>
+                {previewRibbon && (
+                  <>
+                    <div className="grid grid-cols-2 gap-2">
+                      <select
+                        aria-label="Sample ribbon"
+                        value={previewRibbon}
+                        onChange={(event) => {
+                          setPreviewRibbon(event.target.value);
+                          setPreviewTimestamp(Date.now());
+                        }}
+                        className="bg-theme-hover border border-theme rounded-lg p-2 text-xs text-theme-text"
+                      >
+                        <option value="imdb">IMDb Top 250</option>
+                        <option value="emmys">Emmys Winner</option>
+                        <option value="golden">Golden Globe Winner</option>
+                        <option value="rotten">RT Certified Fresh</option>
+                        <option value="metacritic">Metacritic Must See</option>
+                        <option value="common">Common Sense Selection</option>
+                        {!["show_poster", "season_poster", "episode_card", "titlecard"].includes(previewTemplate) && (
+                          <>
+                            <option value="oscars">Oscars Best Picture</option>
+                            <option value="oscars_director">Oscars Best Director</option>
+                            <option value="golden_director">Golden Globe Director</option>
+                            <option value="bafta">BAFTA Winners</option>
+                            <option value="cannes">Cannes Winners</option>
+                            <option value="berlinale">Berlinale Winners</option>
+                            <option value="venice">Venice Winners</option>
+                            <option value="sundance">Sundance Winners</option>
+                            <option value="choice">Critics Choice</option>
+                            <option value="spirit">Spirit Winners</option>
+                            <option value="cesar">Cesar Winners</option>
+                            <option value="letterboxd">Letterboxd Top 500</option>
+                            <option value="rottenverified">RT Verified Hot</option>
+                            <option value="razzie">Razzies Winner</option>
+                          </>
+                        )}
+                      </select>
+                      <select
+                        aria-label="Preview ribbon style"
+                        value={previewRibbonStyle}
+                        onChange={(event) => {
+                          setPreviewRibbonStyle(event.target.value);
+                          setPreviewTimestamp(Date.now());
+                        }}
+                        className="bg-theme-hover border border-theme rounded-lg p-2 text-xs text-theme-text"
+                      >
+                        <option value="yellow">Yellow</option>
+                        <option value="red">Red</option>
+                        <option value="black">Black</option>
+                        <option value="gray">Gray</option>
+                      </select>
+                    </div>
+                    <BadgeOffsetControls itemKey="ribbon" offset={offsets.ribbon} onChange={handleOffsetChange} fonts={availableFonts} />
+                  </>
+                )}
+              </div>
+
+              {/* Media Stinger Preview (Movies only) */}
+              <div
+                hidden={["show_poster", "season_poster", "episode_card", "titlecard"].includes(previewTemplate) || !isPreviewControlConfigured("mediastinger")}
+                className="space-y-2 border border-theme rounded-lg p-3"
+              >
+                <label className="flex items-center justify-between gap-2 text-xs font-semibold text-theme-text" htmlFor="enable-preview-mediastinger">
+                  Media Stinger
+                  <input
+                    id="enable-preview-mediastinger"
+                    type="checkbox"
+                    checked={Boolean(previewMediastinger)}
+                    onChange={(event) => {
+                      setPreviewMediastinger(event.target.checked);
+                      setPreviewTimestamp(Date.now());
+                    }}
+                  />
+                </label>
+                {previewMediastinger && (
+                  <BadgeOffsetControls itemKey="mediastinger" offset={offsets.mediastinger} onChange={handleOffsetChange} fonts={availableFonts} />
+                )}
+              </div>
 
               {/* Runtime Duration */}
               <div hidden={!isPreviewControlConfigured("runtime")} className="space-y-2 p-3.5 rounded-xl bg-theme-hover/20 border border-theme">
@@ -12735,7 +13049,11 @@ export default function DynamicOverlays() {
               <div className="grid grid-cols-3 gap-2">
                 <button
                   type="button"
-                  onClick={() => { setNewOverlayType("default"); setNewOverlayName("network"); }}
+                  onClick={() => {
+                    setNewOverlayType("default");
+                    setNewOverlayName("network");
+                    setNewOverlayLevel(resolvePresetBuilderLevel("network", getLibraryMediaType(addOverlayModal?.libraryName)));
+                  }}
                   className={`py-2 px-2 rounded-xl text-xs font-semibold border transition-colors ${
                     newOverlayType === "default" ? "bg-theme-primary text-white border-theme-primary" : "bg-theme-hover border-theme text-theme-muted hover:text-theme-text"
                   }`}
@@ -12775,8 +13093,7 @@ export default function DynamicOverlays() {
                   value={newOverlayName}
                   onChange={(e) => {
                     setNewOverlayName(e.target.value);
-                    const preset = DEFAULT_OVERLAY_PRESETS.find(p => p.id === e.target.value);
-                    if (preset?.level) setNewOverlayLevel(preset.level);
+                    setNewOverlayLevel(resolvePresetBuilderLevel(e.target.value, getLibraryMediaType(addOverlayModal?.libraryName)));
                   }}
                   className="w-full bg-theme-hover border border-theme rounded-xl px-3 py-2 text-xs text-theme-text font-medium"
                 >
@@ -13066,6 +13383,7 @@ export default function DynamicOverlays() {
                 <option value="episode">Episode Titlecards (e.g. for Languages, Runtime, Anime)</option>
                 <option value="movie">Movie Posters (e.g. for 4K banners, Ratings)</option>
                 <option value="show">Show Posters (e.g. for Status banners)</option>
+                <option value="all">All Item Levels</option>
                 <option value="">Default / Inherit</option>
               </select>
             </div>

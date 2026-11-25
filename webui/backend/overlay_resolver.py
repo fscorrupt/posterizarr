@@ -2662,6 +2662,8 @@ class OverlayResolver:
                     )
                     if key_lower in ("languages", "subtitle_languages") and rule_name in ("languages", "subtitle_languages"):
                         is_match = key_lower == rule_name
+                    if key_lower in ("ribbon", "mediastinger") or rule_name in ("ribbon", "mediastinger"):
+                        is_match = key_lower == rule_name
                     if is_match:
                         matched_entries.append((key, coords))
                         matched_keys.add(key)
@@ -2924,6 +2926,9 @@ class OverlayResolver:
                         "subtitle_languages": "subtitle_languages",
                         "aspect": "aspect",
                         "studio": "studio",
+                        "streaming": "streaming",
+                        "ribbon": "ribbon",
+                        "mediastinger": "mediastinger",
                         "runtimes": "runtime",
                         "runtime": "runtime",
                         "status": "status",
@@ -2941,6 +2946,10 @@ class OverlayResolver:
                     }
                     for l_key, l_coords in layout_updates.items():
                         target_badge = badge_map.get(l_key.lower())
+                        if target_badge and target_badge not in b and target_badge in (
+                            "ribbon", "mediastinger", "streaming", "aspect", "studio", "subtitle_languages"
+                        ):
+                            b[target_badge] = {"enabled": True}
                         if target_badge and target_badge in b and isinstance(l_coords, dict):
                             if "horizontal_offset" in l_coords:
                                 b[target_badge]["offset_x"] = int(l_coords["horizontal_offset"])
@@ -2952,6 +2961,17 @@ class OverlayResolver:
                                 b[target_badge]["font_size"] = int(l_coords["font_size"])
                             if "font" in l_coords:
                                 b[target_badge]["font"] = str(l_coords["font"])
+                            if l_key.lower() == "ribbon":
+                                r_style = str(l_coords.get("style") or "").strip().lower()
+                                if r_style in ("yellow", "red", "black", "gray"):
+                                    b[target_badge]["style"] = r_style
+                            if l_key.lower() == "mediastinger":
+                                if l_coords.get("back_color") is not None:
+                                    b[target_badge]["back_color"] = str(l_coords["back_color"])
+                                if l_coords.get("back_width") is not None:
+                                    b[target_badge]["back_width"] = int(l_coords["back_width"])
+                                if l_coords.get("back_height") is not None:
+                                    b[target_badge]["back_height"] = int(l_coords["back_height"])
                             if l_key.lower() == "resolution":
                                 if l_coords.get("mode") == "banner" or l_coords.get("banner_4k"):
                                     b[target_badge]["banner_4k"] = True

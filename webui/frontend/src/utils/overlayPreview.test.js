@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { getPreviewSpriteBounds, getPreviewSpriteOffset } from "./overlayPreview.js";
+import { getConfiguredPreviewBadges, getPreviewSpriteBounds, getPreviewSpriteOffset } from "./overlayPreview.js";
 
 const sprite = { key: "rating", left: 845, top: 1418, width: 125, height: 57,
   placement: { align: "right", valign: "bottom", x: 30, y: 25 } };
@@ -36,4 +36,33 @@ test("drag round trip preserves the invisible recipe padding without a release j
       assert.equal(bounds.top, 800);
     }
   }
+});
+
+test("getConfiguredPreviewBadges scopes ribbon and mediastinger per library and template", () => {
+  const showLib = {
+    media_type: "show",
+    badges: {
+      ribbon: { enabled: true, level: "show" },
+      mediastinger: { enabled: true, level: "all" },
+    },
+  };
+  const showPosterBadges = getConfiguredPreviewBadges(showLib, "show_poster");
+  assert.equal(showPosterBadges.ribbon.enabled, true);
+  assert.equal(showPosterBadges.mediastinger.enabled, false);
+
+  const misconfiguredShowBadges = getConfiguredPreviewBadges({
+    media_type: "show",
+    badges: { ribbon: { enabled: true, level: "movie" } },
+  }, "show_poster");
+  assert.equal(misconfiguredShowBadges.ribbon.enabled, false);
+
+  const moviePosterBadges = getConfiguredPreviewBadges({
+    media_type: "movie",
+    badges: {
+      ribbon: { enabled: true, level: "movie" },
+      mediastinger: { enabled: true, level: "movie" },
+    },
+  }, "movie_poster");
+  assert.equal(moviePosterBadges.ribbon.enabled, true);
+  assert.equal(moviePosterBadges.mediastinger.enabled, true);
 });

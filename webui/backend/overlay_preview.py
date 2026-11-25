@@ -123,6 +123,10 @@ def preview_layer_key(layer):
     path = str(layer.get("image_path") or "").lower().replace("\\", "/")
     if name.startswith("streaming_") or "/streaming/" in path:
         return "streaming"
+    if "mediastinger" in name or "mediastinger" in path:
+        return "mediastinger"
+    if "/ribbon/" in path or name.startswith("ribbon"):
+        return "ribbon"
     if name.startswith("subtitle_languages_"):
         return "subtitle_languages"
     if name.startswith("aspect_"):
@@ -202,6 +206,9 @@ def build_preview_layers(options, placements, library_rules, overlays_dir, build
         imdb_sample = f"{float(options.get('rating')):.1f}"
     except (TypeError, ValueError):
         imdb_sample = "8.4"
+    ribbon_opt = options.get("ribbon", "imdb")
+    ribbon_preview_key = str(ribbon_opt).strip().lower() if ribbon_opt else ""
+    mediastinger_enabled = options.get("mediastinger", True) not in ("", False, None) if "mediastinger" in options else True
     metadata = {
         "title": "Preview", "media_type": "episode" if episode else options.get("media_type") or ("show" if show else "movie"),
         "is_episode": episode, "is_season": season,
@@ -229,8 +236,8 @@ def build_preview_layers(options, placements, library_rules, overlays_dir, build
         "audio_codec": options.get("audio_codec"),
         "filepath": str(options.get("video_format") or ""),
         "anime_tag": options.get("anime_tag"),
-        "tmdb_keywords": ["aftercreditsstinger", "duringcreditsstinger"] if not show else [],
-        "_preview_ribbon_key": "imdb",
+        "tmdb_keywords": ["aftercreditsstinger", "duringcreditsstinger"] if (not show and mediastinger_enabled) else [],
+        "_preview_ribbon_key": ribbon_preview_key,
     }
     if options.get("streaming"):
         from overlay_sync_service import STREAMING_PROVIDER_BADGES
@@ -248,7 +255,7 @@ def build_preview_layers(options, placements, library_rules, overlays_dir, build
         "age_rating": options.get("age_rating_source") or "commonsense",
         "audio_codec": "audio_codec", "video_format": "video_format", "anime": "anime",
         "subtitle_languages": "languages", "aspect": "aspect", "studio": "studio",
-        "streaming": "streaming",
+        "streaming": "streaming", "ribbon": "ribbon", "mediastinger": "mediastinger",
     }
     rules = copy.deepcopy(library_rules) if library_rules is not None else [
         {"default": default, "template_variables": {"builder_level": "all", **({"use_subtitles": True} if key == "subtitle_languages" else {})}}
@@ -276,7 +283,7 @@ def build_preview_layers(options, placements, library_rules, overlays_dir, build
                 value = options.get("resolution_" + key)
                 if value is not None:
                     variables[key] = value
-    for key in ("subtitle_languages", "aspect", "studio", "streaming", "audio_codec"):
+    for key in ("subtitle_languages", "aspect", "studio", "streaming", "audio_codec", "ribbon", "mediastinger"):
         if key not in placements:
             continue
         matching = any(
@@ -327,6 +334,18 @@ def build_preview_layers(options, placements, library_rules, overlays_dir, build
         if isinstance(rule, dict) and str(rule.get("default", "")).lower() == "streaming":
             allowed_streaming_options = {"region", "availability_types", "style", "overlay_limit", "spacing", "orientation"}
             rule.setdefault("template_variables", {}).update({key: value for key, value in (options.get("streaming_options") or {}).items() if key in allowed_streaming_options})
+        if isinstance(rule, dict) and default_name == "ribbon":
+            if options.get("ribbon_style") in ("yellow", "red", "black", "gray"):
+                rule.setdefault("template_variables", {})["style"] = options["ribbon_style"]
+        if isinstance(rule, dict) and default_name == "mediastinger":
+            variables = rule.setdefault("template_variables", {})
+            for opt_key, var_key in (
+                ("mediastinger_back_color", "back_color"),
+                ("mediastinger_back_width", "back_width"),
+                ("mediastinger_back_height", "back_height"),
+            ):
+                if options.get(opt_key) is not None:
+                    variables[var_key] = options[opt_key]
     layers = builder(metadata, rules, Path(overlays_dir), is_landscape=landscape)
     if options.get("rating_mode") == "providers":
         layers = [
@@ -345,7 +364,8 @@ def build_preview_layers(options, placements, library_rules, overlays_dir, build
         layer = dict(original)
         key = preview_layer_key(layer)
         if key in defaults and key not in placements:
-            continue
+            if key not in ("ribbon", "mediastinger") or library_rules is None or key in options:
+                continue
         layer["preview_key"] = key
         placement = placements.get(key)
         if placement:
