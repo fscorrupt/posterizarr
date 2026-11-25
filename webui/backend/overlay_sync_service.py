@@ -50,6 +50,8 @@ from overlay_resolver import (
     language_base_code,
     get_item_language_tags,
     _language_target_matches,
+    REGIONAL_LANGUAGE_FLAGS,
+    LANGUAGE_DISPLAY_LABELS,
 )
 from ratings_service import resolve_media_ratings, resolve_season_ratings, build_multi_rating_layers, ratings_cache, RatingsProviderRunState
 from overlay_external_lists import resolve_tmdb_keywords, resolve_external_lists_for_library
@@ -447,6 +449,33 @@ def cached_episode_streams(entry, server_updated_at, filepath):
         return None
     return streams
 
+_FILEPATH_TECH_TOKEN_RE = re.compile(
+    r"(?<![a-z0-9])(?:"
+    r"2160p|1080p|720p|576p|480p|4k|uhd|fhd|sd|"
+    r"dolby[ ._-]?vision|dovi|dv|hdr10(?:\+|plus)?|hdr|hlg|sdr|"
+    r"truehd|atmos|dts[ ._-]?hd(?:[ ._-]?(?:ma|hra))?|hra|dts[ .:_-]?x|dts[ ._-]?es|dts|"
+    r"dd[p+][ ._-]?[2567]\.[01]|dolby[ ._-]?digital(?:[ ._-]?plus)?|"
+    r"e[ ._-]?ac3|eac3|ac3|dd\+|ddp|dd|flac|lpcm|pcm|aac|mp3|opus|[2567]\.[01]|"
+    r"remux|blu[ ._-]?ray|bdrip|brrip|web[ ._-]?(?:dl|rip)|webdl|hdtv|dvdrip|dvd|sdtv|"
+    r"hevc|[hx]\.?26[45]|av1|vc-?1"
+    r")(?![a-z0-9])",
+    re.IGNORECASE,
+)
+
+
+def _filepath_tag_signature(filepath: Optional[str]) -> Tuple[str, ...]:
+    """Build a canonical signature of technical tags present in an episode filename."""
+    filename = re.split(r"[\\/]", str(filepath or "").strip())[-1]
+    if not filename:
+        return ()
+    stem = re.sub(r"\.[^.]+$", "", filename)
+    tokens = {
+        re.sub(r"[ ._-]+", " ", match.lower()).strip()
+        for match in _FILEPATH_TECH_TOKEN_RE.findall(stem)
+    }
+    return tuple(sorted(token for token in tokens if token))
+
+
 def aggregate_episode_streams(episodes, language_order=None):
     language_counts = Counter()
     audio_tag_counts = Counter()
@@ -460,13 +489,16 @@ def aggregate_episode_streams(episodes, language_order=None):
     subtitle_tag_first_seen = {}
     codec_first_seen = {}
     codec_details = {}
+    episode_paths = []
     language_priority = {str(code).strip().lower(): index for index, code in enumerate(language_order or [])}
 
     for episode in episodes:
         if not isinstance(episode, dict):
             continue
+        video_tuple = None
         if episode.get("resolution"):
-            video_counts[(episode["resolution"], bool(episode.get("has_hdr")), bool(episode.get("has_dolby_vision")))] += 1
+            video_tuple = (episode["resolution"], bool(episode.get("has_hdr")), bool(episode.get("has_dolby_vision")))
+            video_counts[video_tuple] += 1
         for field, fallback_field, counts, first_seen in (
             ("audio_languages", None, language_counts, language_first_seen),
             ("audio_language_tags", "audio_languages", audio_tag_counts, audio_tag_first_seen),
@@ -485,6 +517,7 @@ def aggregate_episode_streams(episodes, language_order=None):
                 counts[code] += 1
 
         codec = str(episode.get("audio_codec") or "").strip().lower()
+        codec_key = None
         if codec:
             profile = str(episode.get("audio_profile") or "")
             track_title = str(episode.get("audio_track_title") or episode.get("audio_title") or "")
@@ -495,6 +528,10 @@ def aggregate_episode_streams(episodes, language_order=None):
                 codec_first_seen[codec_key] = len(codec_first_seen)
                 codec_details[codec_key] = {"audio_profile": profile or None, "audio_track_title": track_title or None, "audio_title": track_title or None}
             codec_counts[codec_key] += 1
+
+        filepath_str = str(episode.get("filepath") or "").strip()
+        if filepath_str:
+            episode_paths.append((video_tuple, codec_key, filepath_str))
 
     def ranked(counts, first_seen, use_language_priority=False):
         def _lang_pri(val):
@@ -518,6 +555,33 @@ def aggregate_episode_streams(episodes, language_order=None):
     ranked_audio_tags = ranked(audio_tag_counts, audio_tag_first_seen, use_language_priority=True)
     selected_codec = ranked(codec_counts, codec_first_seen)[0] if codec_counts else None
     selected_video = max(video_counts, key=lambda value: (video_counts[value], _resolution_rank(value[0]), value[2], value[1])) if video_counts else None
+
+    selected_filepath = None
+    if episode_paths:
+        candidate_tiers = []
+        if selected_video is not None and selected_codec is not None:
+            candidate_tiers.append([
+                fp for vt, ck, fp in episode_paths if vt == selected_video and ck == selected_codec
+            ])
+        if selected_video is not None:
+            candidate_tiers.append([fp for vt, _, fp in episode_paths if vt == selected_video])
+        if selected_codec is not None:
+            candidate_tiers.append([fp for _, ck, fp in episode_paths if ck == selected_codec])
+        candidate_tiers.append([fp for _, _, fp in episode_paths])
+        selected_tier = next((tier for tier in candidate_tiers if tier), [])
+        if selected_tier:
+            sig_counts = Counter()
+            sig_first_seen = {}
+            sig_sample_path = {}
+            for fp in selected_tier:
+                sig = _filepath_tag_signature(fp)
+                if sig not in sig_first_seen:
+                    sig_first_seen[sig] = len(sig_first_seen)
+                    sig_sample_path[sig] = fp
+                sig_counts[sig] += 1
+            winning_sig = max(sig_counts, key=lambda sig: (sig_counts[sig], len(sig), -sig_first_seen[sig]))
+            selected_filepath = sig_sample_path[winning_sig]
+
     return {
         **({"resolution": selected_video[0], "has_hdr": selected_video[1], "has_dolby_vision": selected_video[2]} if selected_video else {}),
         "audio_languages": ranked_languages,
@@ -526,6 +590,7 @@ def aggregate_episode_streams(episodes, language_order=None):
         "subtitle_language_tags": ranked(subtitle_tag_counts, subtitle_tag_first_seen, use_language_priority=True),
         "audio_codec": selected_codec[0] if selected_codec else None,
         **(codec_details[selected_codec] if selected_codec else {"audio_profile": None, "audio_track_title": None, "audio_title": None}),
+        "filepath": selected_filepath,
     }
 
 def _configured_language_order(rules):
@@ -538,6 +603,15 @@ def _configured_language_order(rules):
             return [str(code).strip().lower() for code in languages if str(code).strip()]
     return ["de", "en", "ja", "zh", "ko"]
 
+
+def _builder_level_targets_parent(builder_level, default_to_parent: bool = False) -> bool:
+    """Return True if builder_level applies to parent TV artwork (show/season/all)."""
+    if builder_level is None:
+        return default_to_parent
+    levels = builder_level if isinstance(builder_level, list) else str(builder_level).split(",")
+    return any(str(level).strip().lower() in ("all", "show", "season") for level in levels)
+
+
 def _parent_stream_aggregation_requested(rules):
     for rule in rules:
         if not isinstance(rule, dict):
@@ -546,13 +620,42 @@ def _parent_stream_aggregation_requested(rules):
         if default not in ("languages", "audio_codec"):
             continue
         variables = rule.get("template_variables") or {}
-        builder_level = variables.get("builder_level")
-        if builder_level is None:
-            continue
-        levels = builder_level if isinstance(builder_level, list) else str(builder_level).split(",")
-        if any(str(level).strip().lower() in ("all", "show", "season") for level in levels):
+        if _builder_level_targets_parent(variables.get("builder_level"), default_to_parent=False):
             return True
     return False
+
+
+def _rules_need_parent_stream_aggregation(overlays_dir: Path, rules) -> bool:
+    """Return True if any library rule targeting show/season posters needs aggregated episode streams or filepath."""
+    if _parent_stream_aggregation_requested(rules):
+        return True
+    dict_rules = [rule for rule in rules if isinstance(rule, dict)]
+    rules_str = json.dumps(dict_rules).lower()
+    if "resolution" in rules_str or "overlays_tv" in rules_str or _rule_files_mention(overlays_dir, dict_rules, "resolution"):
+        return True
+    for rule in dict_rules:
+        if str(rule.get("default", "")).lower() == "video_format":
+            variables = rule.get("template_variables") or {}
+            if _builder_level_targets_parent(variables.get("builder_level"), default_to_parent=True):
+                return True
+    parent_file_rules = [
+        rule for rule in dict_rules
+        if rule.get("file")
+        and not str(rule["file"]).strip().lower().endswith("anime_overlays.yml")
+        and _builder_level_targets_parent((rule.get("template_variables") or {}).get("builder_level"), default_to_parent=True)
+    ]
+    return bool(parent_file_rules) and any(
+        _rule_files_mention(overlays_dir, parent_file_rules, keyword)
+        for keyword in (
+            "filepath.regex",
+            "file.regex",
+            "filename.regex",
+            "has_dolby_vision",
+            "has_hdr",
+            "audio_codec",
+            "audio_track_title.regex",
+        )
+    )
 
 def _normalized_stream_language(value):
     return language_base_code(value)
@@ -986,6 +1089,10 @@ LANGUAGE_MAP = {
     "tha": "th",
     "ind": "id",
     "heb": "he",
+    "cat": "ca",
+    "val": "ca-valencia",
+    "eus": "eu", "baq": "eu",
+    "glg": "gl",
     # Common full language names
     "german": "de", "deutsch": "de",
     "english": "en",
@@ -994,6 +1101,10 @@ LANGUAGE_MAP = {
     "korean": "ko",
     "french": "fr", "français": "fr",
     "spanish": "es", "español": "es",
+    "catalan": "ca", "català": "ca", "catala": "ca",
+    "valencian": "ca-valencia", "valencià": "ca-valencia",
+    "basque": "eu", "euskara": "eu", "euskera": "eu",
+    "galician": "gl", "galego": "gl",
     "italian": "it", "italiano": "it",
     "russian": "ru",
     "portuguese": "pt",
@@ -2566,18 +2677,37 @@ def build_overlay_layers_for_item(
     native_parent_stream_layers = []
     flag_assets_dir = overlays_dir / "assets"
 
+    def _parse_overlay_limit(value: Any, default: int = 5) -> int:
+        try:
+            return max(0, int(value))
+        except (TypeError, ValueError):
+            return default
+
     def resolve_parent_flag(code, variables):
         norm_code = normalize_language_tag(code) or str(code).strip().lower()
-        filename = LANGUAGE_TO_FLAG_MAP.get(norm_code)
-        if not filename:
-            if "-" in norm_code:
-                region = norm_code.split("-", 1)[1]
-                filename = f"{region}.png" if len(region) == 2 and region.isalpha() else f"{norm_code}.png"
-            else:
-                filename = f"{norm_code}.png"
         style = "round" if str(variables.get("style", "round")).lower() == "round" else "square"
-        selected_asset = variables.get(f"file_{norm_code}") or variables.get(f"file_{code}") or f"flag/{style}/{filename}"
-        return _get_overlay_config_engine(overlays_dir).resolve_image_path(selected_asset) or flag_assets_dir / "flag" / style / filename
+        engine = _get_overlay_config_engine(overlays_dir)
+
+        explicit_asset = variables.get(f"file_{norm_code}") or variables.get(f"file_{code}")
+        if explicit_asset:
+            return engine.resolve_image_path(explicit_asset) or (flag_assets_dir / str(explicit_asset))
+
+        custom_flag = engine.resolve_custom_flag_path(norm_code, style)
+        if custom_flag:
+            return custom_flag
+
+        regional_stem = REGIONAL_LANGUAGE_FLAGS.get(norm_code)
+        if regional_stem:
+            filename = f"{regional_stem}.png"
+        else:
+            filename = LANGUAGE_TO_FLAG_MAP.get(norm_code)
+            if not filename:
+                if "-" in norm_code:
+                    region = norm_code.split("-", 1)[1]
+                    filename = f"{region}.png" if len(region) == 2 and region.isalpha() else f"{norm_code}.png"
+                else:
+                    filename = f"{norm_code}.png"
+        return engine.resolve_image_path(f"flag/{style}/{filename}") or flag_assets_dir / "flag" / style / filename
 
     engine_rules = []
     for rule in library_rules:
@@ -2629,7 +2759,7 @@ def build_overlay_layers_for_item(
             if item_level in ("show", "season") and variables.get("parent_language_mode", "preferred_then_frequency") == "preferred_then_frequency" and allowed and allowed[0] in selected:
                 selected.remove(allowed[0])
                 selected.insert(0, allowed[0])
-            selected = selected[:max(0, min(5, int(variables.get("overlay_limit", 5))))]
+            selected = selected[:_parse_overlay_limit(variables.get("overlay_limit", 5), 5)]
             display_priority = {code: index for index, code in enumerate(allowed)}
             selected.sort(key=display_priority.__getitem__)
             horizontal_align = variables.get("horizontal_align") or variables.get("horizontal_position", "left")
@@ -2679,7 +2809,9 @@ def build_overlay_layers_for_item(
                         "vertical_offset": vertical_offset + position_index * 61,
                     })
                 else:
-                    lang_text = code.lower() if str(variables.get("use_lowercase", False)).lower() in ("true", "1") else code.upper()
+                    raw_label = str(variables.get(f"text_{code}") or LANGUAGE_DISPLAY_LABELS.get(code) or code)
+                    lang_text = raw_label.lower() if str(variables.get("use_lowercase", False)).lower() in ("true", "1") else raw_label.upper()
+                    is_three_char = bool(variables.get("three_characters")) or len(lang_text) >= 3
                     style = str(variables.get("style", "round")).lower()
                     flag_align = variables.get("flag_alignment") or ("right" if subtitle_rule else "left")
                     back_radius = 26 if style in ("round", "half") else 0
@@ -2700,7 +2832,7 @@ def build_overlay_layers_for_item(
                         "font_size": int(variables.get("font_size") or (70 if variables.get("size") == "big" else 50)),
                         "font_color": variables.get("font_color", "#FFFFFF"),
                         "back_color": variables.get("back_color", "#00000000"),
-                        "back_width": int(variables["back_width"]) if variables.get("back_width") else (290 if variables.get("three_characters") and variables.get("size") == "big" else (230 if variables.get("three_characters") else (216 if variables.get("size") == "big" else 190))),
+                        "back_width": int(variables["back_width"]) if variables.get("back_width") else (290 if is_three_char and variables.get("size") == "big" else (230 if is_three_char else (216 if variables.get("size") == "big" else 190))),
                         "back_height": int(variables["back_height"]) if variables.get("back_height") else (60 if variables.get("size") == "big" else None),
                         "back_radius": back_radius,
                         "back_padding": int(variables.get("back_padding", 0)),
@@ -2926,7 +3058,7 @@ def build_overlay_layers_for_item(
             if not item_metadata.get("_language_order_precomputed"):
                 language_priority = {language: index for index, language in enumerate(allowed_langs)}
                 clean_detected.sort(key=language_priority.__getitem__)
-            limit = int(lang_vars.get("overlay_limit", 5))
+            limit = _parse_overlay_limit(lang_vars.get("overlay_limit", 5), 5)
             clean_detected = clean_detected[:limit]
             display_priority = {code: index for index, code in enumerate(allowed_langs)}
             clean_detected.sort(key=display_priority.__getitem__)
@@ -2939,8 +3071,8 @@ def build_overlay_layers_for_item(
 
                 hide_text = str(lang_vars.get("hide_text", True)).lower() in ("true", "1")
                 if hide_text:
-                    if len(clean_detected) == 1:
-                        code = clean_detected[0]
+                    for index, code in enumerate(clean_detected):
+                        position_index = len(clean_detected) - index - 1
                         flag_path = resolve_flag_path(code)
                         layers.append({
                             "name": f"language_flag_{code}",
@@ -2951,44 +3083,17 @@ def build_overlay_layers_for_item(
                             "horizontal_align": "left",
                             "horizontal_offset": h_offset,
                             "vertical_align": "bottom",
-                            "vertical_offset": v_offset
-                        })
-                    elif len(clean_detected) >= 2:
-                        # Stack flags vertically: first flag on top, second flag on bottom (Image 2 style)
-                        code_top = clean_detected[0]
-                        code_bottom = clean_detected[1]
-                        top_flag_file = resolve_flag_path(code_top)
-                        bot_flag_file = resolve_flag_path(code_bottom)
-
-                        layers.append({
-                            "name": f"language_flag_{code_bottom}",
-                            "type": "image",
-                            "image_path": str(bot_flag_file),
-                            "scale_width": flag_w,
-                            "scale_height": flag_h,
-                            "horizontal_align": "left",
-                            "horizontal_offset": h_offset,
-                            "vertical_align": "bottom",
-                            "vertical_offset": v_offset
-                        })
-                        layers.append({
-                            "name": f"language_flag_{code_top}",
-                            "type": "image",
-                            "image_path": str(top_flag_file),
-                            "scale_width": flag_w,
-                            "scale_height": flag_h,
-                            "horizontal_align": "left",
-                            "horizontal_offset": h_offset,
-                            "vertical_align": "bottom",
-                            "vertical_offset": v_offset + flag_h + 4
+                            "vertical_offset": v_offset + position_index * (flag_h + 4),
                         })
                 else:
                     for index, code in enumerate(clean_detected):
                         flag_path = resolve_flag_path(code)
-                        lang_text = code.lower() if str(lang_vars.get("use_lowercase", False)).lower() in ("true", "1") else code.upper()
+                        raw_label = str(lang_vars.get(f"text_{code}") or LANGUAGE_DISPLAY_LABELS.get(code) or code)
+                        lang_text = raw_label.lower() if str(lang_vars.get("use_lowercase", False)).lower() in ("true", "1") else raw_label.upper()
                         style = str(lang_vars.get("style", "round")).lower()
                         flag_align = lang_vars.get("flag_alignment") or "left"
                         back_radius = 26 if style in ("round", "half") else 0
+                        default_bw = 230 if (lang_vars.get("three_characters") or len(lang_text) >= 3) else 190
                         layers.append({
                             "name": f"language_flag_{code}",
                             "type": "text",
@@ -3000,7 +3105,7 @@ def build_overlay_layers_for_item(
                             "font_size": int(lang_vars.get("font_size", 50)),
                             "font_color": lang_vars.get("font_color", "#FFFFFF"),
                             "back_color": lang_vars.get("back_color", "#00000000"),
-                            "back_width": int(lang_vars["back_width"]) if lang_vars.get("back_width") else 190,
+                            "back_width": int(lang_vars["back_width"]) if lang_vars.get("back_width") else default_bw,
                             "back_radius": back_radius,
                             "back_align": flag_align,
                             "horizontal_align": "left",
@@ -3440,7 +3545,10 @@ def _rule_files_mention(overlays_dir: Path, rules, keyword: str) -> bool:
             continue
         name = str(rule["file"]).strip()
         name = name[7:] if name.startswith("config/") else name
-        for candidate in (overlays_dir / "configs" / name, Path(name)):
+        candidates = [overlays_dir / "configs" / name, Path(name)]
+        if "/" in name or "\\" in name:
+            candidates.append(overlays_dir / "configs" / re.split(r"[\\/]", name)[-1])
+        for candidate in candidates:
             try:
                 if candidate.is_file():
                     if keyword in _overlay_file_text(str(candidate), candidate.stat().st_mtime):
@@ -4497,7 +4605,7 @@ async def _run_overlay_sync_task(
                         or any(_rule_files_mention(overlays_dir, lib_rules, kw) for kw in ("imdb_chart", "imdb_award", "mdblist_list"))
                     )
                     needs_resolution = "resolution" in rules_str or "overlays_tv" in rules_str or _rule_files_mention(overlays_dir, lib_rules, "resolution")
-                    needs_parent_stream_aggregation = (_parent_stream_aggregation_requested(lib_rules) or needs_resolution) and not episode_only_targets
+                    needs_parent_stream_aggregation = _rules_need_parent_stream_aggregation(overlays_dir, lib_rules) and not episode_only_targets
                     provider_rules = [rule for rule in lib_rules if isinstance(rule, dict) and str(rule.get("default", "")).lower() in ("rating", "ratings")]
                     library_rating_sources = list(dict.fromkeys(
                         source for rule in provider_rules for source in (
@@ -4966,7 +5074,7 @@ async def _run_overlay_sync_task(
                     ratings_resolved_at = time.perf_counter() if debug_log_enabled else 0.0
 
                     show_stream_data = None
-                    if m_type == "show" and needs_parent_stream_aggregation and (clean_asset or clean_backdrop):
+                    if m_type == "show" and needs_parent_stream_aggregation and (clean_asset or clean_backdrop or (asset_type_filter == "season" and asset_directory)):
                         try:
                             show_stream_data = await fetch_show_episode_stream_data(
                                 http_client, s_type, s_url, item_id, creds, cache_map,
@@ -4988,6 +5096,8 @@ async def _run_overlay_sync_task(
                                 for key in ("resolution", "has_hdr", "has_dolby_vision"):
                                     if key in aggregate:
                                         item[key] = aggregate[key]
+                                if aggregate.get("filepath"):
+                                    item["filepath"] = aggregate["filepath"]
                                 item["_aggregated_episode_streams"] = True
                                 item["_language_order_precomputed"] = True
                                 stream_count = sum(len(items) for items in show_stream_data["episodes_by_season"].values())
@@ -5554,6 +5664,7 @@ async def _run_overlay_sync_task(
                                     s_item_meta = {
                                         **item,
                                         "resolution": s_resolution,
+                                        "filepath": None,
                                         "media_type": "season",
                                         "is_season": True,
                                         "season_number": s_num,
@@ -6512,11 +6623,11 @@ async def detect_media_changes(
                             if abs(clean_asset.stat().st_mtime - float(cached.get("clean_asset_mtime") or 0)) > 1:
                                 differences.append("asset_modified")
                             silo_rules = resolve_library_rules(name, "show", library_rules_map)[1]
-                            silo_needs_streams = _parent_stream_aggregation_requested(silo_rules) or any(term in json.dumps(silo_rules).lower() for term in ("resolution", "overlays_tv"))
+                            silo_needs_streams = _rules_need_parent_stream_aggregation(overlays_dir, silo_rules)
                             if item["media_type"] == "show" and silo_needs_streams:
                                 stream_data = await fetch_show_episode_stream_data(http_client, "silo", s_url, item["id"], creds, cache_map)
                                 if stream_data:
-                                    item.update(stream_data["aggregate"])
+                                    item.update({k: v for k, v in stream_data["aggregate"].items() if k != "filepath" or v})
                             if sorted(item.get("audio_languages") or []) != sorted(filter(None, (cached.get("detected_languages") or "").split(","))):
                                 differences.append("languages")
                             for category, current_key, cached_key in (("editions", "edition", "edition"), ("runtimes", "runtime_mins", "runtime_mins"), ("status", "status", "show_status")):

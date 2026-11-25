@@ -910,6 +910,10 @@ export default function DynamicOverlays() {
   const [previewSubtitleStyle, setPreviewSubtitleStyle] = useState("round");
   const [previewLanguages, setPreviewLanguages] = useState("de,en");
   const [previewLanguageLimit, setPreviewLanguageLimit] = useState(5);
+  const effectivePreviewLanguageLimit = (() => {
+    const parsed = parseInt(previewLanguageLimit, 10);
+    return Number.isFinite(parsed) && parsed >= 1 ? parsed : 5;
+  })();
   const [previewSubtitles, setPreviewSubtitles] = useState("");
   const [previewAspect, setPreviewAspect] = useState("");
   const [previewStudio, setPreviewStudio] = useState("");
@@ -4246,7 +4250,7 @@ export default function DynamicOverlays() {
       if (previewLanguages && previewLanguages !== "Off") {
         layoutPayload.languages = {
           languages: previewLanguages.split(",").map(code => code.trim()).filter(Boolean),
-          overlay_limit: previewLanguageLimit,
+          overlay_limit: effectivePreviewLanguageLimit,
           style: previewLanguageStyle,
           hide_text: !previewLanguageLabels,
           final_name: "text(<<final_text>>)",
@@ -4348,6 +4352,7 @@ export default function DynamicOverlays() {
             if (curBadges.audio_languages && offsets.languages) {
               curBadges.audio_languages = {
                 ...curBadges.audio_languages,
+                limit: effectivePreviewLanguageLimit,
                 offset_x: offsets.languages.x,
                 offset_y: offsets.languages.y,
                 position: `${offsets.languages.valign || "bottom"}-${offsets.languages.align || "left"}`
@@ -4571,7 +4576,8 @@ export default function DynamicOverlays() {
         ? badges.audio_languages.languages.join(",")
         : "de,en";
       setPreviewLanguages(langs);
-      setPreviewLanguageLimit(Math.max(1, Math.min(5, Number(badges.audio_languages.limit) || 5)));
+      const savedLimit = parseInt(badges.audio_languages.limit, 10);
+      setPreviewLanguageLimit(Number.isFinite(savedLimit) && savedLimit >= 1 ? savedLimit : 5);
     } else {
       setPreviewLanguages("");
     }
@@ -4911,7 +4917,7 @@ export default function DynamicOverlays() {
     || (selectedSaveLibrary && selectedSaveLibrary !== "__NEW__" && getAvailableFormats(selectedSaveLibrary).some((format) => format.id === "show_poster"))
     ? "show" : "movie";
   const assetOverlayQuery = `&asset_overlay=${applyAssetOverlay}&media_type=${assetMediaType}`;
-  const compositorPreviewUrl = `${previewUrl}&language_limit=${previewLanguageLimit}${assetOverlayQuery}${selectedSaveLibrary && selectedSaveLibrary !== "__NEW__" ? `&library_name=${encodeURIComponent(selectedSaveLibrary)}` : ""}`;
+  const compositorPreviewUrl = `${previewUrl}&language_limit=${effectivePreviewLanguageLimit}${assetOverlayQuery}${selectedSaveLibrary && selectedSaveLibrary !== "__NEW__" ? `&library_name=${encodeURIComponent(selectedSaveLibrary)}` : ""}`;
   const spritePreviewUrl = (() => {
     const [path, query = ""] = compositorPreviewUrl.split("?");
     const params = new URLSearchParams(query);
@@ -6709,8 +6715,8 @@ export default function DynamicOverlays() {
                                 handleAddCustomLang();
                               }
                             }}
-                            placeholder="Add code (e.g. TR, NO)..."
-                            maxLength={6}
+                            placeholder="Add code (e.g. TR, CA-VALENCIA)..."
+                            maxLength={24}
                             className="flex-1 bg-theme-hover border border-theme rounded-lg px-2 py-1 text-xs text-theme-text font-mono uppercase focus:outline-none focus:border-theme-primary"
                           />
                           <button
@@ -6800,9 +6806,24 @@ export default function DynamicOverlays() {
                             <input
                               type="number"
                               min={1}
-                              max={10}
                               value={badges.audio_languages?.limit ?? 5}
-                              onChange={(e) => updateBadge("audio_languages", { limit: parseInt(e.target.value) || 5 })}
+                              onChange={(e) => {
+                                const raw = e.target.value;
+                                if (raw === "") {
+                                  updateBadge("audio_languages", { limit: "" });
+                                  return;
+                                }
+                                const parsed = parseInt(raw, 10);
+                                if (Number.isFinite(parsed) && parsed >= 1) {
+                                  updateBadge("audio_languages", { limit: parsed });
+                                }
+                              }}
+                              onBlur={(e) => {
+                                const parsed = parseInt(e.target.value, 10);
+                                if (!Number.isFinite(parsed) || parsed < 1) {
+                                  updateBadge("audio_languages", { limit: 5 });
+                                }
+                              }}
                               className="w-full bg-theme-hover border border-theme rounded-lg px-2 py-1 text-xs text-theme-text font-mono"
                             />
                           </div>
@@ -9527,14 +9548,33 @@ export default function DynamicOverlays() {
                 {previewLanguages && (
                   <label className="flex items-center justify-between gap-3 text-xs text-theme-text">
                     <span>Max flags</span>
-                    <select
+                    <input
+                      type="number"
+                      min={1}
+                      step={1}
                       aria-label="Maximum audio language flags"
                       value={previewLanguageLimit}
-                      onChange={(event) => { setPreviewLanguageLimit(Number(event.target.value)); setPreviewTimestamp(Date.now()); }}
-                      className="bg-theme-hover border border-theme rounded-lg px-2 py-1 text-xs text-theme-text"
-                    >
-                      {[1, 2, 3, 4, 5].map((limit) => <option key={limit} value={limit}>{limit}</option>)}
-                    </select>
+                      onChange={(event) => {
+                        const raw = event.target.value;
+                        if (raw === "") {
+                          setPreviewLanguageLimit("");
+                          return;
+                        }
+                        const parsed = parseInt(raw, 10);
+                        if (Number.isFinite(parsed) && parsed >= 1) {
+                          setPreviewLanguageLimit(parsed);
+                          setPreviewTimestamp(Date.now());
+                        }
+                      }}
+                      onBlur={(event) => {
+                        const parsed = parseInt(event.target.value, 10);
+                        if (!Number.isFinite(parsed) || parsed < 1) {
+                          setPreviewLanguageLimit(5);
+                          setPreviewTimestamp(Date.now());
+                        }
+                      }}
+                      className="w-20 bg-theme-hover border border-theme rounded-lg px-2 py-1 text-xs text-theme-text font-mono text-right"
+                    />
                   </label>
                 )}
                 {previewLanguages && <label className="flex items-center gap-2 text-xs text-theme-text"><input type="checkbox" checked={previewLanguageLabels} onChange={event => { setPreviewLanguageLabels(event.target.checked); setPreviewTimestamp(Date.now()); }} />Show Language Codes</label>}

@@ -1424,6 +1424,12 @@ def compile_visual_to_config_yml(visual_data: Dict[str, Any], output_path: Optio
             b_lang = badges.get(language_key, {})
             if not b_lang.get("enabled"):
                 continue
+            try:
+                lang_limit = int(b_lang.get("limit", 5))
+            except (TypeError, ValueError):
+                lang_limit = 5
+            if lang_limit < 1:
+                lang_limit = 5
             h, v = _split_unified_position(b_lang.get("position", "bottom-left"))
             overlay_files.append({
                 "default": "languages",
@@ -1432,7 +1438,7 @@ def compile_visual_to_config_yml(visual_data: Dict[str, Any], output_path: Optio
                     "use_subtitles": language_key == "subtitle_languages",
                     "languages": b_lang.get("languages", ["de", "en"]),
                     "builder_level": b_lang.get("level", "episode" if media_type == "show" else "movie"),
-                    "overlay_limit": int(b_lang.get("limit", 5)),
+                    "overlay_limit": lang_limit,
                     "horizontal_position": h,
                     "vertical_position": v,
                     "style": b_lang.get("style", "round"),

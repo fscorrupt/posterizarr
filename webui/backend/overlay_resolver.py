@@ -153,6 +153,10 @@ LANGUAGE_CODE_MAP = {
     "tha": "th", "thai": "th",
     "ind": "id", "indonesian": "id",
     "heb": "he", "hebrew": "he",
+    "cat": "ca", "catalan": "ca", "català": "ca", "catala": "ca",
+    "val": "ca-valencia", "valencian": "ca-valencia", "valencià": "ca-valencia", "valencia": "ca-valencia",
+    "eus": "eu", "baq": "eu", "basque": "eu", "euskara": "eu", "euskera": "eu",
+    "glg": "gl", "galician": "gl", "galego": "gl",
 }
 
 LANGUAGE_REGION_NAME_MAP = {
@@ -174,7 +178,32 @@ LANGUAGE_REGION_NAME_MAP = {
     "hong kong": "hk",
     "simplified": "hans", "simplifié": "hans",
     "traditional": "hant", "traditionnel": "hant",
+    "valencia": "valencia", "valencian": "valencia", "valencià": "valencia",
+    "catalonia": "ct", "catalunya": "ct",
+    "basque country": "pv", "euskadi": "pv",
+    "galicia": "ga", "galiza": "ga",
 }
+
+REGIONAL_LANGUAGE_FLAGS: Dict[str, str] = {
+    "ca": "es-ct",
+    "ca-valencia": "es-vc",
+    "eu": "es-pv",
+    "gl": "es-ga",
+}
+BUNDLED_REGIONAL_FLAG_STEMS: Set[str] = set(REGIONAL_LANGUAGE_FLAGS.values())
+LANGUAGE_DISPLAY_LABELS: Dict[str, str] = {
+    "ca-valencia": "VAL",
+}
+
+
+def _canonicalize_language_subtags(tag: str) -> str:
+    """Collapse regional language variant synonyms (e.g. ca-ES-valencia -> ca-valencia)."""
+    parts = [p for p in tag.split("-") if p]
+    if not parts:
+        return tag
+    if parts[0] == "ca-valencia" or (parts[0] == "ca" and "valencia" in parts[1:]):
+        return "ca-valencia"
+    return "-".join(parts)
 
 
 def normalize_language_tag(value: Any) -> Optional[str]:
@@ -194,7 +223,7 @@ def normalize_language_tag(value: Any) -> Optional[str]:
             region = LANGUAGE_REGION_NAME_MAP.get(region_raw)
             if not region and re.fullmatch(r"[a-z]{2}|\d{3}|[a-z]{4}", region_raw):
                 region = region_raw
-            return f"{base}-{region}" if region else base
+            return _canonicalize_language_subtags(f"{base}-{region}" if region else base)
 
     parts = [p.strip() for p in s.replace("_", "-").split("-") if p.strip()]
     if not parts:
@@ -203,8 +232,8 @@ def normalize_language_tag(value: Any) -> Optional[str]:
     if base in ("und", "unknown", ""):
         return None
     if len(parts) > 1:
-        return "-".join([base, *parts[1:]])
-    return base
+        return _canonicalize_language_subtags("-".join([base, *parts[1:]]))
+    return _canonicalize_language_subtags(base)
 
 
 def language_base_code(value: Any) -> Optional[str]:
@@ -548,10 +577,14 @@ def resolve_official_kometa_image_url(image_name: str) -> Optional[str]:
     asset_indices = [index for index, part in enumerate(parts) if part.lower() == "assets"]
     if asset_indices:
         clean = str(PurePosixPath(*parts[asset_indices[-1] + 1:]))
+    if clean.lower().startswith(("flag/custom/", "flags/custom/")):
+        return None
     if clean.lower().startswith(("flag/", "flags/")):
         flag_parts = list(PurePosixPath(clean).parts)
         flag_parts[0] = "flag"
         flag_name = PurePosixPath(flag_parts[-1])
+        if flag_name.stem.lower() in BUNDLED_REGIONAL_FLAG_STEMS:
+            return None
         flag_parts[-1] = FLAG_CODE_ALIASES.get(flag_name.stem.lower(), flag_name.stem) + (flag_name.suffix or ".png")
         clean = str(PurePosixPath(*flag_parts))
     elif len(PurePosixPath(clean).parts) == 1:
@@ -3163,6 +3196,38 @@ class OverlayConfigEngine:
             )
         return {"standard": copy.deepcopy(BUILTIN_STANDARD_TEMPLATE)}
 
+    def resolve_custom_flag_path(self, language_tag: Optional[str], style: str = "round") -> Optional[Path]:
+        """Resolve an optional user-provided custom flag override in assets/flag/custom/."""
+        raw_tag = str(language_tag or "").strip().lower().replace("_", "-")
+        if not raw_tag or any(ch in raw_tag for ch in ("/", "\\", "..", "\x00")):
+            return None
+        tag = normalize_language_tag(raw_tag) or raw_tag
+        if not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,31}", tag):
+            return None
+
+        flag_style = "round" if str(style or "round").strip().lower() == "round" else "square"
+        exts = (".png", ".webp", ".jpg", ".jpeg")
+        target_names = {f"{tag}{ext}" for ext in exts}
+        for base_asset_dir in self.candidate_asset_dirs:
+            for family in ("flag", "flags"):
+                custom_root = base_asset_dir / family / "custom"
+                if not custom_root.exists() or not custom_root.is_dir():
+                    continue
+                for search_dir in (custom_root / flag_style, custom_root):
+                    if not search_dir.exists() or not search_dir.is_dir():
+                        continue
+                    for ext in exts:
+                        candidate = search_dir / f"{tag}{ext}"
+                        if candidate.is_file():
+                            return candidate
+                    try:
+                        for entry in search_dir.iterdir():
+                            if entry.is_file() and entry.name.lower() in target_names:
+                                return entry
+                    except Exception:
+                        pass
+        return None
+
     def resolve_image_path(self, raw_path: Optional[str]) -> Optional[Path]:
         if not raw_path or str(raw_path).startswith("text(") or str(raw_path).startswith("blur("):
             return None
@@ -3174,6 +3239,13 @@ class OverlayConfigEngine:
         # Clean extension
         if not p_str.lower().endswith((".png", ".jpg", ".jpeg", ".webp")):
             p_str = f"{p_str}.png"
+
+        if os.path.isabs(p_str):
+            req_norm = os.path.normpath(os.path.abspath(p_str))
+            for allowed_dir in [*self.candidate_asset_dirs, self.assets_dir]:
+                base_norm = os.path.normpath(os.path.abspath(str(allowed_dir)))
+                if req_norm.startswith(base_norm + os.sep) and os.path.isfile(req_norm):
+                    return Path(req_norm)
 
         stem = Path(p_str).stem.lower()
         flag_aliases = FLAG_CODE_ALIASES
@@ -3383,7 +3455,118 @@ class OverlayConfigEngine:
             if k in ext_vars and k not in merged_vars:
                 merged_vars[k] = ext_vars[k]
 
+        if default_name == "languages":
+            file_overlays = self._prepare_language_overlays(file_overlays, merged_vars, temp_vars)
+
         return file_overlays, file_queues, file_templates, merged_vars
+
+    def _prepare_language_overlays(
+        self,
+        raw_overlays: Any,
+        merged_vars: Dict[str, Any],
+        temp_vars: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """Apply bundled regional Spanish flag mappings and synthesize missing requested tags."""
+        file_overlays = copy.deepcopy(raw_overlays) if isinstance(raw_overlays, dict) else {}
+
+        raw_langs = merged_vars.get("languages")
+        if isinstance(raw_langs, str):
+            raw_lang_list = [x.strip() for x in raw_langs.split(",") if x.strip()]
+        elif isinstance(raw_langs, (list, tuple, set)):
+            raw_lang_list = list(raw_langs)
+        else:
+            raw_lang_list = []
+
+        normalized_langs: List[str] = []
+        seen_norm: Set[str] = set()
+        for entry_lang in raw_lang_list:
+            norm_l = normalize_language_tag(entry_lang) or str(entry_lang).strip().lower()
+            if norm_l and norm_l not in seen_norm:
+                seen_norm.add(norm_l)
+                normalized_langs.append(norm_l)
+        if raw_langs is not None:
+            merged_vars["languages"] = normalized_langs
+
+        for ov_def in file_overlays.values():
+            if not isinstance(ov_def, dict):
+                continue
+            ov_vars = ov_def.get("variables")
+            if not isinstance(ov_vars, dict):
+                continue
+            lang_key = normalize_language_tag(ov_vars.get("key")) or str(ov_vars.get("key") or "").strip().lower()
+            if lang_key in REGIONAL_LANGUAGE_FLAGS:
+                user_overrode = any(
+                    k in temp_vars and temp_vars[k] not in (None, "")
+                    for k in (
+                        f"country_{lang_key}",
+                        f"file_{lang_key}",
+                        f"url_{lang_key}",
+                        f"git_{lang_key}",
+                        f"repo_{lang_key}",
+                    )
+                )
+                if not user_overrode:
+                    ov_vars["country"] = REGIONAL_LANGUAGE_FLAGS[lang_key]
+
+        existing_keys = {
+            str((ov_def.get("variables") or {}).get("key") or "").strip().lower()
+            for ov_def in file_overlays.values()
+            if isinstance(ov_def, dict)
+        }
+        requested_tags = list(normalized_langs)
+        for tk, tv in temp_vars.items():
+            tk_str = str(tk)
+            if tk_str.startswith("use_") and str(tv).lower() in ("true", "1", "yes"):
+                cand_tag = normalize_language_tag(tk_str[4:]) or tk_str[4:].strip().lower()
+                if cand_tag and cand_tag not in requested_tags:
+                    requested_tags.append(cand_tag)
+
+        flag_style = "round" if str(merged_vars.get("style", "round")).strip().lower() == "round" else "square"
+        hide_text_val = str(merged_vars.get("hide_text", True)).strip().lower() in ("true", "1")
+        is_big_size = str(merged_vars.get("size", "")).strip().lower() == "big"
+
+        for req_tag in requested_tags:
+            if not req_tag or req_tag in existing_keys:
+                continue
+            custom_path = self.resolve_custom_flag_path(req_tag, flag_style)
+            if req_tag not in REGIONAL_LANGUAGE_FLAGS and not custom_path and "-" not in req_tag:
+                continue
+            if req_tag in REGIONAL_LANGUAGE_FLAGS:
+                country_code = REGIONAL_LANGUAGE_FLAGS[req_tag]
+            elif "-" in req_tag:
+                region_part = req_tag.split("-", 1)[1]
+                country_code = region_part if (len(region_part) == 2 and region_part.isalpha()) else req_tag
+            else:
+                country_code = req_tag
+
+            display_text = str(
+                temp_vars.get(f"text_{req_tag}")
+                or LANGUAGE_DISPLAY_LABELS.get(req_tag)
+                or req_tag.upper()
+            )
+            synth_vars: Dict[str, Any] = {
+                "key": req_tag,
+                "text": display_text,
+                "weight": 575,
+                "country": country_code,
+            }
+            if len(display_text) >= 3:
+                synth_vars["three_characters"] = True
+                if not hide_text_val and "back_width" not in temp_vars and "width" not in temp_vars:
+                    w = 290 if is_big_size else 230
+                    synth_vars["width"] = w
+                    synth_vars["back_width"] = w
+
+            synth_key = f"lang_{req_tag.replace('-', '_')}"
+            while synth_key in file_overlays:
+                synth_key = f"{synth_key}_custom"
+            file_overlays[synth_key] = {
+                "variables": synth_vars,
+                "template": [{"name": "flags"}, {"name": "standard"}],
+            }
+            existing_keys.add(req_tag)
+
+        return file_overlays
 
     def _candidate_overlays_for_title(self, definitions, expanded_definitions, templates, variables, definitions_key, metadata):
         from copy import deepcopy
@@ -3488,21 +3671,29 @@ class OverlayConfigEngine:
             # Resolve queues for this file
             for q_name, q_def in file_queues.items():
                 if isinstance(q_def, dict) and "settings" in q_def:
-                    slots = self._resolve_queue_slots(q_def["settings"], file_vars)
                     full_q = queue_prefix + q_name
-                    all_queues[full_q] = slots
                     q_limit = rule_limit
                     if q_limit is None and q_def["settings"].get("overlay_limit") is not None:
                         try:
                             q_limit = int(q_def["settings"]["overlay_limit"])
                         except (ValueError, TypeError):
                             pass
+                    slots = self._resolve_queue_slots(
+                        q_def["settings"],
+                        file_vars,
+                        min_slots=max(21, q_limit or 21),
+                    )
+                    all_queues[full_q] = slots
                     queue_limits[full_q] = q_limit
                     if file_vars.get("languages"):
                         raw_l = file_vars["languages"]
                         if isinstance(raw_l, str):
                             raw_l = [x.strip() for x in raw_l.split(",") if x.strip()]
-                        queue_lang_order[full_q] = [str(x).strip().lower() for x in raw_l]
+                        queue_lang_order[full_q] = [
+                            normalize_language_tag(x) or str(x).strip().lower()
+                            for x in raw_l
+                            if str(x).strip()
+                        ]
 
             # Process each overlay in file
             for ov_key, ov_def in self._candidate_overlays_for_title(
@@ -3667,6 +3858,17 @@ class OverlayConfigEngine:
                     "_audio_lang_targets": audio_targets,
                     "_subtitle_lang_targets": subtitle_targets,
                 }
+
+                if (
+                    str(rule_entry.get("default", "")).lower() == "languages"
+                    and resolved_ov.get("language_code")
+                    and not resolved_ov.get("file")
+                    and not resolved_ov.get("url")
+                ):
+                    flag_style = "round" if str(file_vars.get("style", "round")).strip().lower() == "round" else "square"
+                    custom_flag = self.resolve_custom_flag_path(resolved_ov["language_code"], flag_style)
+                    if custom_flag:
+                        resolved_ov["file"] = str(custom_flag)
 
                 if subtitle_rule:
                     resolved_ov["mapping_name"] = "subtitle_languages_" + mapping_name
@@ -3940,7 +4142,12 @@ class OverlayConfigEngine:
 
         return [ov for ov in survivors if ov.get("mapping_name") not in suppressed_names and ov.get("name") not in suppressed_names]
 
-    def _resolve_queue_slots(self, queue_settings: Dict[str, Any], variables: Dict[str, Any]) -> List[Dict[str, Any]]:
+    def _resolve_queue_slots(
+        self,
+        queue_settings: Dict[str, Any],
+        variables: Dict[str, Any],
+        min_slots: int = 21,
+    ) -> List[Dict[str, Any]]:
         defaults = queue_settings.get("default", {})
         conditionals = queue_settings.get("conditionals", {})
         con_resolved = _kometa_evaluate_conditionals(conditionals, variables, defaults)
@@ -3987,7 +4194,7 @@ class OverlayConfigEngine:
             "vertical_offset": init_v_off,
             "horizontal_offset": init_h_off
         }]
-        for x in range(20):
+        for x in range(max(20, int(min_slots) - 1)):
             factor = ((int(x / 2) + 1) * (-1 if x % 2 == 1 else 1)) if surround else (x + 1)
             slots.append({
                 "vertical_align": init_v_align,

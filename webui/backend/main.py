@@ -20345,7 +20345,7 @@ def preview_dynamic_overlay(
     status_color: Optional[str] = Query("#FFA500"),
     resolution: Optional[str] = Query("4K"),
     languages: Optional[str] = Query("de,en"),
-    language_limit: int = Query(5, ge=1, le=5),
+    language_limit: int = Query(5, ge=1),
     subtitle_languages: Optional[str] = Query(None),
     aspect_ratio: Optional[float] = Query(None, gt=0, lt=10),
     studio: Optional[str] = Query(None),

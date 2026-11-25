@@ -303,6 +303,15 @@ def build_preview_layers(options, placements, library_rules, overlays_dir, build
         if default_name == "languages":
             variables = rule.setdefault("template_variables", {})
             subtitle = str(variables.get("use_subtitles", False)).lower() in ("true", "1")
+            selected_langs = options.get("subtitle_languages" if subtitle else "languages")
+            if selected_langs:
+                parsed_langs = [
+                    normalize_language_tag(code) or code.strip().lower()
+                    for code in str(selected_langs).split(",")
+                    if code.strip()
+                ]
+                if parsed_langs:
+                    variables["languages"] = parsed_langs
             selected_style = options.get("subtitle_style" if subtitle else "language_style")
             if selected_style in ("round", "square", "half"):
                 variables["style"] = selected_style
