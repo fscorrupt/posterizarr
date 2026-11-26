@@ -1,4 +1,4 @@
-function Invoke-MoviePosterCreation {
+﻿function Invoke-MoviePosterCreation {
     param (
         $entry
     )
@@ -3465,12 +3465,22 @@ function Invoke-ShowPosterCreation {
                     $global:PosterWithText = $null
                     $global:ImageMagickError = $null
                     $global:TextlessPoster = $null
-                    $global:seasonNames = $entry.SeasonNames -split ';'
-                    $global:SeasonRatingKeys = $entry.SeasonRatingKeys -split ','
-                    $global:seasonNumbers = $entry.seasonNumbers -split ','
-                    $global:PlexSeasonUrls = $entry.PlexSeasonUrls -split ','
+                    $global:seasonNames = if (-not [string]::IsNullOrWhiteSpace([string]$entry.SeasonNames)) { [string]$entry.SeasonNames -split ';' } else { @() }
+                    $global:SeasonRatingKeys = if (-not [string]::IsNullOrWhiteSpace([string]$entry.SeasonRatingKeys)) { [string]$entry.SeasonRatingKeys -split ',' } else { @() }
+                    $global:seasonNumbers = if (-not [string]::IsNullOrWhiteSpace([string]$entry.seasonNumbers)) { [string]$entry.seasonNumbers -split ',' } else { @() }
+                    $global:PlexSeasonUrls = if (-not [string]::IsNullOrWhiteSpace([string]$entry.PlexSeasonUrls)) { [string]$entry.PlexSeasonUrls -split ',' } else { @() }
                     if ($null -ne $entry.OtherMediaServerSeasonUrls) { $global:OtherMediaServerSeasonUrls = $entry.OtherMediaServerSeasonUrls.Split(",") } else { $global:OtherMediaServerSeasonUrls = @() }
-                    for ($i = 0; $i -lt $global:seasonNames.Count; $i++) {
+                    if ($global:seasonNumbers.Count -eq 0) {
+                        Write-Entry -Subtext "No seasons found for '$Titletext' - skipping Season Poster creation." -Path $global:configLogging -Color Cyan -log Debug
+                    }
+                    for ($i = 0; $i -lt $global:seasonNumbers.Count; $i++) {
+                        $currentSeasonNumber = [string]$global:seasonNumbers[$i]
+                        if ([string]::IsNullOrWhiteSpace($currentSeasonNumber)) {
+                            Write-Entry -Subtext "Skipping empty season number at index $i for '$Titletext'." -Path $global:configLogging -Color Cyan -log Debug
+                            continue
+                        }
+                        $currentSeasonNumber = $currentSeasonNumber.Trim()
+                        $currentSeasonName = if ($i -lt $global:seasonNames.Count) { [string]$global:seasonNames[$i] } else { "" }
                         $SkippingText = 'false'
                         $Seasonpostersearchtext = $null
                         $global:seasontmp = $null
@@ -3498,36 +3508,34 @@ function Invoke-ShowPosterCreation {
                         $LocalAddBorder = $AddSeasonBorder
                         if ($SeasonfontAllCaps -eq 'true') {
                             if ($OverrideSeasonName -eq 'true') {
-                                if ($global:seasonNumbers[$i] -eq '0') {
+                                if ($currentSeasonNumber -eq '0') {
                                     $global:seasonTitle = $SpecialSeasonOverrideText.ToUpper()
                                 }
                                 Else {
-                                    $global:seasonTitle = $SeasonOverrideText.ToUpper() + " " + $global:seasonNumbers[$i]
+                                    $global:seasonTitle = $SeasonOverrideText.ToUpper() + " " + $currentSeasonNumber
                                 }
                             }
                             Else {
-                                $global:seasonTitle = $global:seasonNames[$i].ToUpper()
+                                $global:seasonTitle = $currentSeasonName.ToUpper()
                             }
                         }
                         Else {
                             if ($OverrideSeasonName -eq 'true') {
-                                if ($global:seasonNumbers[$i] -eq '0') {
+                                if ($currentSeasonNumber -eq '0') {
                                     $global:seasonTitle = $SpecialSeasonOverrideText
                                 }
                                 Else {
-                                    $global:seasonTitle = $SeasonOverrideText + " " + $global:seasonNumbers[$i]
+                                    $global:seasonTitle = $SeasonOverrideText + " " + $currentSeasonNumber
                                 }
                             }
                             Else {
-                                $global:seasonTitle = $global:seasonNames[$i]
+                                $global:seasonTitle = $currentSeasonName
                             }
                         }
-                        $global:SeasonNumber = $global:seasonNumbers[$i]
-                        $global:SeasonRatingKey = $global:SeasonRatingKeys[$i]
-                        $global:PlexSeasonUrl = $global:PlexSeasonUrls[$i]
-                        if ($null -ne $global:SeasonNumber) {
-                            $global:seasontmp = "Season" + $global:SeasonNumber.PadLeft(2, '0')
-                        }
+                        $global:SeasonNumber = $currentSeasonNumber
+                        $global:SeasonRatingKey = if ($i -lt $global:SeasonRatingKeys.Count) { $global:SeasonRatingKeys[$i] } else { $null }
+                        $global:PlexSeasonUrl = if ($i -lt $global:PlexSeasonUrls.Count) { $global:PlexSeasonUrls[$i] } else { $null }
+                        $global:seasontmp = "Season" + $global:SeasonNumber.PadLeft(2, '0')
                         if ($LibraryFolders -eq 'true') {
                             $SeasonImageoriginal = "$EntryDir\$global:seasontmp.jpg"
                             $TestPath = $EntryDir

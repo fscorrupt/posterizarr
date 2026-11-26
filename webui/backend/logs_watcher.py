@@ -28,6 +28,11 @@ from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler, FileModifiedEvent
 from runtime_parser import parse_runtime_from_json
 
+try:
+    from .database import extract_season_number
+except ImportError:
+    from database import extract_season_number
+
 logger = logging.getLogger(__name__)
 
 
@@ -1197,15 +1202,17 @@ class LogsWatcher:
                     episode_number = int(ep_match.group(2))
                 if "|" in raw_title:
                     clean_title = raw_title.split("|", 1)[1].strip()
-                base_name = f"S{season_number:02d}E{episode_number:02d}" if season_number and episode_number else "poster"
+                base_name = (
+                    f"S{season_number:02d}E{episode_number:02d}"
+                    if season_number is not None and episode_number is not None
+                    else "poster"
+                )
 
             elif "season" in type_lower:
                 asset_type = "season"
-                s_match = re.search(r"Season\s*(\d+)", raw_title, re.IGNORECASE)
-                if s_match:
-                    season_number = int(s_match.group(1))
-                else:
-                    season_number = 1
+                fav_link = row.get("Fav Provider Link") or row.get("FavProviderLink") or ""
+                parsed_season = extract_season_number(raw_title, fav_link)
+                season_number = parsed_season if parsed_season is not None else 1
                 if "|" in raw_title:
                     clean_title = raw_title.split("|")[0].strip()
                 base_name = f"Season{season_number:02d}"

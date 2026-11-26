@@ -634,11 +634,12 @@ except ImportError as e:
 # Import database module
 try:
     logger.debug("Attempting to import database module")
-    from database import init_database, ImageChoicesDB
+    from database import init_database, ImageChoicesDB, extract_season_stem as _db_extract_season_stem
 
     DATABASE_AVAILABLE = True
     logger.info("Database module loaded successfully")
 except ImportError as e:
+    _db_extract_season_stem = None
     DATABASE_AVAILABLE = False
     logger.warning(
         f"Database module not available: {e}. Database features will be disabled."
@@ -11121,31 +11122,12 @@ _RECENT_ASSETS_NO_STORE_HEADERS = {
     "Cache-Control": "no-cache, no-store, must-revalidate",
     "Pragma": "no-cache",
 }
-_SEASON_SPECIALS_RE = re.compile(
-    r"\b(?:specials?|sonderfolgen|sp[eé]ciaux|especiales)\b",
-    re.IGNORECASE,
-)
-_SEASON_LABEL_RE = re.compile(
-    r"(?:season|staffel|saison|temporada|stagione|sezon|seizoen|s[äa]song|sesong|s[æa]son|kausi|сезон|シーズン|季)[\s#:.-]*0*(\d+)",
-    re.IGNORECASE,
-)
 
 
-def _extract_season_stem(title: str) -> Optional[str]:
-    """Resolve localized season/special titles to canonical SeasonXX filename stem."""
-    raw = str(title or "").strip()
-    if not raw:
-        return None
-    match = _SEASON_LABEL_RE.search(raw)
-    if match:
-        return f"Season{match.group(1).zfill(2)}"
-    tail = raw.split("|")[-1].strip() if "|" in raw else raw
-    if _SEASON_SPECIALS_RE.search(tail):
-        return "Season00"
-    if "|" in raw:
-        num_match = re.search(r"\b0*(\d{1,4})\s*$", tail)
-        if num_match:
-            return f"Season{num_match.group(1).zfill(2)}"
+def _extract_season_stem(title: str, fav_provider_link: str = "") -> Optional[str]:
+    """Resolve localized season/special titles or provider URLs to canonical SeasonXX stem."""
+    if _db_extract_season_stem is not None:
+        return _db_extract_season_stem(title, fav_provider_link)
     return None
 
 
@@ -11365,7 +11347,8 @@ async def get_recent_assets(
                 if "background" in asset_type_lower:
                     asset_stem = "background"
                 elif "season" in asset_type_lower:
-                    asset_stem = _extract_season_stem(title)
+                    fav_link_for_season = str(asset_dict.get("FavProviderLink") or "")
+                    asset_stem = _extract_season_stem(title, fav_link_for_season)
                 elif "titlecard" in asset_type_lower or "episode" in asset_type_lower:
                     episode_match = re.search(r"(S\d+E\d+)", title, re.IGNORECASE)
                     asset_stem = episode_match.group(1).upper() if episode_match else None
@@ -17240,7 +17223,7 @@ def _build_assets_overview(counts_only=False):
             if "background" in asset_type_lower:
                 asset_filename = "background.jpg"
             elif "season" in asset_type_lower:
-                season_stem = _extract_season_stem(title)
+                season_stem = _extract_season_stem(title, str(record_dict.get("FavProviderLink") or ""))
                 asset_filename = f"{season_stem}.jpg" if season_stem else "Season_unknown.jpg"
             elif "titlecard" in asset_type_lower or "episode" in asset_type_lower:
                 episode_match = re.search(r"(S\d+E\d+)", title, re.IGNORECASE)

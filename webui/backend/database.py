@@ -7,10 +7,100 @@ from pathlib import Path
 from typing import List, Dict, Optional, Tuple, Set
 import logging
 import csv
+import re
 import threading
 from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
+
+_SEASON_SPECIALS_RE = re.compile(
+    r"\b(?:specials?|sonderfolgen|sp[eé]ciaux|especiales)\b",
+    re.IGNORECASE,
+)
+_SEASON_LABEL_RE = re.compile(
+    r"(?:season|staffel|saison|temporada|stagione|sezon|seizoen|s[äa]song|sesong|s[æa]son|kausi|сезон|シーズン|季)[\s#:.-]*0*(\d+)",
+    re.IGNORECASE,
+)
+_SEASON_WORD_ORDINALS: Dict[str, int] = {
+    "one": 1,
+    "two": 2,
+    "three": 3,
+    "four": 4,
+    "five": 5,
+    "six": 6,
+    "seven": 7,
+    "eight": 8,
+    "nine": 9,
+    "ten": 10,
+    "eins": 1,
+    "zwei": 2,
+    "drei": 3,
+    "vier": 4,
+    "fünf": 5,
+    "fuenf": 5,
+    "sechs": 6,
+    "sieben": 7,
+    "acht": 8,
+    "neun": 9,
+    "zehn": 10,
+}
+_SEASON_WORD_RE = re.compile(
+    r"\b(?:season|staffel|saison)\s+(" + "|".join(_SEASON_WORD_ORDINALS.keys()) + r")\b",
+    re.IGNORECASE,
+)
+_SEASON_URL_RE = re.compile(
+    r"/seasons?/(?:(?:official|aired|dvd|absolute)/)?0*(\d{1,4})(?:/|$|\?)",
+    re.IGNORECASE,
+)
+# Exclude single-letter Roman numerals (I, V, X) to avoid false positives on titles like "Gen V".
+_SEASON_ROMAN_NUMERALS: Dict[str, int] = {
+    "II": 2,
+    "III": 3,
+    "IV": 4,
+    "VI": 6,
+    "VII": 7,
+    "VIII": 8,
+    "IX": 9,
+}
+_SEASON_TRAILING_ROMAN_RE = re.compile(r"(?:^|\s)(II|III|IV|VI|VII|VIII|IX)\s*$")
+
+
+def extract_season_number(title: str, fav_provider_link: str = "") -> Optional[int]:
+    """Extract an integer season number from a localized title or provider URL."""
+    raw = str(title or "").strip()
+    tail = raw.split("|")[-1].strip() if "|" in raw else raw
+
+    if raw:
+        match = _SEASON_LABEL_RE.search(tail) or _SEASON_LABEL_RE.search(raw)
+        if match:
+            return int(match.group(1))
+        word_match = _SEASON_WORD_RE.search(tail)
+        if word_match:
+            return _SEASON_WORD_ORDINALS[word_match.group(1).lower()]
+        if _SEASON_SPECIALS_RE.search(tail):
+            return 0
+
+    url_match = _SEASON_URL_RE.search(str(fav_provider_link or ""))
+    if url_match:
+        return int(url_match.group(1))
+
+    if "|" in raw and tail:
+        num_match = re.search(r"\b0*(\d{1,4})\s*$", tail)
+        if num_match:
+            return int(num_match.group(1))
+        roman_match = _SEASON_TRAILING_ROMAN_RE.search(tail)
+        if roman_match:
+            return _SEASON_ROMAN_NUMERALS[roman_match.group(1)]
+
+    return None
+
+
+def extract_season_stem(title: str, fav_provider_link: str = "") -> Optional[str]:
+    """Resolve localized season/special titles or provider URLs to canonical SeasonXX stem."""
+    num = extract_season_number(title, fav_provider_link)
+    if num is None:
+        return None
+    return f"Season{str(num).zfill(2)}"
 
 
 class ImageChoicesDB:
