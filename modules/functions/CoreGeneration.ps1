@@ -3465,11 +3465,11 @@ function Invoke-ShowPosterCreation {
                     $global:PosterWithText = $null
                     $global:ImageMagickError = $null
                     $global:TextlessPoster = $null
-                    $global:seasonNames = if (-not [string]::IsNullOrWhiteSpace([string]$entry.SeasonNames)) { [string]$entry.SeasonNames -split ';' } else { @() }
-                    $global:SeasonRatingKeys = if (-not [string]::IsNullOrWhiteSpace([string]$entry.SeasonRatingKeys)) { [string]$entry.SeasonRatingKeys -split ',' } else { @() }
-                    $global:seasonNumbers = if (-not [string]::IsNullOrWhiteSpace([string]$entry.seasonNumbers)) { [string]$entry.seasonNumbers -split ',' } else { @() }
-                    $global:PlexSeasonUrls = if (-not [string]::IsNullOrWhiteSpace([string]$entry.PlexSeasonUrls)) { [string]$entry.PlexSeasonUrls -split ',' } else { @() }
-                    if ($null -ne $entry.OtherMediaServerSeasonUrls) { $global:OtherMediaServerSeasonUrls = $entry.OtherMediaServerSeasonUrls.Split(",") } else { $global:OtherMediaServerSeasonUrls = @() }
+                    $global:seasonNames = @(if (-not [string]::IsNullOrWhiteSpace([string]$entry.SeasonNames)) { [string]$entry.SeasonNames -split ';' })
+                    $global:SeasonRatingKeys = @(if (-not [string]::IsNullOrWhiteSpace([string]$entry.SeasonRatingKeys)) { [string]$entry.SeasonRatingKeys -split ',' })
+                    $global:seasonNumbers = @(if (-not [string]::IsNullOrWhiteSpace([string]$entry.seasonNumbers)) { [string]$entry.seasonNumbers -split ',' })
+                    $global:PlexSeasonUrls = @(if (-not [string]::IsNullOrWhiteSpace([string]$entry.PlexSeasonUrls)) { [string]$entry.PlexSeasonUrls -split ',' })
+                    $global:OtherMediaServerSeasonUrls = @(if (-not [string]::IsNullOrWhiteSpace([string]$entry.OtherMediaServerSeasonUrls)) { [string]$entry.OtherMediaServerSeasonUrls -split ',' })
                     if ($global:seasonNumbers.Count -eq 0) {
                         Write-Entry -Subtext "No seasons found for '$Titletext' - skipping Season Poster creation." -Path $global:configLogging -Color Cyan -log Debug
                     }
