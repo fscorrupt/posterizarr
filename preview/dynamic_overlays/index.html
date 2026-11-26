@@ -1977,10 +1977,12 @@ testing.</p>
 <li>Open <strong>Visual Badges</strong> or <strong>Live Preview</strong>, choose your library and format,
    and adjust badge styles or placement. Click <strong>Save Layout</strong> to persist
    changes (previewing alone does not upload artwork).</li>
-<li>Run a dry-run sync under <strong>Sync &amp; Maintenance &gt; Synchronize</strong> and check
-   <code>DynamicOverlaysSync.log</code> to verify matching and rendering safely.</li>
-<li>Test on a single item first with <strong>Targeted Reapply</strong> (or <strong>Select Movie /
-   Show</strong>) rather than a full library. Only turn <strong>Dry Run</strong> off under <strong>Media
+<li>Run a dry-run sync under <strong>Sync &amp; Maintenance &gt; Synchronize</strong> and inspect
+   the rendered results right inside <strong>Dry-Run Previews</strong> (and <code>DynamicOverlaysSync.log</code>)
+   before pushing anything to your media server.</li>
+<li>Test on a single item first with <strong>Targeted Reapply</strong> (make sure you have
+   generated clean base artwork via <strong>Run Modes &gt; Normal Run</strong> or <strong>Manual Asset</strong>
+   first) rather than a full library. Only turn <strong>Dry Run</strong> off under <strong>Media
    Changes</strong> once previews and logs look right.</li>
 </ol>
 <p><img alt="Dynamic Overlays Live Preview" src="../images/21-overlay-live-preview.png" /></p>
@@ -2159,7 +2161,7 @@ own standalone page and settings under <strong>Asset Management &gt; Asset Title
 <ul>
 <li><strong>Background Checking</strong> controls whether media metadata is periodically checked for changes; it is enabled by default and checks hourly.</li>
 <li><strong>Automatic Overlay Resync</strong> controls whether detected changes start the overlay render pipeline.</li>
-<li><strong>Dry Run</strong> is enabled by default. Syncs still evaluate rules and render changed artwork, but never upload it to a media server or mark it synced in the cache.</li>
+<li><strong>Dry Run</strong> is enabled by default. Syncs still evaluate rules and render changed artwork into <strong>Synchronize &gt; Dry-Run Previews</strong> (without writing into <code>/assets</code>), and never upload artwork to a media server or mark it synced in the cache.</li>
 <li>Turn off <strong>Background Checking</strong> as well to stop periodic change scans entirely.</li>
 <li>The <strong>Master Switch</strong> is the hard stop: when disabled, background detection and overlay sync processing do not run. Switching it off also stops the detector and cancels active sync work before any subsequent upload.</li>
 </ul>
