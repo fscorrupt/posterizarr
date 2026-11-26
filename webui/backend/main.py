@@ -21109,6 +21109,50 @@ async def delete_custom_preview_image(image_id: str):
     return {"success": True}
 
 
+@app.get("/api/dynamic-overlays/dry-run-previews")
+async def get_dynamic_overlay_dry_run_previews():
+    """Return metadata for recently rendered Dry-Run preview JPEGs."""
+    try:
+        from overlay_sync_service import list_dry_run_previews
+        previews = await asyncio.to_thread(list_dry_run_previews, BASE_DIR)
+        return {"success": True, "previews": previews}
+    except Exception as e:
+        logger.error(f"Error listing dry-run previews: {e}", exc_info=True)
+        return {"success": False, "error": str(e), "previews": []}
+
+
+@app.get("/api/dynamic-overlays/dry-run-preview/{preview_id}")
+async def get_dynamic_overlay_dry_run_preview_image(preview_id: str):
+    """Serve a specific rendered Dry-Run preview JPEG safely within the cache root."""
+    safe_id = str(preview_id or "").strip()
+    if not re.fullmatch(r"[0-9a-f]{8,32}", safe_id):
+        raise HTTPException(status_code=400, detail="Invalid preview id")
+    from overlay_sync_service import get_dry_run_previews_dir
+    previews_dir = get_dry_run_previews_dir(BASE_DIR)
+    path = previews_dir / f"{safe_id}.jpg"
+    if not _is_within_root(path.resolve(), previews_dir.resolve()):
+        raise HTTPException(status_code=403, detail="Path traversal attempt detected")
+    if path.is_file():
+        return FileResponse(
+            path,
+            media_type="image/jpeg",
+            headers={"Cache-Control": "no-store"},
+        )
+    raise HTTPException(status_code=404, detail="Dry-run preview image not found")
+
+
+@app.delete("/api/dynamic-overlays/dry-run-previews")
+async def clear_dynamic_overlay_dry_run_previews():
+    """Delete all stored Dry-Run preview JPEGs and their manifest."""
+    try:
+        from overlay_sync_service import clear_dry_run_previews
+        cleared = await asyncio.to_thread(clear_dry_run_previews, BASE_DIR)
+        return {"success": True, "cleared": cleared}
+    except Exception as e:
+        logger.error(f"Error clearing dry-run previews: {e}", exc_info=True)
+        return {"success": False, "error": str(e), "cleared": 0}
+
+
 class QuarantineDeletionRequest(BaseModel):
     confirmation: str
 
@@ -21650,13 +21694,16 @@ async def get_dynamic_overlays_sync_status():
     try:
         from overlay_sync_service import (
             is_overlay_sync_running,
-            get_last_sync_result
+            get_last_sync_result,
+            list_dry_run_previews,
         )
         running = is_overlay_sync_running()
         last_res = get_last_sync_result()
+        dry_run_previews = await asyncio.to_thread(list_dry_run_previews, BASE_DIR)
     except Exception:
         running = False
         last_res = None
+        dry_run_previews = []
 
     log_path = UI_LOGS_DIR / "DynamicOverlaysSync.log"
     recent_logs = []
@@ -21673,6 +21720,7 @@ async def get_dynamic_overlays_sync_status():
         "is_running": running,
         "last_result": last_res,
         "recent_logs": recent_logs,
+        "dry_run_previews": dry_run_previews,
         "log_file": "DynamicOverlaysSync.log"
     }
 

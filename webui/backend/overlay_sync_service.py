@@ -32,8 +32,9 @@ import logging
 import asyncio
 import threading
 import traceback
+import uuid
 from pathlib import Path
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from typing import Optional, Dict, Any, List, Tuple, Union, Callable
 import urllib.parse
 from xml.etree.ElementTree import ParseError, fromstring, tostring
@@ -60,6 +61,153 @@ from plex_push_service import get_asset_path_from_config
 from silo_client import SiloClient, get_silo_credentials
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+
+DRY_RUN_PREVIEW_MAX_ITEMS = 24
+_DRY_RUN_PREVIEW_LOCK = threading.Lock()
+_DRY_RUN_PREVIEW_ID_RE = re.compile(r"^[0-9a-f]{8,32}$")
+
+
+def get_dry_run_previews_dir(base_dir: Path) -> Path:
+    """Return the cache directory used to store rendered Dry-Run preview JPEGs."""
+    return Path(base_dir) / "Overlayfiles" / "dynamic_overlays" / "cache" / "dry_run_previews"
+
+
+def _load_dry_run_manifest_unlocked(manifest_path: Path) -> List[Dict[str, Any]]:
+    if not manifest_path.is_file():
+        return []
+    try:
+        raw = json.loads(manifest_path.read_text(encoding="utf-8"))
+        if isinstance(raw, list):
+            return [entry for entry in raw if isinstance(entry, dict)]
+    except Exception:
+        pass
+    return []
+
+
+def _write_dry_run_manifest_unlocked(manifest_path: Path, entries: List[Dict[str, Any]]) -> None:
+    tmp_path = manifest_path.with_suffix(".json.tmp")
+    tmp_path.write_text(json.dumps(entries, indent=2), encoding="utf-8")
+    os.replace(tmp_path, manifest_path)
+
+
+def _unlink_dry_run_image_unlocked(previews_dir: Path, preview_id: str) -> None:
+    eid = str(preview_id or "").strip()
+    if not _DRY_RUN_PREVIEW_ID_RE.fullmatch(eid):
+        return
+    try:
+        (previews_dir / f"{eid}.jpg").unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
+def record_dry_run_preview(
+    base_dir: Path,
+    image_bytes: bytes,
+    *,
+    title: str,
+    library_name: str,
+    server_type: str,
+    item_id: str,
+    asset_type: str,
+    media_type: str = "",
+    layers_count: int = 0,
+    sync_reason: str = "",
+) -> Optional[Dict[str, Any]]:
+    """Persist a bounded copy of a rendered Dry-Run JPEG for dashboard inspection."""
+    if not image_bytes or not base_dir:
+        return None
+    try:
+        previews_dir = get_dry_run_previews_dir(base_dir)
+        manifest_path = previews_dir / "manifest.json"
+        preview_id = uuid.uuid4().hex[:16]
+        dedupe_key = (
+            str(server_type or "").lower(),
+            str(item_id or ""),
+            str(asset_type or "poster").lower(),
+        )
+        entry = {
+            "id": preview_id,
+            "title": str(title or ""),
+            "library_name": str(library_name or ""),
+            "server_type": str(server_type or "").lower(),
+            "item_id": str(item_id or ""),
+            "asset_type": str(asset_type or "poster").lower(),
+            "media_type": str(media_type or "").lower(),
+            "layers_count": int(layers_count or 0),
+            "sync_reason": str(sync_reason or ""),
+            "rendered_at": datetime.now(timezone.utc).isoformat(),
+            "size_bytes": len(image_bytes),
+            "url": f"/api/dynamic-overlays/dry-run-preview/{preview_id}",
+        }
+        with _DRY_RUN_PREVIEW_LOCK:
+            previews_dir.mkdir(parents=True, exist_ok=True)
+            (previews_dir / f"{preview_id}.jpg").write_bytes(image_bytes)
+            existing = _load_dry_run_manifest_unlocked(manifest_path)
+            kept: List[Dict[str, Any]] = []
+            removed_ids: List[str] = []
+            for old in existing:
+                old_key = (
+                    str(old.get("server_type") or "").lower(),
+                    str(old.get("item_id") or ""),
+                    str(old.get("asset_type") or "poster").lower(),
+                )
+                if old_key == dedupe_key:
+                    removed_ids.append(str(old.get("id") or ""))
+                else:
+                    kept.append(old)
+            updated = [entry] + kept
+            if len(updated) > DRY_RUN_PREVIEW_MAX_ITEMS:
+                for pruned in updated[DRY_RUN_PREVIEW_MAX_ITEMS:]:
+                    removed_ids.append(str(pruned.get("id") or ""))
+                updated = updated[:DRY_RUN_PREVIEW_MAX_ITEMS]
+            _write_dry_run_manifest_unlocked(manifest_path, updated)
+            for old_id in removed_ids:
+                _unlink_dry_run_image_unlocked(previews_dir, old_id)
+        return entry
+    except Exception as err:
+        logger.warning("[OverlaySync] Could not store Dry-Run preview image: %s", err)
+        return None
+
+
+def list_dry_run_previews(base_dir: Path) -> List[Dict[str, Any]]:
+    """Return currently stored Dry-Run preview metadata entries, newest first."""
+    if not base_dir:
+        return []
+    previews_dir = get_dry_run_previews_dir(base_dir)
+    manifest_path = previews_dir / "manifest.json"
+    with _DRY_RUN_PREVIEW_LOCK:
+        entries = _load_dry_run_manifest_unlocked(manifest_path)
+        valid: List[Dict[str, Any]] = []
+        for entry in entries:
+            eid = str(entry.get("id") or "").strip()
+            if _DRY_RUN_PREVIEW_ID_RE.fullmatch(eid) and (previews_dir / f"{eid}.jpg").is_file():
+                valid.append(entry)
+                if len(valid) >= DRY_RUN_PREVIEW_MAX_ITEMS:
+                    break
+        return valid
+
+
+def clear_dry_run_previews(base_dir: Path) -> int:
+    """Remove all stored Dry-Run preview JPEGs and their manifest."""
+    if not base_dir:
+        return 0
+    previews_dir = get_dry_run_previews_dir(base_dir)
+    if not previews_dir.is_dir():
+        return 0
+    removed = 0
+    with _DRY_RUN_PREVIEW_LOCK:
+        for jpg in previews_dir.glob("*.jpg"):
+            try:
+                jpg.unlink(missing_ok=True)
+                removed += 1
+            except OSError:
+                pass
+        for extra in ("manifest.json", "manifest.json.tmp"):
+            try:
+                (previews_dir / extra).unlink(missing_ok=True)
+            except OSError:
+                pass
+    return removed
 
 EDITION_PATTERNS = [
     (r"(?i)\b(?:director'?s|directors)\s*cut\b", "Director's Cut"),
@@ -4302,7 +4450,7 @@ async def _run_overlay_sync_task(
                 pass
 
     if dry_run:
-        write_log("DRY RUN is active: overlays will be evaluated and rendered, but no artwork will be uploaded or marked synced.")
+        write_log("DRY RUN is active: overlays will be evaluated and rendered into Dry-Run Previews, but no artwork will be uploaded or marked synced.")
 
     # Fast targeted item handling
     is_target_mode = bool(target_items)
@@ -5512,6 +5660,18 @@ async def _run_overlay_sync_task(
                                     else:
                                         write_log(f"  [+] {w_tag}Overlays Removed & Clean Poster Restored: '{title}' ({lib_name}) -> {s_type.upper()} [Reason: {sync_reason}]")
                                 elif dry_run and composited_jpeg is not None:
+                                    record_dry_run_preview(
+                                        base_dir,
+                                        composited_jpeg,
+                                        title=title,
+                                        library_name=lib_name,
+                                        server_type=s_type,
+                                        item_id=str(item_id),
+                                        asset_type="poster",
+                                        media_type=m_type,
+                                        layers_count=len(overlay_layers or []),
+                                        sync_reason=sync_reason,
+                                    )
                                     await _inc_stats(skipped=1)
                                 elif composited_jpeg is not None:
                                     await _inc_stats(failed=1)
@@ -5715,6 +5875,18 @@ async def _run_overlay_sync_task(
                                     else:
                                         write_log(f"  [+] {w_tag}Overlays Removed & Clean Backdrop Restored: '{title}' ({lib_name}) -> {s_type.upper()} [Reason: {b_sync_reason}]")
                                 elif dry_run and b_comp is not None:
+                                    record_dry_run_preview(
+                                        base_dir,
+                                        b_comp,
+                                        title=f"{title} (Backdrop)",
+                                        library_name=lib_name,
+                                        server_type=s_type,
+                                        item_id=str(item_id),
+                                        asset_type="background",
+                                        media_type=m_type,
+                                        layers_count=len(b_layers or []),
+                                        sync_reason=b_sync_reason,
+                                    )
                                     await _inc_stats(skipped=1)
                                 elif b_comp is not None:
                                     await _inc_stats(failed=1)
@@ -6006,6 +6178,19 @@ async def _run_overlay_sync_task(
                                                 await _inc_stats(synced=1)
                                                 write_log(f"  [+] {w_tag}Overlaid & Synced Season: '{title} S{s_num:02d}' ({lib_name}) -> {s_type.upper()} [Reason: {s_sync_reason}]")
                                             elif dry_run:
+                                                if s_comp is not None:
+                                                    record_dry_run_preview(
+                                                        base_dir,
+                                                        s_comp,
+                                                        title=f"{title} - Season {s_num:02d}",
+                                                        library_name=lib_name,
+                                                        server_type=s_type,
+                                                        item_id=str(s_rk),
+                                                        asset_type="season",
+                                                        media_type="season",
+                                                        layers_count=len(s_layers or []),
+                                                        sync_reason=s_sync_reason,
+                                                    )
                                                 await _inc_stats(skipped=1)
                                             else:
                                                 await _inc_stats(failed=1)
@@ -6544,6 +6729,19 @@ async def _run_overlay_sync_task(
                                                     await _inc_stats(synced=1)
                                                     write_log(f"  [+] {w_tag}Overlaid & Synced Titlecard: '{title} S{s_num:02d}E{ep_num:02d}' ({lib_name}) -> {s_type.upper()} [Reason: {ep_sync_reason}]")
                                                 elif dry_run:
+                                                    if tc_comp is not None:
+                                                        record_dry_run_preview(
+                                                            base_dir,
+                                                            tc_comp,
+                                                            title=f"{title} S{s_num:02d}E{ep_num:02d} - {ep_title}",
+                                                            library_name=lib_name,
+                                                            server_type=s_type,
+                                                            item_id=str(ep_rk),
+                                                            asset_type="titlecard",
+                                                            media_type="episode",
+                                                            layers_count=len(ep_layers or []),
+                                                            sync_reason=ep_sync_reason,
+                                                        )
                                                     await _inc_stats(skipped=1)
                                                 else:
                                                     await _inc_stats(failed=1)

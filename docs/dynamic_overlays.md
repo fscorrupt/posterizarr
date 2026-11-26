@@ -63,10 +63,12 @@ After the wizard, use this safe setup path:
 3. Open **Visual Badges** or **Live Preview**, choose your library and format,
    and adjust badge styles or placement. Click **Save Layout** to persist
    changes (previewing alone does not upload artwork).
-4. Run a dry-run sync under **Sync & Maintenance > Synchronize** and check
-   `DynamicOverlaysSync.log` to verify matching and rendering safely.
-5. Test on a single item first with **Targeted Reapply** (or **Select Movie /
-   Show**) rather than a full library. Only turn **Dry Run** off under **Media
+4. Run a dry-run sync under **Sync & Maintenance > Synchronize** and inspect
+   the rendered results right inside **Dry-Run Previews** (and `DynamicOverlaysSync.log`)
+   before pushing anything to your media server.
+5. Test on a single item first with **Targeted Reapply** (make sure you have
+   generated clean base artwork via **Run Modes > Normal Run** or **Manual Asset**
+   first) rather than a full library. Only turn **Dry Run** off under **Media
    Changes** once previews and logs look right.
 
 ![Dynamic Overlays Live Preview](images/21-overlay-live-preview.png)
@@ -139,7 +141,7 @@ own standalone page and settings under **Asset Management > Asset Title Review**
 
 - **Background Checking** controls whether media metadata is periodically checked for changes; it is enabled by default and checks hourly.
 - **Automatic Overlay Resync** controls whether detected changes start the overlay render pipeline.
-- **Dry Run** is enabled by default. Syncs still evaluate rules and render changed artwork, but never upload it to a media server or mark it synced in the cache.
+- **Dry Run** is enabled by default. Syncs still evaluate rules and render changed artwork into **Synchronize > Dry-Run Previews** (without writing into `/assets`), and never upload artwork to a media server or mark it synced in the cache.
 - Turn off **Background Checking** as well to stop periodic change scans entirely.
 - The **Master Switch** is the hard stop: when disabled, background detection and overlay sync processing do not run. Switching it off also stops the detector and cancels active sync work before any subsequent upload.
 

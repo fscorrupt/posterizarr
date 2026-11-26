@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { Check, ChevronRight, ChevronLeft, Save, Server, Key, Settings, Bell, Rocket, Shield, Activity, HardDrive, Database, ExternalLink, Loader2, Clock, Calendar, Zap, RefreshCw, Grid, X, Eye, EyeOff, Layers, Sparkles, TestTube } from "lucide-react";
+import { Check, ChevronRight, ChevronLeft, Save, Server, Key, Settings, Bell, Rocket, Shield, Activity, HardDrive, Database, ExternalLink, Loader2, Clock, Calendar, Zap, RefreshCw, Grid, X, Eye, EyeOff, Layers, Sparkles, TestTube, Palette } from "lucide-react";
 import SiloSupportNotice from "./SiloSupportNotice";
 
 const ClearableInput = ({ value, onChange, placeholder, isPassword }) => {
@@ -58,6 +58,7 @@ const STEPS = [
   { id: "auto", title: t("onboarding.automation"), icon: <Settings className="w-5 h-5" /> },
   { id: "perf", title: t("onboarding.performance"), icon: <Activity className="w-5 h-5" /> },
   { id: "notif", title: t("onboarding.notifications"), icon: <Bell className="w-5 h-5" /> },
+  { id: "style", title: t("onboarding.posterStyle", "Poster Style"), icon: <Palette className="w-5 h-5" /> },
   { id: "overlays", title: t("dynamicOverlays.title", "Dynamic Overlays"), icon: <Zap className="w-5 h-5" /> },
   { id: "schedule", title: t("onboarding.schedule"), icon: <Clock className="w-5 h-5" /> },
   { id: "finish", title: t("onboarding.ready"), icon: <Check className="w-5 h-5" /> },
@@ -130,6 +131,7 @@ const runModes = [
   const [newMode, setNewMode] = useState("normal");
   const [newTime, setNewTime] = useState("03:00");
   const [enableDynamicOverlays, setEnableDynamicOverlays] = useState(false);
+  const [posterStylePreset, setPosterStylePreset] = useState("clearlogo");
   const [nextDestination, setNextDestination] = useState("blueprints");
   const [logoLibrary, setLogoLibrary] = useState("all");
   const [logoForceReplace, setLogoForceReplace] = useState(false);
@@ -232,6 +234,19 @@ const runModes = [
             if (initialFav === "TVDB" || initialFav === "TMDB") {
               setFavProvider(initialFav);
             }
+            const prereq = newConfig.PrerequisitePart || {};
+            const ovPart = newConfig.OverlayPart || {};
+            const pPart = newConfig.PosterOverlayPart || {};
+            const useLogoVal = String(newConfig.UseLogo ?? prereq.UseLogo ?? "").toLowerCase();
+            const imgProcVal = String(newConfig.ImageProcessing ?? ovPart.ImageProcessing ?? "").toLowerCase();
+            const addTextVal = String(newConfig.PosterAddText ?? pPart.AddText ?? "").toLowerCase();
+            if (useLogoVal === "true") {
+              setPosterStylePreset("clearlogo");
+            } else if (imgProcVal === "false" || (addTextVal === "false" && useLogoVal !== "true")) {
+              setPosterStylePreset("standard");
+            } else if (useLogoVal === "false" && imgProcVal === "true") {
+              setPosterStylePreset("uniform-text");
+            }
             return newConfig;
           });
         }
@@ -333,6 +348,56 @@ const runModes = [
         finalConfig.ApiPart.ProviderOrder = activeProviders;
         finalConfig.ApiPart.MovieProviderOrder = activeProviders;
         finalConfig.ApiPart.ShowProviderOrder = activeProviders;
+      }
+
+      const applyStyleField = (section, flatKey, nestedKey, val) => {
+        finalConfig[flatKey] = val;
+        if (finalConfig[section] && typeof finalConfig[section] === "object") {
+          finalConfig[section][nestedKey] = val;
+        }
+      };
+      const stripXxLang = (arr) => {
+        const list = Array.isArray(arr) ? arr.filter((lang) => String(lang).toLowerCase() !== "xx") : [];
+        return list.length > 0 ? list : ["en"];
+      };
+
+      if (posterStylePreset === "clearlogo") {
+        applyStyleField("PrerequisitePart", "UseLogo", "UseLogo", "true");
+        applyStyleField("PrerequisitePart", "UseBGLogo", "UseBGLogo", "true");
+        applyStyleField("PrerequisitePart", "UseClearlogo", "UseClearlogo", "true");
+        applyStyleField("PrerequisitePart", "UseClearart", "UseClearart", "false");
+        applyStyleField("PrerequisitePart", "ConvertLogoColor", "ConvertLogoColor", "false");
+        applyStyleField("PrerequisitePart", "TextlessPosterBypass", "TextlessPosterBypass", "true");
+        applyStyleField("OverlayPart", "ImageProcessing", "ImageProcessing", "true");
+        applyStyleField("PosterOverlayPart", "AddText", "AddText", "true");
+        applyStyleField("BackgroundOverlayPart", "AddText", "AddText", "true");
+      } else if (posterStylePreset === "standard") {
+        applyStyleField("PrerequisitePart", "UseLogo", "UseLogo", "false");
+        applyStyleField("PrerequisitePart", "UseBGLogo", "UseBGLogo", "false");
+        applyStyleField("PrerequisitePart", "UseClearlogo", "UseClearlogo", "false");
+        applyStyleField("PrerequisitePart", "UseClearart", "UseClearart", "false");
+        applyStyleField("OverlayPart", "ImageProcessing", "ImageProcessing", "false");
+        applyStyleField("PosterOverlayPart", "AddText", "AddText", "false");
+        applyStyleField("PosterOverlayPart", "AddBorder", "AddBorder", "false");
+        applyStyleField("PosterOverlayPart", "AddOverlay", "AddOverlay", "false");
+        applyStyleField("SeasonPosterOverlayPart", "AddText", "AddText", "false");
+        applyStyleField("SeasonPosterOverlayPart", "AddBorder", "AddBorder", "false");
+        applyStyleField("SeasonPosterOverlayPart", "AddOverlay", "AddOverlay", "false");
+        applyStyleField("BackgroundOverlayPart", "AddText", "AddText", "false");
+        applyStyleField("BackgroundOverlayPart", "AddBorder", "AddBorder", "false");
+        applyStyleField("BackgroundOverlayPart", "AddOverlay", "AddOverlay", "false");
+        const posterLangs = stripXxLang(finalConfig.PreferredLanguageOrder ?? finalConfig.ApiPart?.PreferredLanguageOrder);
+        const seasonLangs = stripXxLang(finalConfig.PreferredSeasonLanguageOrder ?? finalConfig.ApiPart?.PreferredSeasonLanguageOrder);
+        applyStyleField("ApiPart", "PreferredLanguageOrder", "PreferredLanguageOrder", posterLangs);
+        applyStyleField("ApiPart", "PreferredSeasonLanguageOrder", "PreferredSeasonLanguageOrder", seasonLangs);
+      } else if (posterStylePreset === "uniform-text") {
+        applyStyleField("PrerequisitePart", "UseLogo", "UseLogo", "false");
+        applyStyleField("PrerequisitePart", "UseBGLogo", "UseBGLogo", "false");
+        applyStyleField("PrerequisitePart", "UseClearlogo", "UseClearlogo", "false");
+        applyStyleField("PrerequisitePart", "UseClearart", "UseClearart", "false");
+        applyStyleField("OverlayPart", "ImageProcessing", "ImageProcessing", "true");
+        applyStyleField("PosterOverlayPart", "AddText", "AddText", "true");
+        applyStyleField("BackgroundOverlayPart", "AddText", "AddText", "true");
       }
 
       // Save config updates
@@ -590,8 +655,8 @@ const runModes = [
   };
 
   const renderStepContent = () => {
-    switch (currentStep) {
-      case 0: // Welcome
+    switch (STEPS[currentStep]?.id) {
+      case "welcome": // Welcome
         return (
           <div className="flex flex-col items-center justify-center text-center space-y-6 animate-fade-in py-10">
             <div className="mb-4">
@@ -602,7 +667,7 @@ const runModes = [
             </p>
           </div>
         );
-      case 1: // Server
+      case "server": // Server
         return (
           <div className="animate-fade-in flex flex-col h-full">
             {!primaryServer && (
@@ -686,7 +751,7 @@ const runModes = [
             )}
           </div>
         );
-      case 2: // API Keys
+      case "keys": // API Keys
         return (
           <div className="space-y-4 animate-fade-in flex flex-col h-full">
             <div className="shrink-0">
@@ -863,7 +928,7 @@ const runModes = [
             </div>
           </div>
         );
-      case 3: // Automation
+      case "auto": // Automation
         return (
           <div className="space-y-6 animate-fade-in">
             <h3 className="text-2xl font-bold text-white mb-2">{t("onboarding.automationPreferences")}</h3>
@@ -903,7 +968,7 @@ const runModes = [
             </div>
           </div>
         );
-      case 4: // Performance
+      case "perf": // Performance
         return (
           <div className="space-y-6 animate-fade-in">
             <h3 className="text-2xl font-bold text-white mb-2">{t("onboarding.performanceQuality")}</h3>
@@ -950,7 +1015,7 @@ const runModes = [
             </div>
           </div>
         );
-      case 5: // Notifications
+      case "notif": // Notifications
         return (
           <div className="space-y-6 animate-fade-in">
             <h3 className="text-2xl font-bold text-white mb-2">{t("onboarding.notifications")}</h3>
@@ -1023,7 +1088,114 @@ const runModes = [
             </div>
           </div>
         );
-      case 6: // Dynamic Overlays
+      case "style": { // Poster Style
+        const styleOptions = [
+          {
+            id: "clearlogo",
+            recommended: true,
+            preview: "/blueprint-previews/clearlogo-instead-of-text_poster.png",
+            title: t("onboarding.posterStyleClearLogoTitle", "Textless + Original ClearLogos"),
+            badge: t("onboarding.posterStyleClearLogoBadge", "Recommended"),
+            description: t(
+              "onboarding.posterStyleClearLogoDesc",
+              "Fetches clean textless posters and places each movie or show's official logo in a consistent position so overlay badges never cover titles (falls back to standard posters if no logo exists)."
+            ),
+          },
+          {
+            id: "standard",
+            recommended: false,
+            preview: "/blueprint-previews/minimalist-posters_en.png",
+            title: t("onboarding.posterStyleStandardTitle", "Standard Posters (Kometa-style)"),
+            badge: null,
+            description: t(
+              "onboarding.posterStyleStandardDesc",
+              "Keeps regular posters with their built-in title art, without drawing custom text, borders, or overlays. Ideal if you mainly want Dynamic Overlays badges."
+            ),
+          },
+          {
+            id: "uniform-text",
+            recommended: false,
+            preview: "/blueprint-previews/only-text.png",
+            title: t("onboarding.posterStyleUniformTitle", "Textless + Uniform Text"),
+            badge: null,
+            description: t(
+              "onboarding.posterStyleUniformDesc",
+              "Classic Posterizarr look: fetches textless posters and draws clean, uniform typography across your entire library."
+            ),
+          },
+        ];
+
+        return (
+          <div className="space-y-4 animate-fade-in">
+            <div>
+              <h3 className="text-2xl font-bold text-white mb-1">
+                {t("onboarding.posterStyleTitle", "Choose Your Base Poster Style")}
+              </h3>
+              <p className="text-sm text-theme-muted">
+                {t(
+                  "onboarding.posterStyleIntro",
+                  "This sets how Posterizarr builds your clean base posters before optional Dynamic Overlays are applied."
+                )}
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
+              {styleOptions.map((opt) => {
+                const isSelected = posterStylePreset === opt.id;
+                return (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    aria-pressed={isSelected}
+                    onClick={() => {
+                      setPosterStylePreset(opt.id);
+                      setConfig((prev) => ({
+                        ...prev,
+                        ImageProcessing: opt.id === "standard" ? "false" : "true",
+                      }));
+                    }}
+                    className={`group rounded-xl border text-left transition-all overflow-hidden flex flex-col ${
+                      isSelected
+                        ? "bg-theme-primary/15 border-theme-primary ring-1 ring-theme-primary/50 shadow-md"
+                        : "bg-theme-bg/50 border-theme-border/60 hover:border-theme-primary/50"
+                    }`}
+                  >
+                    <div className="relative h-44 w-full bg-black/50 flex items-center justify-center p-2 overflow-hidden">
+                      <img
+                        src={opt.preview}
+                        alt={opt.title}
+                        className="h-full w-auto max-w-full object-contain rounded shadow-sm group-hover:scale-[1.02] transition-transform"
+                      />
+                      {isSelected && (
+                        <span className="absolute top-2 right-2 w-6 h-6 rounded-full bg-theme-primary text-black flex items-center justify-center shadow">
+                          <Check className="w-3.5 h-3.5 stroke-[3]" />
+                        </span>
+                      )}
+                      {opt.badge && (
+                        <span className="absolute top-2 left-2 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                          {opt.badge}
+                        </span>
+                      )}
+                    </div>
+                    <div className="p-3.5 space-y-1.5 flex-1">
+                      <div className="text-sm font-semibold text-white leading-snug">{opt.title}</div>
+                      <p className="text-xs text-theme-muted leading-relaxed">{opt.description}</p>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            <p className="text-xs text-theme-muted text-center">
+              {t(
+                "onboarding.posterStyleFooterHint",
+                "You can switch presets or fine-tune fonts, colors, and borders anytime under Blueprints or Config → Global Visuals."
+              )}
+            </p>
+          </div>
+        );
+      }
+      case "overlays": // Dynamic Overlays
         return (
           <div className="space-y-6 animate-fade-in">
             <h3 className="text-2xl font-bold text-white mb-2">{t("onboarding.dynamicOverlaysTitle")}</h3>
@@ -1060,7 +1232,7 @@ const runModes = [
             </div>
           </div>
         );
-      case 7: // Schedule
+      case "schedule": // Schedule
         return (
           <div className="space-y-6 animate-fade-in">
             <h3 className="text-2xl font-bold text-white mb-2">{t("onboarding.automatedSchedule")}</h3>
@@ -1179,7 +1351,7 @@ const runModes = [
             </div>
           </div>
         );
-      case 8: { // Finish
+      case "finish": { // Finish
         const nextDestinations = [
           {
             id: "blueprints",

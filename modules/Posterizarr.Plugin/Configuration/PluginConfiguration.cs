@@ -16,6 +16,7 @@ public class PluginConfiguration : BasePluginConfiguration
     public string PosterizarrApiUrl { get; set; }
     public string PosterizarrApiKey { get; set; }
     public bool EnableRealtimeSync { get; set; }
+    public bool AllowInvalidSslCertificates { get; set; }
 
     // Plex Direct Sync (Kometa / Asset Mirroring)
     public bool EnablePlexSync { get; set; }
@@ -42,6 +43,7 @@ public class PluginConfiguration : BasePluginConfiguration
         PosterizarrApiUrl = string.Empty;
         PosterizarrApiKey = string.Empty;
         EnableRealtimeSync = false;
+        AllowInvalidSslCertificates = false;
 
         // Plex Direct Sync defaults (disabled by default)
         EnablePlexSync = false;

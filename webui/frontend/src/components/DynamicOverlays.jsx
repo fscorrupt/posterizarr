@@ -651,6 +651,7 @@ export default function DynamicOverlays() {
     }
     if (MAINTENANCE_TAB_IDS.includes(tabId)) {
       fetchOverlaySyncStatus();
+      fetchCleanAssetsCount();
     } else if (tabId === "anime") {
       fetchAnimetafillStatus();
     }
@@ -1152,6 +1153,10 @@ export default function DynamicOverlays() {
   const [isSyncLogExpanded, setIsSyncLogExpanded] = useState(false);
   const [isAutoScrollLogs, setIsAutoScrollLogs] = useState(true);
   const syncLogsRef = useRef(null);
+  const [cleanAssetsCount, setCleanAssetsCount] = useState(null);
+  const [dryRunPreviews, setDryRunPreviews] = useState([]);
+  const [selectedDryRunPreview, setSelectedDryRunPreview] = useState(null);
+  const [isClearingDryRunPreviews, setIsClearingDryRunPreviews] = useState(false);
 
   // Dynamically compute enabled media servers from Posterizarr server configuration
   const enabledServers = useMemo(() => {
@@ -1274,6 +1279,23 @@ export default function DynamicOverlays() {
     }
   };
 
+  const fetchCleanAssetsCount = async () => {
+    try {
+      const res = await fetch("/api/assets/stats");
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.stats) {
+          const total =
+            (data.stats.posters || 0) +
+            (data.stats.backgrounds || 0) +
+            (data.stats.seasons || 0) +
+            (data.stats.titlecards || 0);
+          setCleanAssetsCount(total);
+        }
+      }
+    } catch (_) {}
+  };
+
   const fetchOverlaySyncStatus = async () => {
     try {
       const res = await fetch("/api/dynamic-overlays/sync/status");
@@ -1281,6 +1303,7 @@ export default function DynamicOverlays() {
         const data = await res.json();
         setIsOverlaySyncRunning(Boolean(data.is_running));
         if (data.last_result) setOverlaySyncStatus(data.last_result);
+        if (Array.isArray(data.dry_run_previews)) setDryRunPreviews(data.dry_run_previews);
         if (fullSyncLogModeRef.current) {
           await fetchFullOverlaySyncLog();
         } else if (Array.isArray(data.recent_logs)) {
@@ -1289,6 +1312,37 @@ export default function DynamicOverlays() {
       }
     } catch (_) {}
   };
+
+  const handleClearDryRunPreviews = async () => {
+    if (isClearingDryRunPreviews) return;
+    try {
+      setIsClearingDryRunPreviews(true);
+      const res = await fetch("/api/dynamic-overlays/dry-run-previews", { method: "DELETE" });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.success) {
+        setDryRunPreviews([]);
+        setSelectedDryRunPreview(null);
+        showSuccess("Cleared Dry-Run previews.");
+      } else {
+        showError(data.error || "Could not clear Dry-Run previews.");
+      }
+    } catch (err) {
+      showError("Error clearing Dry-Run previews: " + err.message);
+    } finally {
+      setIsClearingDryRunPreviews(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!selectedDryRunPreview) return undefined;
+    const onKeyDown = (event) => {
+      if (event.key === "Escape") {
+        setSelectedDryRunPreview(null);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [selectedDryRunPreview]);
 
   const handleToggleFullSyncLog = async () => {
     if (fullSyncLogLoadingRef.current) return;
@@ -2581,6 +2635,7 @@ export default function DynamicOverlays() {
     fetchServerConfig();
     fetchWebUISettings();
     fetchOverlaySyncStatus();
+    fetchCleanAssetsCount();
     fetchAnimetafillData();
 
     let tick = 0;
@@ -11097,6 +11152,35 @@ export default function DynamicOverlays() {
                 </span>
               </div>
             )}
+            {cleanAssetsCount === 0 && (
+              <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-start gap-2.5 text-amber-200">
+                  <HardDrive className="w-4 h-4 shrink-0 text-amber-400 mt-0.5" />
+                  <div className="space-y-0.5">
+                    <div className="font-semibold text-amber-300">No clean base assets found in your Assets folder yet</div>
+                    <p className="text-amber-200/80 leading-relaxed">
+                      Dynamic Overlays composites badges onto clean base artwork created by <strong>Normal Mode</strong> or <strong>Manual Asset</strong> (so originals stay untouched). Run a library or create one test item first — Sync and Targeted Reapply will skip items without local base files.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => navigate("/blueprints")}
+                    className="px-3 py-1.5 rounded-lg bg-theme-card hover:bg-theme-hover border border-theme text-theme-text font-medium transition-colors"
+                  >
+                    Base Poster Style
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => navigate("/run-modes")}
+                    className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-black font-semibold transition-colors"
+                  >
+                    Open Run Modes
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* Scope, Server, and Library Selectors */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -11357,6 +11441,105 @@ export default function DynamicOverlays() {
                     </span>
                   )}
                 </div>
+              </div>
+            )}
+
+            {/* Dry-Run Previews Gallery */}
+            {(isChangeDetectionDryRun || dryRunPreviews.length > 0) && (
+              <div className="p-4 rounded-xl bg-theme-hover/25 border border-theme space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="space-y-0.5">
+                    <div className="flex items-center gap-2 text-xs font-bold text-theme-text">
+                      <Eye className="w-4 h-4 text-theme-primary" />
+                      <span>Dry-Run Previews</span>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-theme-primary/15 text-theme-primary border border-theme-primary/30">
+                        {dryRunPreviews.length}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-theme-muted">
+                      Recent items rendered while Dry Run is active (nothing uploaded to your media server).
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleTabChange("preview")}
+                      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-theme-card hover:bg-theme-hover border border-theme text-xs font-medium text-theme-text transition-colors"
+                    >
+                      <Palette className="w-3.5 h-3.5 text-theme-primary" />
+                      <span>Live Preview</span>
+                    </button>
+                    {isChangeDetectionDryRun && (
+                      <button
+                        type="button"
+                        onClick={() => handleTabChange("media-changes")}
+                        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-theme-card hover:bg-theme-hover border border-theme text-xs font-medium text-theme-text transition-colors"
+                      >
+                        <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>Dry Run Settings</span>
+                      </button>
+                    )}
+                    {dryRunPreviews.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={handleClearDryRunPreviews}
+                        disabled={isClearingDryRunPreviews}
+                        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 text-xs font-medium transition-colors disabled:opacity-50"
+                      >
+                        {isClearingDryRunPreviews ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                        <span>Clear</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {dryRunPreviews.length === 0 ? (
+                  <div className="p-4 rounded-xl bg-theme-bg/50 border border-dashed border-theme text-xs text-theme-muted text-center">
+                    Run a Sync or <strong>Targeted Reapply</strong> with Dry Run enabled to inspect rendered artwork right here before pushing live, or use <strong>Live Preview</strong> to test badge placement.
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                    {dryRunPreviews.map((preview) => {
+                      const assetLabel = ({
+                        poster: "Poster",
+                        season: "Season",
+                        background: "Backdrop",
+                        titlecard: "Titlecard",
+                      })[preview.asset_type] || preview.asset_type || "Asset";
+                      return (
+                        <button
+                          key={preview.id}
+                          type="button"
+                          onClick={() => setSelectedDryRunPreview(preview)}
+                          className="group rounded-xl bg-theme-card border border-theme hover:border-theme-primary/60 overflow-hidden text-left transition-all flex flex-col shadow-sm"
+                        >
+                          <div className="relative h-52 w-full bg-black/50 flex items-center justify-center p-1.5 overflow-hidden">
+                            <img
+                              src={preview.url}
+                              alt={preview.title || assetLabel}
+                              loading="lazy"
+                              className="h-full w-full object-contain group-hover:scale-[1.02] transition-transform"
+                            />
+                            <span className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded bg-black/75 text-[10px] font-semibold text-white">
+                              {assetLabel}
+                            </span>
+                            <span className="absolute top-1.5 right-1.5 px-1.5 py-0.5 rounded bg-theme-primary/90 text-[10px] font-bold text-black">
+                              {preview.layers_count ?? 0}x
+                            </span>
+                          </div>
+                          <div className="p-2 space-y-0.5">
+                            <div className="text-xs font-semibold text-theme-text truncate" title={preview.title}>
+                              {preview.title || "Untitled"}
+                            </div>
+                            <div className="text-[10px] text-theme-muted truncate">
+                              {preview.library_name || "Library"}{preview.server_type ? ` · ${preview.server_type.toUpperCase()}` : ""}
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             )}
 
@@ -11648,17 +11831,28 @@ export default function DynamicOverlays() {
                   </button>
                 </div>
 
-                <div className="pt-2 border-t border-theme/40 text-[11px] text-theme-muted flex items-center justify-between">
+                <div className="pt-2 border-t border-theme/40 text-[11px] text-theme-muted flex items-center justify-between gap-2 flex-wrap">
                   <span>{t("dynamicOverlays.changeDetection.status")}</span>
-                  <span className="font-medium text-theme-text">
-                    {isChangeDetectionDryRun
-                      ? featureSettings?.enabled
-                        ? t("dynamicOverlays.changeDetection.renderOnlyNoPush")
-                        : t("dynamicOverlays.changeDetection.pausedMasterOff")
-                      : featureSettings?.enabled
-                        ? t("dynamicOverlays.changeDetection.serverPushAllowed")
-                        : t("dynamicOverlays.changeDetection.pausedMasterOff")}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-theme-text">
+                      {isChangeDetectionDryRun
+                        ? featureSettings?.enabled
+                          ? t("dynamicOverlays.changeDetection.renderOnlyNoPush")
+                          : t("dynamicOverlays.changeDetection.pausedMasterOff")
+                        : featureSettings?.enabled
+                          ? t("dynamicOverlays.changeDetection.serverPushAllowed")
+                          : t("dynamicOverlays.changeDetection.pausedMasterOff")}
+                    </span>
+                    {(isChangeDetectionDryRun || dryRunPreviews.length > 0) && (
+                      <button
+                        type="button"
+                        onClick={() => handleTabChange("sync")}
+                        className="text-theme-primary hover:underline font-medium"
+                      >
+                        View Dry-Run Previews ({dryRunPreviews.length})
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
@@ -15298,6 +15492,20 @@ export default function DynamicOverlays() {
                 className="p-2 shrink-0 rounded-lg text-theme-muted hover:bg-theme-hover"><X className="w-4 h-4" /></button>
             </div>
             <div className="p-4 border-b border-theme space-y-3">
+              {cleanAssetsCount === 0 && (
+                <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 text-xs flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-amber-200">
+                    No clean base assets exist in <strong>/assets</strong> yet. Targeted Reapply only composites onto existing local base artwork — create at least one item via <strong>Run Modes</strong> first.
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => { setIsItemSyncPickerOpen(false); navigate("/run-modes"); }}
+                    className="px-2.5 py-1 rounded-md bg-amber-500 hover:bg-amber-400 text-black font-semibold shrink-0"
+                  >
+                    Open Run Modes
+                  </button>
+                </div>
+              )}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <label className="text-xs text-theme-muted space-y-1"><span>Target</span>
                   <select value={syncTargetMode} onChange={(event) => {
@@ -16434,6 +16642,34 @@ export default function DynamicOverlays() {
                     </p>
                   </div>
                 </div>
+
+                <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="space-y-1">
+                    <div className="font-semibold text-amber-300 flex items-center gap-1.5">
+                      <Palette className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Two-Stage Flow: Base Poster Style + Dynamic Overlays</span>
+                    </div>
+                    <p className="text-theme-muted leading-relaxed">
+                      Clean base artwork (<strong>ClearLogos</strong>, <strong>Standard Posters</strong>, or text titles) is configured in <strong>Blueprints / Config</strong> and fetched by <strong>Normal Run</strong> (or <strong>Manual Asset</strong>). Dynamic Overlays then composites badges onto those clean files — inspect real outputs anytime under <strong>Synchronize → Dry-Run Previews</strong>.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => navigate("/blueprints")}
+                      className="px-2.5 py-1.5 rounded-lg bg-theme-card hover:bg-theme-hover border border-theme text-theme-text font-medium transition-colors"
+                    >
+                      Blueprints
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => navigate("/run-modes")}
+                      className="px-2.5 py-1.5 rounded-lg bg-theme-card hover:bg-theme-hover border border-theme text-theme-text font-medium transition-colors"
+                    >
+                      Run Modes
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
 
@@ -17202,6 +17438,48 @@ export default function DynamicOverlays() {
                   </>
                 )}
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {selectedDryRunPreview && (
+        <div
+          className="app-dialog-backdrop fixed inset-0 z-[70] bg-black/85 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={() => setSelectedDryRunPreview(null)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Dry-Run Preview: ${selectedDryRunPreview.title || "Asset"}`}
+            className="app-dialog-panel w-full max-w-4xl bg-theme-card border border-theme rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-theme">
+              <div className="min-w-0">
+                <h3 className="text-sm font-bold text-theme-text truncate">
+                  {selectedDryRunPreview.title || "Dry-Run Preview"}
+                </h3>
+                <p className="text-[11px] text-theme-muted truncate">
+                  {selectedDryRunPreview.library_name || "Library"} · {(selectedDryRunPreview.server_type || "").toUpperCase()} · {selectedDryRunPreview.asset_type || "asset"} · {selectedDryRunPreview.layers_count ?? 0} layer(s)
+                  {selectedDryRunPreview.sync_reason ? ` · ${selectedDryRunPreview.sync_reason}` : ""}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedDryRunPreview(null)}
+                aria-label="Close Dry-Run preview"
+                className="p-1.5 rounded-lg text-theme-muted hover:text-theme-text hover:bg-theme-hover"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-4 bg-black/60 flex items-center justify-center overflow-auto">
+              <img
+                src={selectedDryRunPreview.url}
+                alt={selectedDryRunPreview.title || "Dry-Run Preview"}
+                className="max-h-[75vh] w-auto max-w-full object-contain rounded-lg shadow-lg"
+              />
             </div>
           </div>
         </div>

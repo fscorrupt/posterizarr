@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net;
 using System.Net.Http;
 using System.Net.WebSockets;
 using System.Text;
@@ -295,10 +296,13 @@ namespace Posterizarr.Plugin.Services
             try
             {
                 var trimmed = rawUrl.Trim();
-                if (!trimmed.StartsWith("http://", StringComparison.OrdinalIgnoreCase) &&
-                    !trimmed.StartsWith("https://", StringComparison.OrdinalIgnoreCase) &&
-                    !trimmed.StartsWith("ws://", StringComparison.OrdinalIgnoreCase) &&
-                    !trimmed.StartsWith("wss://", StringComparison.OrdinalIgnoreCase))
+                bool hadExplicitScheme =
+                    trimmed.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+                    trimmed.StartsWith("https://", StringComparison.OrdinalIgnoreCase) ||
+                    trimmed.StartsWith("ws://", StringComparison.OrdinalIgnoreCase) ||
+                    trimmed.StartsWith("wss://", StringComparison.OrdinalIgnoreCase);
+
+                if (!hadExplicitScheme)
                 {
                     trimmed = "http://" + trimmed;
                 }
@@ -313,10 +317,21 @@ namespace Posterizarr.Plugin.Services
                     builder.Scheme = "ws";
                 }
 
-                // If no explicit port was specified in rawUrl, default to Posterizarr's default port 8000
-                if (!System.Text.RegularExpressions.Regex.IsMatch(trimmed, @":\d+(?:/|$)"))
+                bool hasExplicitPort = System.Text.RegularExpressions.Regex.IsMatch(trimmed, @":\d+(?:/|$)");
+                if (!hasExplicitPort)
                 {
-                    builder.Port = 8000;
+                    if (builder.Scheme.Equals("wss", StringComparison.OrdinalIgnoreCase))
+                    {
+                        builder.Port = -1;
+                    }
+                    else if (hadExplicitScheme && builder.Host.Contains('.') && !IPAddress.TryParse(builder.Host, out _))
+                    {
+                        builder.Port = -1;
+                    }
+                    else
+                    {
+                        builder.Port = 8000;
+                    }
                 }
 
                 builder.Path = builder.Path.TrimEnd('/') + "/ws/events";
