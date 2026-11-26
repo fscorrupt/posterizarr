@@ -644,6 +644,11 @@ export default function DynamicOverlays() {
     try {
       localStorage.setItem("posterizarr_active_overlay_tab", tabId);
     } catch {}
+    if ((tabId === "config" || tabId === "visual" || tabId === "preview") && !isVisualDirty) {
+      fetchVisualConfig();
+    } else if (tabId === "rules") {
+      refreshScanData();
+    }
     if (MAINTENANCE_TAB_IDS.includes(tabId)) {
       fetchOverlaySyncStatus();
     } else if (tabId === "anime") {
@@ -651,7 +656,7 @@ export default function DynamicOverlays() {
     }
   };
 
-  const [activeAssetTarget, setActiveAssetTarget] = useState("all"); // "all", "poster", "backdrop", "season", "titlecard"
+  const [activeAssetTarget, setActiveAssetTarget] = useState("poster"); // "poster", "backdrop", "season", "titlecard"
   const [multiRatingsParam, setMultiRatingsParam] = useState("");
   const [deleteConfirmModal, setDeleteConfirmModal] = useState({
     open: false,
@@ -756,6 +761,7 @@ export default function DynamicOverlays() {
 
   // Visual Studio / YAML Translator state
   const [visualConfig, setVisualConfig] = useState({ libraries: {} });
+  const [isVisualDirty, setIsVisualDirty] = useState(false);
   const [selectedVisualLib, setSelectedVisualLib] = useState(() => {
     try {
       return localStorage.getItem("posterizarr_selected_visual_lib") || "";
@@ -2330,6 +2336,29 @@ export default function DynamicOverlays() {
   };
 
   // 1b. Visual Studio / YAML Translator Handlers
+  const applySyncedVisualConfig = (cfg) => {
+    if (!cfg || !cfg.libraries) return;
+    setVisualConfig(cfg);
+    setIsVisualDirty(false);
+    setPreviewRecipeRevision(previous => previous + 1);
+    const libKeys = Object.keys(cfg.libraries);
+    if (libKeys.length === 0) {
+      setSelectedVisualLib("");
+      setSelectedSaveLibrary("");
+      try { localStorage.removeItem("posterizarr_selected_visual_lib"); } catch {}
+      return;
+    }
+    if (!selectedVisualLib || !cfg.libraries[selectedVisualLib]) {
+      let savedLib = "";
+      try { savedLib = localStorage.getItem("posterizarr_selected_visual_lib") || ""; } catch {}
+      const targetLib = (savedLib && cfg.libraries[savedLib]) ? savedLib : libKeys[0];
+      setSelectedVisualLib(targetLib);
+      setSelectedSaveLibrary(targetLib);
+      try { localStorage.setItem("posterizarr_selected_visual_lib", targetLib); } catch {}
+      handleSelectPreviewLibrary(targetLib, cfg);
+    }
+  };
+
   const fetchVisualConfig = async () => {
     try {
       setIsVisualLoading(true);
@@ -2338,14 +2367,21 @@ export default function DynamicOverlays() {
         const data = await res.json();
         if (data.config && data.config.libraries) {
           setVisualConfig(data.config);
+          setIsVisualDirty(false);
           setPreviewRecipeRevision(previous => previous + 1);
           const libKeys = Object.keys(data.config.libraries);
-          const savedLib = localStorage.getItem("posterizarr_selected_visual_lib");
-          const targetLib = (savedLib && data.config.libraries[savedLib]) ? savedLib : (libKeys[0] || "");
-          if (targetLib) {
-            setSelectedVisualLib(targetLib);
-            setSelectedSaveLibrary(targetLib);
-            handleSelectPreviewLibrary(targetLib, data.config);
+          if (libKeys.length === 0) {
+            setSelectedVisualLib("");
+            setSelectedSaveLibrary("");
+            try { localStorage.removeItem("posterizarr_selected_visual_lib"); } catch {}
+          } else {
+            const savedLib = localStorage.getItem("posterizarr_selected_visual_lib");
+            const targetLib = (savedLib && data.config.libraries[savedLib]) ? savedLib : (libKeys[0] || "");
+            if (targetLib) {
+              setSelectedVisualLib(targetLib);
+              setSelectedSaveLibrary(targetLib);
+              handleSelectPreviewLibrary(targetLib, data.config);
+            }
           }
         }
       }
@@ -2366,6 +2402,11 @@ export default function DynamicOverlays() {
       });
       const data = await res.json();
       if (res.ok && data.success) {
+        setIsVisualDirty(false);
+        if (data.scan) setScanData(data.scan);
+        if (data.config?.libraries) {
+          applySyncedVisualConfig(data.config);
+        }
         showSuccess("Visual configuration saved and compiled! No YAML edits needed.");
         fetchAllData();
       } else {
@@ -2385,7 +2426,12 @@ export default function DynamicOverlays() {
       const data = await res.json();
       if (res.ok && data.success) {
         showSuccess(data.message || "Turnkey overlays configured successfully!");
-        if (data.scan) setScanData(data.scan);
+        setIsVisualDirty(false);
+        if (data.scan) {
+          setScanData(data.scan);
+        } else {
+          fetchAllData();
+        }
         if (data.config) {
           setVisualConfig(data.config);
           const libKeys = Object.keys(data.config.libraries || {});
@@ -2394,7 +2440,7 @@ export default function DynamicOverlays() {
             setSelectedVisualLib(firstLib);
             setSelectedSaveLibrary(firstLib);
             try { localStorage.setItem("posterizarr_selected_visual_lib", firstLib); } catch {}
-            handleSelectPreviewLibrary(firstLib);
+            handleSelectPreviewLibrary(firstLib, data.config);
           }
         }
       } else {
@@ -2423,6 +2469,8 @@ export default function DynamicOverlays() {
       const data = await res.json();
       if (res.ok && data.success && data.config) {
         setVisualConfig(data.config);
+        setIsVisualDirty(false);
+        refreshScanData();
         if (data.settings) {
           setFeatureSettings(data.settings);
         } else {
@@ -2836,6 +2884,16 @@ export default function DynamicOverlays() {
   };
 
   // 2. Scan / Recheck
+  const refreshScanData = async () => {
+    try {
+      const res = await fetch("/api/dynamic-overlays/scan");
+      if (res.ok) {
+        const sc = await res.json();
+        setScanData(sc);
+      }
+    } catch (_) {}
+  };
+
   const handleScan = async () => {
     try {
       setIsScanning(true);
@@ -3522,7 +3580,8 @@ export default function DynamicOverlays() {
       if (data.success) {
         showToast(`Removed overlay from ${libraryName}.`, "success");
         if (data.scan) setScanData(data.scan);
-        await fetchVisualConfig();
+        if (data.config?.libraries) applySyncedVisualConfig(data.config);
+        else await fetchVisualConfig();
         setPreviewTimestamp(Date.now());
       } else {
         showToast(data.error || "Failed to remove overlay", "error");
@@ -3596,7 +3655,8 @@ export default function DynamicOverlays() {
           );
           setAddOverlayModal(null);
           if (data.scan) setScanData(data.scan);
-          if (data.config?.libraries) setVisualConfig(data.config);
+          if (data.config?.libraries) applySyncedVisualConfig(data.config);
+          else await fetchVisualConfig();
         } else {
           showToast(
             data.detail || data.error || t("dynamicOverlays.customImage.addFailed", "Failed to add custom image overlay."),
@@ -3632,7 +3692,8 @@ export default function DynamicOverlays() {
         showToast(`Added ${newOverlayName} to ${addOverlayModal.libraryName}!`, "success");
         setAddOverlayModal(null);
         if (data.scan) setScanData(data.scan);
-        await fetchVisualConfig();
+        if (data.config?.libraries) applySyncedVisualConfig(data.config);
+        else await fetchVisualConfig();
         setPreviewTimestamp(Date.now());
       } else {
         showToast(data.error || "Failed to add overlay", "error");
@@ -3661,6 +3722,8 @@ export default function DynamicOverlays() {
         setIsAddLibraryOpen(false);
         setNewLibraryName("");
         if (data.scan) setScanData(data.scan);
+        if (data.config?.libraries) applySyncedVisualConfig(data.config);
+        else await fetchVisualConfig();
       } else {
         showToast(data.error || "Failed to add library", "error");
       }
@@ -3711,6 +3774,8 @@ export default function DynamicOverlays() {
         setSelectedLibraries(prev => prev.filter(name => !toRemove.includes(name)));
         setRemoveLibraryModal({ isOpen: false, librariesToRemove: [] });
         if (data.scan) setScanData(data.scan);
+        if (data.config?.libraries) applySyncedVisualConfig(data.config);
+        else await fetchVisualConfig();
       } else {
         showToast(data.error || "Failed to remove library section(s)", "error");
       }
@@ -3837,7 +3902,8 @@ export default function DynamicOverlays() {
         showToast("Updated template variables!", "success");
         setEditVariablesModal(null);
         if (data.scan) setScanData(data.scan);
-        await fetchVisualConfig();
+        if (data.config?.libraries) applySyncedVisualConfig(data.config);
+        else await fetchVisualConfig();
         setPreviewTimestamp(Date.now());
       } else {
         showToast(data.error || "Failed updating variables", "error");
@@ -4506,9 +4572,10 @@ export default function DynamicOverlays() {
       const data = await res.json();
       if (res.ok && data.success) {
         showSuccess(`Saved overlay layout coordinates to '${libName}' in config.yml!`);
+        setIsVisualDirty(false);
         if (data.scan) setScanData(data.scan);
         if (data.config && data.config.libraries) {
-          setVisualConfig(data.config);
+          applySyncedVisualConfig(data.config);
         } else {
           setVisualConfig(prev => {
             if (!prev?.libraries?.[libName]) return prev;
@@ -5128,7 +5195,7 @@ export default function DynamicOverlays() {
     offsets.age_rating?.font ? `&age_rating_font=${encodeURIComponent(offsets.age_rating.font)}` : "",
     offsets.status?.font_size ? `&status_font_size=${offsets.status.font_size}` : "",
     offsets.status?.font ? `&status_font=${encodeURIComponent(offsets.status.font)}` : "",
-    `&resolution_mode=${encodeURIComponent(offsets.resolution?.mode || resolutionMode || "banner")}`,
+    `&resolution_mode=${encodeURIComponent(offsets.resolution?.mode || resolutionMode || "corner_badge")}`,
     `&resolution_back_color=${encodeURIComponent(offsets.resolution?.back_color ?? "#00000099")}`,
     `&resolution_back_radius=${offsets.resolution?.back_radius ?? 15}`,
     `&resolution_back_width=${offsets.resolution?.back_width || (isLandscapeFormat(previewTemplate) ? 260 : 245)}`,
@@ -5729,6 +5796,12 @@ export default function DynamicOverlays() {
                 <RotateCcw className={`w-3.5 h-3.5 ${isVisualLoading ? "animate-spin text-theme-primary" : ""}`} />
               </button>
 
+              {isVisualDirty && (
+                <span className="px-2.5 py-1 rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-400 text-[11px] font-semibold">
+                  Unsaved changes
+                </span>
+              )}
+
               <button
                 type="button"
                 onClick={handleSaveVisualConfig}
@@ -5764,6 +5837,7 @@ export default function DynamicOverlays() {
             const isTv = curLib.media_type === "show";
 
             const updateBadge = (badgeKey, patch) => {
+              setIsVisualDirty(true);
               setVisualConfig((prev) => {
                 const nextLibs = { ...prev.libraries };
                 const targetLib = { ...nextLibs[selectedVisualLib] };
@@ -5820,6 +5894,7 @@ export default function DynamicOverlays() {
             };
 
             const updateAssetOverrides = (nextOverrides) => {
+              setIsVisualDirty(true);
               setVisualConfig(previous => {
                 const nextLibraries = { ...previous.libraries };
                 nextLibraries[selectedVisualLib] = {
@@ -8014,6 +8089,7 @@ export default function DynamicOverlays() {
                       <button
                         type="button"
                         onClick={() => {
+                          setIsVisualDirty(true);
                           setVisualConfig((prev) => {
                             const nextLibs = { ...prev.libraries };
                             const targetLib = { ...nextLibs[selectedVisualLib], media_type: "movie" };
@@ -8037,6 +8113,7 @@ export default function DynamicOverlays() {
                       <button
                         type="button"
                         onClick={() => {
+                          setIsVisualDirty(true);
                           setVisualConfig((prev) => {
                             const nextLibs = { ...prev.libraries };
                             const targetLib = { ...nextLibs[selectedVisualLib], media_type: "show" };
@@ -8060,6 +8137,7 @@ export default function DynamicOverlays() {
                       type="button"
                       onClick={() => {
                         if (window.confirm(`Are you sure you want to remove the library '${selectedVisualLib}' from overlay configuration?`)) {
+                          setIsVisualDirty(true);
                           setVisualConfig((prev) => {
                             const next = { ...prev.libraries };
                             delete next[selectedVisualLib];
@@ -8081,9 +8159,10 @@ export default function DynamicOverlays() {
 
                 {/* ASSET TARGET SELECTOR (POSTERS / BACKDROPS / SEASONS / TITLE CARDS) */}
                 {(() => {
-                  const effectiveAssetTarget = (!isTv && (activeAssetTarget === "season" || activeAssetTarget === "titlecard"))
-                    ? "poster"
-                    : activeAssetTarget;
+                  const validAssetTargets = isTv ? ["poster", "backdrop", "season", "titlecard"] : ["poster", "backdrop"];
+                  const effectiveAssetTarget = validAssetTargets.includes(activeAssetTarget)
+                    ? activeAssetTarget
+                    : "poster";
 
                   return (
                     <>
@@ -9145,6 +9224,18 @@ export default function DynamicOverlays() {
                 <RefreshCw className={`w-4 h-4 ${isScanning ? "animate-spin text-theme-primary" : ""}`} />
                 Re-scan
               </button>
+              {inventory?.defaults?.official_known > 0 && (inventory?.defaults?.official_installed || 0) < inventory.defaults.official_known && (
+                <button
+                  type="button"
+                  onClick={() => handleImport(false)}
+                  disabled={isImporting}
+                  title="Download missing official Kometa default overlay templates"
+                  className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-400 text-xs font-semibold transition-all disabled:opacity-50"
+                >
+                  <Download className={`w-4 h-4 ${isImporting ? "animate-bounce" : ""}`} />
+                  <span>{isImporting ? "Importing..." : "Import Defaults"}</span>
+                </button>
+              )}
             </div>
           </div>
 
@@ -14414,6 +14505,7 @@ export default function DynamicOverlays() {
                     showError("Please enter a library name.");
                     return;
                   }
+                  setIsVisualDirty(true);
                   setVisualConfig((prev) => {
                     const next = { ...prev.libraries };
                     next[cleanName] = {
@@ -14421,7 +14513,7 @@ export default function DynamicOverlays() {
                       media_type: newLibForm.media_type,
                       enabled: true,
                       badges: {
-                        resolution: { enabled: false, banner_4k: true, banner_1080p: false, banner_720p: false },
+                        resolution: { enabled: false, mode: "corner_badge", banner_4k: false, banner_1080p: false, banner_720p: false, tiers: ["4k", "1080p", "720p", "576p", "480p"], position: "top-left", offset_x: 15, offset_y: 15 },
                         audio_languages: { enabled: true, languages: ["de", "en"], position: "bottom-left", offset_x: 48, offset_y: 37, limit: 5 },
                         runtime: { enabled: true, position: "bottom-right", offset_x: 18, offset_y: 20, back_width: 205, back_height: 80 },
                         status: { enabled: newLibForm.media_type === "show", position: "bottom-center", offset_x: 0, offset_y: 23, font_size: 80, colors: { ...DEFAULT_STATUS_COLORS }, states: { ...DEFAULT_STATUS_STATES }, texts: { ...DEFAULT_STATUS_TEXTS } },

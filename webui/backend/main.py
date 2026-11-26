@@ -21306,6 +21306,16 @@ async def get_dynamic_overlays_config_content(filename: str = Query("config.yml"
     return kometa_resolver.get_config_content(filename)
 
 
+def _sync_visual_config_safe() -> Dict[str, Any]:
+    """Re-parse config.yml into visual JSON after rule/library edits without failing the request."""
+    try:
+        from dynamic_overlays_service import sync_visual_config_from_yaml
+        return sync_visual_config_from_yaml()
+    except Exception as vis_err:
+        logger.warning(f"Failed syncing visual config from config.yml: {vis_err}")
+        return {}
+
+
 @app.post("/api/dynamic-overlays/config-content")
 async def save_dynamic_overlays_config_content(req: SaveConfigContentRequest):
     """Save raw YAML content with syntax validation and automatic backup."""
@@ -21314,7 +21324,8 @@ async def save_dynamic_overlays_config_content(req: SaveConfigContentRequest):
     res = kometa_resolver.save_config_content(req.filename, req.content)
     if res.get("success"):
         fresh_scan = kometa_resolver.scan_and_analyze_rules()
-        return {**res, "scan": fresh_scan}
+        fresh_vis = _sync_visual_config_safe()
+        return {**res, "scan": fresh_scan, "config": fresh_vis}
     return res
 
 
@@ -21326,7 +21337,8 @@ async def remove_dynamic_overlay_rule(req: RemoveOverlayRuleRequest):
     res = kometa_resolver.remove_library_overlay(req.library_name, req.overlay_index, req.filename)
     if res.get("success"):
         fresh_scan = kometa_resolver.scan_and_analyze_rules()
-        return {**res, "scan": fresh_scan}
+        fresh_vis = _sync_visual_config_safe()
+        return {**res, "scan": fresh_scan, "config": fresh_vis}
     return res
 
 
@@ -21339,8 +21351,14 @@ async def add_dynamic_overlay_rule(req: AddOverlayRuleRequest):
         req.library_name, req.overlay_type, req.overlay_name, req.template_variables, req.filename
     )
     if res.get("success"):
+        if req.overlay_type == "default" and req.overlay_name:
+            try:
+                await kometa_resolver.ensure_default_templates([req.overlay_name])
+            except Exception as ensure_err:
+                logger.warning(f"Failed ensuring default template '{req.overlay_name}': {ensure_err}")
         fresh_scan = kometa_resolver.scan_and_analyze_rules()
-        return {**res, "scan": fresh_scan}
+        fresh_vis = _sync_visual_config_safe()
+        return {**res, "scan": fresh_scan, "config": fresh_vis}
     return res
 
 
@@ -21520,7 +21538,8 @@ async def update_dynamic_overlay_variables(req: UpdateOverlayVariablesRequest):
     )
     if res.get("success"):
         fresh_scan = kometa_resolver.scan_and_analyze_rules()
-        return {**res, "scan": fresh_scan}
+        fresh_vis = _sync_visual_config_safe()
+        return {**res, "scan": fresh_scan, "config": fresh_vis}
     return res
 
 
@@ -21543,7 +21562,8 @@ async def add_dynamic_overlay_library(req: AddLibraryRequest):
     res = kometa_resolver.add_library(req.library_name, req.filename)
     if res.get("success"):
         fresh_scan = kometa_resolver.scan_and_analyze_rules()
-        return {**res, "scan": fresh_scan}
+        fresh_vis = _sync_visual_config_safe()
+        return {**res, "scan": fresh_scan, "config": fresh_vis}
     return res
 
 
@@ -21565,7 +21585,8 @@ async def remove_dynamic_overlay_library(req: RemoveLibraryRequest):
     res = kometa_resolver.remove_libraries(target_names, req.filename)
     if res.get("success"):
         fresh_scan = kometa_resolver.scan_and_analyze_rules()
-        return {**res, "scan": fresh_scan}
+        fresh_vis = _sync_visual_config_safe()
+        return {**res, "scan": fresh_scan, "config": fresh_vis}
     return res
 
 
@@ -23106,16 +23127,51 @@ async def get_dynamic_overlays_visual_config_endpoint():
     except Exception as e:
         return {"success": False, "error": str(e)}
 
+def _extract_default_names_from_config_yml() -> List[str]:
+    """Read default overlay template names currently referenced in config.yml."""
+    try:
+        from dynamic_overlays_service import get_config_yml_path
+        cfg_path = get_config_yml_path()
+        if not cfg_path.exists():
+            return []
+        with open(cfg_path, "r", encoding="utf-8") as cf:
+            doc = yaml.safe_load(cf) or {}
+        names: List[str] = []
+        for lib_entry in (doc.get("libraries") or {}).values():
+            if not isinstance(lib_entry, dict):
+                continue
+            for rule in lib_entry.get("overlay_files") or lib_entry.get("overlays") or []:
+                if isinstance(rule, dict) and rule.get("default"):
+                    names.append(str(rule["default"]))
+        return names
+    except Exception:
+        return []
+
+
 @app.post("/api/dynamic-overlays/visual-config")
 async def save_dynamic_overlays_visual_config_endpoint(req: DynamicOverlaysVisualConfigRequest):
     """
     Saves visual UI configuration, automatically translating and compiling it into config.yml.
     """
     try:
-        from dynamic_overlays_service import compile_visual_to_config_yml
+        from dynamic_overlays_service import compile_visual_to_config_yml, sync_visual_config_from_yaml
         ok = compile_visual_to_config_yml(req.config)
         if ok:
-            return {"success": True, "message": "Visual configuration saved and compiled into overlay templates."}
+            if kometa_resolver:
+                try:
+                    default_names = _extract_default_names_from_config_yml()
+                    if default_names:
+                        await kometa_resolver.ensure_default_templates(default_names)
+                except Exception as ensure_err:
+                    logger.warning(f"Failed ensuring default templates after visual-config save: {ensure_err}")
+            fresh_scan = kometa_resolver.scan_and_analyze_rules() if kometa_resolver else None
+            fresh_vis = sync_visual_config_from_yaml()
+            return {
+                "success": True,
+                "message": "Visual configuration saved and compiled into overlay templates.",
+                **({"scan": fresh_scan} if fresh_scan is not None else {}),
+                "config": fresh_vis,
+            }
         return {"success": False, "error": "Failed to compile visual configuration."}
     except Exception as e:
         return {"success": False, "error": str(e)}
@@ -23153,9 +23209,18 @@ async def quick_start_dynamic_overlays_endpoint():
         starter = generate_starter_visual_config()
         save_visual_config(starter)
         compile_visual_to_config_yml(starter)
+        if kometa_resolver:
+            try:
+                default_names = _extract_default_names_from_config_yml()
+                if default_names:
+                    await kometa_resolver.ensure_default_templates(default_names)
+            except Exception as ensure_err:
+                logger.warning(f"Failed ensuring default templates during quick-start: {ensure_err}")
+        fresh_scan = kometa_resolver.scan_and_analyze_rules() if kometa_resolver else None
         return {
             "success": True,
             "config": starter,
+            **({"scan": fresh_scan} if fresh_scan is not None else {}),
             "message": f"Successfully initialized starter configuration for {len(starter.get('libraries', {}))} libraries with standard presets enabled."
         }
     except Exception as e:

@@ -20,7 +20,7 @@ import ipaddress
 import urllib.parse
 from datetime import date, datetime, timedelta
 from pathlib import Path, PurePosixPath
-from typing import Optional, Dict, Any, List, Set, Union, Tuple
+from typing import Optional, Dict, Any, List, Set, Union, Tuple, Iterable
 import httpx
 
 from overlay_external_lists import (
@@ -1108,6 +1108,75 @@ class OverlayResolver:
             "count": len(imported_files),
             "total_available": len(files_to_download),
             "total_installed": total_installed,
+        }
+
+    async def ensure_default_templates(self, default_names: Iterable[str]) -> Dict[str, Any]:
+        """Download only missing official default overlay templates (plus templates.yml) into self.defaults_dir."""
+        official_map = {Path(name).name.lower(): Path(name).name for name in OFFICIAL_KOMETA_OVERLAY_DEFAULTS}
+        requested_files: List[str] = []
+        seen_requested: Set[str] = set()
+        for raw_name in default_names or ():
+            clean = str(raw_name or "").strip()
+            if not clean:
+                continue
+            fname = clean if clean.lower().endswith((".yml", ".yaml")) else f"{clean}.yml"
+            canonical = official_map.get(Path(fname).name.lower())
+            if canonical and canonical not in seen_requested:
+                seen_requested.add(canonical)
+                requested_files.append(canonical)
+
+        if not requested_files:
+            return {"success": True, "downloaded": [], "already_present": [], "errors": []}
+
+        if "templates.yml" not in seen_requested and "templates.yml" in official_map:
+            seen_requested.add("templates.yml")
+            requested_files.append("templates.yml")
+
+        self.defaults_dir.mkdir(parents=True, exist_ok=True)
+        already_present: List[str] = []
+        missing_files: List[str] = []
+        for fname in requested_files:
+            safe_path = safe_resolve_overlay_path(self.defaults_dir, fname, ALLOWED_CONFIG_EXTS)
+            if safe_path and safe_path.is_file():
+                already_present.append(fname)
+            elif safe_path:
+                missing_files.append(fname)
+
+        if not missing_files:
+            return {"success": True, "downloaded": [], "already_present": already_present, "errors": []}
+
+        downloaded: List[str] = []
+        errors: List[str] = []
+        try:
+            async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
+                for fname in missing_files:
+                    safe_path = safe_resolve_overlay_path(self.defaults_dir, fname, ALLOWED_CONFIG_EXTS)
+                    if not safe_path:
+                        continue
+                    raw_url = f"{KOMETA_GITHUB_RAW}/defaults/overlays/{fname}"
+                    try:
+                        resp = await client.get(raw_url)
+                        if resp.status_code == 200:
+                            content_str = resp.text
+                            yaml.safe_load(content_str)
+                            with open(safe_path, "w", encoding="utf-8") as fp:
+                                fp.write(content_str)
+                            _YAML_MTIME_CACHE.pop(str(safe_path.resolve()), None)
+                            downloaded.append(fname)
+                        else:
+                            errors.append(f"{fname}: HTTP {resp.status_code}")
+                    except Exception as err:
+                        logger.warning(f"[OverlayResolver] Failed auto-downloading {fname}: {err}")
+                        errors.append(f"{fname}: {err}")
+        except Exception as client_err:
+            logger.warning(f"[OverlayResolver] Error initializing HTTP client for defaults auto-download: {client_err}")
+            errors.append(str(client_err))
+
+        return {
+            "success": len(errors) == 0,
+            "downloaded": downloaded,
+            "already_present": already_present,
+            "errors": errors,
         }
 
     def list_available_image_assets(self, category: Optional[str] = None) -> List[str]:
@@ -2963,14 +3032,25 @@ class OverlayResolver:
             has_critic_enabled = False
             try:
                 from dynamic_overlays_service import load_visual_config
-                vis_cfg = load_visual_config()
-                lib_badges = vis_cfg.get("libraries", {}).get(clean_lib_name, {}).get("badges", {})
-                has_critic_enabled = bool(
-                    lib_badges.get("critic_rating", {}).get("enabled") or
-                    (lib_badges.get("rating", {}).get("source") == "ratings" and lib_badges.get("rating", {}).get("enabled"))
-                )
+                vis_cfg = load_visual_config() or {}
+                vis_libs_map = vis_cfg.get("libraries") if isinstance(vis_cfg, dict) else {}
+                if isinstance(vis_libs_map, dict) and clean_lib_name in vis_libs_map:
+                    lib_badges = vis_libs_map[clean_lib_name].get("badges", {})
+                    has_critic_enabled = bool(
+                        lib_badges.get("critic_rating", {}).get("enabled") or
+                        (lib_badges.get("rating", {}).get("source") == "ratings" and lib_badges.get("rating", {}).get("enabled"))
+                    )
+                else:
+                    # Fallback to config.yml state when visual_config.json is stale or missing this library
+                    has_critic_enabled = any(
+                        isinstance(r, dict) and (r.get("default") == "ratings" or "ratings.yml" in str(r.get("file") or "").lower())
+                        for r in overlay_files
+                    )
             except Exception:
-                pass
+                has_critic_enabled = any(
+                    isinstance(r, dict) and (r.get("default") == "ratings" or "ratings.yml" in str(r.get("file") or "").lower())
+                    for r in overlay_files
+                )
 
             ratings_update_val = layout_updates.get("ratings")
             if isinstance(ratings_update_val, dict) and ratings_update_val.get("enabled") is not False:
@@ -3023,13 +3103,19 @@ class OverlayResolver:
                 except Exception as save_err:
                     logger.debug(f"[OverlayResolver] Config sync notice for {cfg_path}: {save_err}")
 
-            # Synchronize layout updates back to visual configuration JSON so both stay in lockstep
+            # Synchronize layout updates back to visual configuration JSON from authoritative config.yml so both stay in lockstep
             vis_data = {}
             try:
-                from dynamic_overlays_service import load_visual_config
-                vis_data = load_visual_config()
+                from dynamic_overlays_service import parse_config_yml_to_visual, load_visual_config
+                vis_data = parse_config_yml_to_visual(safe_path, auto_seed=False)
+                if not isinstance(vis_data, dict) or not vis_data.get("libraries"):
+                    vis_data = load_visual_config()
             except Exception:
-                vis_data = {}
+                try:
+                    from dynamic_overlays_service import load_visual_config
+                    vis_data = load_visual_config()
+                except Exception:
+                    vis_data = {}
 
             try:
                 vis_libs = vis_data.setdefault("libraries", {})

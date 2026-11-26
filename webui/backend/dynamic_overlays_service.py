@@ -705,7 +705,7 @@ def generate_starter_visual_config(detected_libraries: Optional[List[Dict[str, s
                 "resolution": {
                     "enabled": True,
                     "mode": "corner_badge",
-                    "banner_4k": True,
+                    "banner_4k": False,
                     "banner_1080p": False,
                     "banner_720p": False,
                     "tiers": ["4k", "1080p", "720p", "576p", "480p"],
@@ -810,6 +810,42 @@ def generate_starter_visual_config(detected_libraries: Optional[List[Dict[str, s
             }
         }
     return {"libraries": visual_libs}
+
+
+def _resolve_visual_badge_slot(default_name: str, file_name: str, vars_dict: Dict[str, Any]) -> Optional[str]:
+    """Map a config.yml overlay rule to its single-instance Visual Badges slot key, or None if unmanaged."""
+    if default_name == "languages":
+        return "subtitle_languages" if str(vars_dict.get("use_subtitles", False)).lower() in ("true", "1") else "audio_languages"
+    if default_name == "single_rating":
+        return "rating"
+    if default_name in ("runtimes", "runtime"):
+        return "runtime"
+    if default_name == "status":
+        return "status"
+    if default_name == "network":
+        return "network"
+    if default_name in (
+        "commonsense", "content_rating", "content_rating_de", "content_rating_uk",
+        "content_rating_au", "content_rating_nz", "content_rating_us_movie", "content_rating_us_show",
+    ):
+        return "age_rating"
+    if default_name in ("ratings", "rating"):
+        return "critic_rating"
+    if "overlays_movies.yml" in file_name or "overlays_tv.yml" in file_name or default_name == "resolution":
+        return "resolution"
+    if default_name in ("audio_codec", "audiocodec"):
+        return "audio_codec"
+    if default_name in ("video_format", "videoformat", "format"):
+        return "video_format"
+    if default_name in ("aspect", "studio", "streaming"):
+        return default_name
+    if default_name == "ribbon":
+        return "ribbon"
+    if default_name == "mediastinger":
+        return "mediastinger"
+    if "anime_overlays.yml" in file_name or default_name == "anime":
+        return "anime"
+    return None
 
 
 def parse_config_yml_to_visual(config_path: Optional[Path] = None, auto_seed: bool = False) -> Dict[str, Any]:
@@ -1049,6 +1085,8 @@ def parse_config_yml_to_visual(config_path: Optional[Path] = None, auto_seed: bo
             }
         }
 
+        seen_badge_slots: set = set()
+
         # Inspect overlay_files rules
         for entry in overlay_files:
             if not isinstance(entry, dict):
@@ -1056,17 +1094,27 @@ def parse_config_yml_to_visual(config_path: Optional[Path] = None, auto_seed: bo
 
             default_name = str(entry.get("default", "")).lower()
             file_name = str(entry.get("file", "")).lower()
+            vars_dict = entry.get("template_variables") or {}
             is_managed_rule = default_name in VISUAL_MANAGED_OVERLAY_DEFAULTS or any(
                 managed_file in file_name for managed_file in VISUAL_MANAGED_OVERLAY_FILES
             )
-            if is_managed_rule:
-                managed_overlay_count += 1
-            else:
+            slot_key = _resolve_visual_badge_slot(default_name, file_name, vars_dict) if is_managed_rule else None
+            if not is_managed_rule:
                 preserved_overlay_files.append({
                     "position": managed_overlay_count,
                     "rule": copy.deepcopy(entry)
                 })
-            vars_dict = entry.get("template_variables") or {}
+            elif slot_key and slot_key in seen_badge_slots:
+                preserved_overlay_files.append({
+                    "position": managed_overlay_count,
+                    "rule": copy.deepcopy(entry),
+                    "multi_instance": True
+                })
+                continue
+            else:
+                managed_overlay_count += 1
+                if slot_key:
+                    seen_badge_slots.add(slot_key)
             asset_family = default_name or (
                 "resolution" if any(name in file_name for name in ("overlays_movies.yml", "overlays_tv.yml")) else ""
             )
@@ -1884,8 +1932,9 @@ def compile_visual_to_config_yml(visual_data: Dict[str, Any], output_path: Optio
                     position = max(0, min(int(position), len(overlay_files)))
                 except (TypeError, ValueError):
                     position = len(overlay_files)
-                # Drop legacy preserved copies for rules that are now managed directly via badges
-                if str(rule.get("default") or "").strip().lower() in VISUAL_MANAGED_OVERLAY_DEFAULTS:
+                # Drop legacy preserved copies for rules that are now managed directly via badges,
+                # while keeping intentional multi-instance rules (e.g. show + season language rules).
+                if not record.get("multi_instance") and str(rule.get("default") or "").strip().lower() in VISUAL_MANAGED_OVERLAY_DEFAULTS:
                     continue
                 anchored_rules.append((position, rule))
 
@@ -2003,3 +2052,10 @@ def import_yaml_to_visual(raw_yaml_text: str) -> Dict[str, Any]:
         res["extracted_keys"] = list(extracted_keys.keys())
 
     return res
+
+
+def sync_visual_config_from_yaml(config_path: Optional[Path] = None) -> Dict[str, Any]:
+    """Re-parse authoritative config.yml into visual JSON and persist it to disk."""
+    vis = parse_config_yml_to_visual(config_path=config_path, auto_seed=False)
+    save_visual_config(vis)
+    return vis

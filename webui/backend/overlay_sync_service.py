@@ -688,6 +688,41 @@ def _extract_jellyfin_stream_language(stream_obj) -> Tuple[Optional[str], Option
     return language_base_code(tag), tag
 
 
+def _plex_video_stream_hdr_dv(stream) -> Tuple[bool, bool]:
+    """Return (has_hdr, has_dolby_vision) from a Plex video Stream XML element."""
+    dovi_raw = str(stream.get("DOVIPresent") or stream.get("doviPresent") or "").strip().lower()
+    disp = str(stream.get("displayTitle") or "").lower()
+    has_dv = dovi_raw in ("1", "true") or "dovi" in disp or "dolby vision" in disp
+    cp = str(stream.get("colorPrimaries") or "").strip().lower()
+    ctrc = str(stream.get("colorTrc") or "").strip().lower()
+    has_hdr = cp == "bt2020" or ctrc in ("smpte2084", "arib-std-b67") or "hdr" in disp
+    return has_hdr, has_dv
+
+
+def _jellyfin_video_stream_hdr_dv(stream) -> Tuple[bool, bool]:
+    """Return (has_hdr, has_dolby_vision) from a Jellyfin/Emby video MediaStream dict."""
+    v_range = str(stream.get("VideoRange") or "").strip().lower()
+    v_range_type = str(stream.get("VideoRangeType") or "").strip().lower()
+    v_dovi_title = str(stream.get("VideoDoViTitle") or "").strip().lower()
+    v_disp = str(stream.get("DisplayTitle") or "").strip().lower()
+    has_dv = (
+        bool(v_dovi_title)
+        or "dovi" in v_range_type
+        or "dolby vision" in v_range_type
+        or "dovi" in v_disp
+        or "dolby vision" in v_disp
+    )
+    has_hdr = (
+        "hdr" in v_range
+        or "hlg" in v_range
+        or "hdr" in v_range_type
+        or "hlg" in v_range_type
+        or "hdr" in v_disp
+        or "hdr" in v_dovi_title
+    )
+    return has_hdr, has_dv
+
+
 def _plex_episode_stream_summary(item):
     languages = []
     language_tags = []
@@ -712,8 +747,9 @@ def _plex_episode_stream_summary(item):
             if full_tag and full_tag not in language_tags:
                 language_tags.append(full_tag)
         elif stream_type == "1":
-            has_dolby_vision = has_dolby_vision or stream.get("DOVIPresent") == "1"
-            has_hdr = has_hdr or stream.get("colorPrimaries") == "bt2020"
+            st_hdr, st_dv = _plex_video_stream_hdr_dv(stream)
+            has_dolby_vision = has_dolby_vision or st_dv
+            has_hdr = has_hdr or st_hdr
     part = item.find(".//Part")
     streams = _extract_stream_overlay_metadata(item)
     media = item.find(".//Media")
@@ -751,8 +787,9 @@ def _emby_episode_stream_summary(item):
             if not audio_codec and stream.get("Codec"):
                 audio_codec = str(stream["Codec"]).strip().lower()
         elif stream_type == "Video":
-            has_dolby_vision = has_dolby_vision or bool(stream.get("VideoDoViTitle") or "dovi" in str(stream.get("DisplayTitle", "")).lower())
-            has_hdr = has_hdr or stream.get("VideoRange") == "HDR" or "hdr" in str(stream.get("DisplayTitle", "")).lower()
+            st_hdr, st_dv = _jellyfin_video_stream_hdr_dv(stream)
+            has_dolby_vision = has_dolby_vision or st_dv
+            has_hdr = has_hdr or st_hdr
     sources = item.get("MediaSources") or []
     filepath = item.get("Path") or next((source.get("Path") for source in sources if source.get("Path")), None)
     streams = _extract_stream_overlay_metadata(item)
@@ -2729,15 +2766,22 @@ def build_overlay_layers_for_item(
             variant = allowed_variant
             badge_dir = overlays_dir / "assets" / "resolution"
             selected_asset = variables.get(f"file_{tier}")
+            fallback_artwork = None
             if selected_asset:
                 asset_path = Path(str(selected_asset))
                 artwork = asset_path if asset_path.is_absolute() else overlays_dir / "assets" / asset_path
             else:
                 engine = _get_overlay_config_engine(overlays_dir)
-                artwork = engine.resolve_image_path(f"resolution/{tier}{variant}.png")
-                if artwork is None or not artwork.exists():
-                    artwork = engine.resolve_image_path(f"resolution/{tier}.png") or badge_dir / f"{tier}.png"
-            native_rating_layers.append({
+                base_artwork = engine.resolve_image_path(f"resolution/{tier}.png") or badge_dir / f"{tier}.png"
+                if variant:
+                    artwork = engine.resolve_image_path(f"resolution/{tier}{variant}.png")
+                    if artwork is None:
+                        artwork = base_artwork
+                    else:
+                        fallback_artwork = base_artwork
+                else:
+                    artwork = base_artwork
+            res_layer = {
                 "name": "resolution", "type": "image", "image_path": str(artwork), "scale_height": int(variables.get("scale_height", 55)),
                 "horizontal_align": variables.get("horizontal_align") or variables.get("horizontal_position") or "left",
                 "vertical_align": variables.get("vertical_align") or variables.get("vertical_position") or "top",
@@ -2748,7 +2792,10 @@ def build_overlay_layers_for_item(
                 "back_align": variables.get("back_align") or "center",
                 "back_padding": int(variables.get("back_padding", 0)),
                 "fit_to_box": True,
-            })
+            }
+            if fallback_artwork and str(fallback_artwork) != str(artwork):
+                res_layer["fallback_image_path"] = str(fallback_artwork)
+            native_rating_layers.append(res_layer)
     for rule in rating_rules:
         variables = rule.get("template_variables") or {}
         target = str(variables.get("builder_level", "all")).lower()
@@ -2956,14 +3003,18 @@ def build_overlay_layers_for_item(
             style = str(variables.get("style", "compact")).lower()
             engine = _get_overlay_config_engine(overlays_dir)
             selected_asset = variables.get(f"file_{matched_codec}")
+            fallback_codec_image = None
             if selected_asset:
                 codec_image = engine.resolve_image_path(str(selected_asset))
             else:
                 codec_image = engine.resolve_image_path(f"audio_codec/{style}/{matched_codec}.png")
+                if style != "standard":
+                    fallback_codec_image = engine.resolve_image_path(f"audio_codec/standard/{matched_codec}.png")
                 if codec_image is None:
-                    codec_image = engine.resolve_image_path(f"audio_codec/standard/{matched_codec}.png")
-            if codec_image is not None and codec_image.exists():
-                native_parent_stream_layers.append({
+                    codec_image = fallback_codec_image
+                    fallback_codec_image = None
+            if codec_image is not None:
+                codec_layer = {
                     "name": f"audio_codec_{matched_codec}",
                     "type": "image",
                     "image_path": str(codec_image),
@@ -2976,7 +3027,10 @@ def build_overlay_layers_for_item(
                     "horizontal_offset": int(variables.get("horizontal_offset", 0)),
                     "vertical_align": variables.get("vertical_align") or variables.get("vertical_position", "top"),
                     "vertical_offset": int(variables.get("vertical_offset", 15)),
-                })
+                }
+                if fallback_codec_image is not None and str(fallback_codec_image) != str(codec_image):
+                    codec_layer["fallback_image_path"] = str(fallback_codec_image)
+                native_parent_stream_layers.append(codec_layer)
 
     try:
         engine = _get_overlay_config_engine(overlays_dir)
@@ -3102,7 +3156,8 @@ def build_overlay_layers_for_item(
                     badge_cands.append(f"{tier}hdr.png")
                 badge_cands.extend([f"{tier}.png", f"{tier.upper()}.png"])
 
-                selected_asset = variables.get(f"file_{tier}")
+                selected_asset = res_vars.get(f"file_{tier}")
+                fallback_badge = None
                 if selected_asset:
                     asset_path = Path(str(selected_asset))
                     badge_file = asset_path if asset_path.is_absolute() else assets_dir / asset_path
@@ -3117,9 +3172,15 @@ def build_overlay_layers_for_item(
                         elif p2.exists():
                             badge_file = p2
                             break
+                    if badge_file is None and badge_cands:
+                        engine = _get_overlay_config_engine(overlays_dir)
+                        badge_file = engine.resolve_image_path(f"resolution/{badge_cands[0]}")
+                        base_cand = engine.resolve_image_path(f"resolution/{tier}.png")
+                        if base_cand and badge_file and str(base_cand) != str(badge_file):
+                            fallback_badge = base_cand
 
                 if badge_file:
-                    layers.append({
+                    res_layer = {
                         "name": "resolution",
                         "type": "image",
                         "image_path": str(badge_file),
@@ -3127,7 +3188,10 @@ def build_overlay_layers_for_item(
                         "horizontal_offset": h_off,
                         "vertical_align": v_pos,
                         "vertical_offset": v_off
-                    })
+                    }
+                    if fallback_badge:
+                        res_layer["fallback_image_path"] = str(fallback_badge)
+                    layers.append(res_layer)
 
     # 2. Audio Languages (Country Flags)
     if "languages" in rule_names:
@@ -3825,11 +3889,10 @@ def _parse_jellyfin_item(item_obj: dict, lib_name: str) -> Optional[Dict[str, An
                 vid_w = sw
             if sh > vid_h:
                 vid_h = sh
-            v_range = str(s.get("VideoRange") or "").lower()
-            v_title = str(s.get("VideoDoViTitle") or s.get("DisplayTitle") or "").lower()
-            if "dovi" in v_title or "dolby vision" in v_title or s.get("VideoDoViTitle"):
+            st_hdr, st_dv = _jellyfin_video_stream_hdr_dv(s)
+            if st_dv:
                 item_has_dv = True
-            if "hdr" in v_range or "hdr" in v_title or s.get("VideoRange") == "HDR":
+            if st_hdr:
                 item_has_hdr = True
 
     res_val = "1080p"
@@ -4348,6 +4411,23 @@ async def _run_overlay_sync_task(
                     if not any((d / fname).is_file() for d in candidate_default_dirs)
                 ]
                 if missing_defaults:
+                    try:
+                        from overlay_resolver import OverlayResolver
+                        resolver_root = overlays_dir.parent.parent if overlays_dir.parent.name.lower() == "overlayfiles" else base_dir
+                        ensure_resolver = OverlayResolver(resolver_root, overlays_dir=overlays_dir)
+                        ensure_res = await ensure_resolver.ensure_default_templates(missing_defaults)
+                        downloaded = ensure_res.get("downloaded") or []
+                        if downloaded:
+                            write_log(f"Auto-imported {len(downloaded)} missing overlay default template(s): {', '.join(downloaded)}")
+                        if ensure_res.get("errors"):
+                            write_log(f"Warning: Could not auto-download missing default template(s): {'; '.join(ensure_res['errors'])}")
+                    except Exception as ensure_err:
+                        write_log(f"Warning: Auto-import of missing default templates skipped: {ensure_err}")
+                    missing_defaults = [
+                        fname for fname in referenced_non_native + ["templates.yml"]
+                        if not any((d / fname).is_file() for d in candidate_default_dirs)
+                    ]
+                if missing_defaults:
                     write_log(
                         f"Warning: Missing default overlay template file(s): {', '.join(missing_defaults)}. "
                         "Non-native overlays may not render as expected until you run 'Import Default Templates' "
@@ -4692,7 +4772,6 @@ async def _run_overlay_sync_task(
                     )
                     needs_regional_languages = needs_languages and _rules_use_regional_languages(overlays_dir, lib_rules)
                     needs_audio = any(k in rules_str for k in ["audio", "atmos", "truehd", "dts", "codec", "surround"])
-                    needs_hdr_dv = any(k in rules_str for k in ["hdr", "dovi", "dolby_vision", "dv"])
                     needs_ratings = any(
                         (isinstance(r, dict) and str(r.get("default", "")).lower() in ("ratings", "rating"))
                         or "rating" in str(r).lower()
@@ -4708,6 +4787,7 @@ async def _run_overlay_sync_task(
                         or any(_rule_files_mention(overlays_dir, lib_rules, kw) for kw in ("imdb_chart", "imdb_award", "mdblist_list"))
                     )
                     needs_resolution = "resolution" in rules_str or "overlays_tv" in rules_str or _rule_files_mention(overlays_dir, lib_rules, "resolution")
+                    needs_hdr_dv = needs_resolution or any(k in rules_str for k in ["hdr", "dovi", "dolby_vision", "dv"])
                     needs_parent_stream_aggregation = _rules_need_parent_stream_aggregation(overlays_dir, lib_rules) and not episode_only_targets
                     provider_rules = [rule for rule in lib_rules if isinstance(rule, dict) and str(rule.get("default", "")).lower() in ("rating", "ratings")]
                     library_rating_sources = list(dict.fromkeys(
@@ -4937,11 +5017,10 @@ async def _run_overlay_sync_task(
                                                 item["audio_track_title"] = a_title
                                                 item["audio_title"] = a_title
                                         elif s.get("streamType") == "1":
-                                            dovi = s.get("DOVIPresent") or s.get("doviPresent")
-                                            if dovi == "1" or "dovi" in str(s.get("displayTitle", "")).lower():
+                                            st_hdr, st_dv = _plex_video_stream_hdr_dv(s)
+                                            if st_dv:
                                                 item["has_dolby_vision"] = True
-                                            cp = s.get("colorPrimaries")
-                                            if cp == "bt2020" or "hdr" in str(s.get("displayTitle", "")).lower():
+                                            if st_hdr:
                                                 item["has_hdr"] = True
                                     if audio_langs:
                                         item["audio_languages"] = audio_langs
@@ -6000,9 +6079,10 @@ async def _run_overlay_sync_task(
                                                             if full_tag and full_tag not in ep_lang_tags:
                                                                 ep_lang_tags.append(full_tag)
                                                         elif st_node.get("streamType") == "1":
-                                                            if st_node.get("DOVIPresent") == "1":
+                                                            st_hdr, st_dv = _plex_video_stream_hdr_dv(st_node)
+                                                            if st_dv:
                                                                 ep_has_dv = True
-                                                            if st_node.get("colorPrimaries") == "bt2020":
+                                                            if st_hdr:
                                                                 ep_has_hdr = True
 
                                                     part_elem = ep_elem.find(".//Part")
@@ -6047,9 +6127,10 @@ async def _run_overlay_sync_task(
                                                                         if full_tag and full_tag not in ep_lang_tags:
                                                                             ep_lang_tags.append(full_tag)
                                                                     elif st_node.get("streamType") == "1":
-                                                                        if st_node.get("DOVIPresent") == "1":
+                                                                        st_hdr, st_dv = _plex_video_stream_hdr_dv(st_node)
+                                                                        if st_dv:
                                                                             ep_has_dv = True
-                                                                        if st_node.get("colorPrimaries") == "bt2020":
+                                                                        if st_hdr:
                                                                             ep_has_hdr = True
                                                         except Exception:
                                                             pass
@@ -6189,11 +6270,10 @@ async def _run_overlay_sync_task(
                                                             w_val = s.get("Width") or 0
                                                             if w_val >= 3840:
                                                                 ep_res = "4K"
-                                                            dovi = s.get("VideoDoViTitle") or ("dovi" in str(s.get("DisplayTitle", "")).lower())
-                                                            if dovi:
+                                                            st_hdr, st_dv = _jellyfin_video_stream_hdr_dv(s)
+                                                            if st_dv:
                                                                 ep_has_dv = True
-                                                            hdr = (s.get("VideoRange") == "HDR") or ("hdr" in str(s.get("DisplayTitle", "")).lower())
-                                                            if hdr:
+                                                            if st_hdr:
                                                                 ep_has_hdr = True
 
                                                     ep_aud = ep_obj.get("CommunityRating")
