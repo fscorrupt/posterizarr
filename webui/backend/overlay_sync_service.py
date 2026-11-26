@@ -3993,6 +3993,75 @@ def _parse_plex_item(it, sec_title: str, sec_type: str) -> Optional[Dict[str, An
     }
 
 
+_JELLYFIN_OVERLAY_ITEM_FIELDS = (
+    "MediaStreams,MediaSources,Width,Height,OfficialRating,CustomRating,"
+    "RunTimeTicks,Status,ProviderIds,ProductionYear,Studios,CommunityRating,"
+    "CriticRating,DateModified,DateCreated,Path"
+)
+_JELLYFIN_LIBRARY_PAGE_SIZE = 500
+
+
+async def _fetch_jellyfin_library_items(
+    http_client: httpx.AsyncClient,
+    server_url: str,
+    headers: Dict[str, str],
+    base_params: Dict[str, Any],
+    page_size: int = _JELLYFIN_LIBRARY_PAGE_SIZE,
+) -> Tuple[List[Dict[str, Any]], int, Optional[str]]:
+    """Fetch all items for a Jellyfin/Emby library using StartIndex/Limit pagination."""
+    effective_page_size = page_size if page_size > 0 else _JELLYFIN_LIBRARY_PAGE_SIZE
+    all_items: List[Dict[str, Any]] = []
+    seen_ids = set()
+    start_index = 0
+    pages_fetched = 0
+
+    while True:
+        page_params = {
+            **base_params,
+            "StartIndex": start_index,
+            "Limit": effective_page_size,
+            "SortBy": "SortName",
+            "SortOrder": "Ascending",
+        }
+        resp = await http_client.get(
+            f"{server_url}/Items",
+            params=page_params,
+            headers=headers,
+        )
+        if resp.status_code != 200:
+            snippet = (getattr(resp, "text", None) or "")[:120]
+            return all_items, pages_fetched, f"HTTP {resp.status_code}: {snippet}"
+
+        payload = resp.json() or {}
+        pages_fetched += 1
+        batch = payload.get("Items") or []
+        raw_total = payload.get("TotalRecordCount")
+        total_records = raw_total if isinstance(raw_total, int) and raw_total >= 0 else None
+
+        added_this_page = 0
+        for item_obj in batch:
+            raw_id = item_obj.get("Id")
+            item_key = str(raw_id) if raw_id is not None else None
+            if item_key is not None:
+                if item_key in seen_ids:
+                    continue
+                seen_ids.add(item_key)
+            all_items.append(item_obj)
+            added_this_page += 1
+
+        if not batch or added_this_page == 0:
+            break
+
+        start_index += len(batch)
+        if total_records is not None:
+            if start_index >= total_records:
+                break
+        elif len(batch) < effective_page_size:
+            break
+
+    return all_items, pages_fetched, None
+
+
 def _parse_jellyfin_item(item_obj: dict, lib_name: str) -> Optional[Dict[str, Any]]:
     it_id = item_obj.get("Id")
     if not it_id:
@@ -4624,7 +4693,7 @@ async def _run_overlay_sync_task(
         total_failed = 0
 
         provider_run_state = RatingsProviderRunState()
-        async with httpx.AsyncClient(timeout=45.0) as http_client:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(60.0, connect=15.0)) as http_client:
             for s_type in servers_to_run:
                 write_log(f"\n>>> Processing Server: {s_type.upper()} <<<")
                 creds = server_creds[s_type]
@@ -4729,7 +4798,7 @@ async def _run_overlay_sync_task(
 
                                 media_items.extend(sec_media_items)
                     except Exception as pe:
-                        write_log(f"Error querying Plex API: {pe}")
+                        write_log(f"Error querying Plex API: {format_sync_error(pe, phase='querying plex API')}")
 
                 elif s_type in ["jellyfin", "emby"]:
                     api_key = creds.get("api_key")
@@ -4763,53 +4832,61 @@ async def _run_overlay_sync_task(
                                     "Recursive": "true",
                                     "IncludeItemTypes": "Movie,Series",
                                     "CollapseBoxSetItems": "false",
-                                    "Fields": "MediaStreams,MediaSources,Width,Height,OfficialRating,CustomRating,RunTimeTicks,Status,ProviderIds,ProductionYear,Studios,CommunityRating,CriticRating,DateModified,DateCreated,Path,Overview",
+                                    "Fields": _JELLYFIN_OVERLAY_ITEM_FIELDS,
                                 }
-                                sec_media_items = []
-                                if is_target_mode and (target_titles or target_roots):
-                                    searched_terms = target_titles | target_roots
-                                    for s_term in searched_terms:
-                                        clean_term = re.sub(r"\s*\(\d{4}\)$", "", s_term).strip()
-                                        terms_to_try = [s_term]
-                                        if clean_term and clean_term != s_term:
-                                            terms_to_try.append(clean_term)
-                                        for term in terms_to_try:
-                                            try:
-                                                it_resp = await http_client.get(f"{s_url}/Items", params={**items_params, "SearchTerm": term}, headers=headers)
-                                                if it_resp.status_code == 200:
-                                                    lib_items = it_resp.json().get("Items", [])
-                                                    for item_obj in lib_items:
-                                                        parsed_it = _parse_jellyfin_item(item_obj, lib_name)
-                                                        if parsed_it:
-                                                            sec_media_items.append(parsed_it)
-                                            except Exception as je:
-                                                pass
+                                try:
+                                    sec_media_items = []
+                                    if is_target_mode and (target_titles or target_roots):
+                                        searched_terms = target_titles | target_roots
+                                        for s_term in searched_terms:
+                                            clean_term = re.sub(r"\s*\(\d{4}\)$", "", s_term).strip()
+                                            terms_to_try = [s_term]
+                                            if clean_term and clean_term != s_term:
+                                                terms_to_try.append(clean_term)
+                                            for term in terms_to_try:
+                                                try:
+                                                    it_resp = await http_client.get(f"{s_url}/Items", params={**items_params, "SearchTerm": term}, headers=headers)
+                                                    if it_resp.status_code == 200:
+                                                        lib_items = it_resp.json().get("Items", [])
+                                                        for item_obj in lib_items:
+                                                            parsed_it = _parse_jellyfin_item(item_obj, lib_name)
+                                                            if parsed_it:
+                                                                sec_media_items.append(parsed_it)
+                                                except Exception as je:
+                                                    pass
 
-                                if not sec_media_items and not is_target_mode:
-                                    it_resp = await http_client.get(f"{s_url}/Items", params=items_params, headers=headers)
-                                    if it_resp.status_code == 200:
-                                        lib_items = it_resp.json().get("Items", [])
-                                        write_log(f"  [+] Library '{lib_name}': Discovered {len(lib_items)} items.")
-                                        for item_obj in lib_items:
-                                            parsed_it = _parse_jellyfin_item(item_obj, lib_name)
-                                            if parsed_it:
-                                                sec_media_items.append(parsed_it)
-                                    else:
-                                        write_log(f"  [-] Failed to fetch items for library '{lib_name}' ({it_resp.status_code}): {it_resp.text[:120]}")
-                                elif is_target_mode and not any(_matches_overlay_target(item, target) for item in sec_media_items for target in target_items):
-                                    it_resp = await http_client.get(f"{s_url}/Items", params=items_params, headers=headers)
-                                    if it_resp.status_code == 200:
-                                        lib_items = it_resp.json().get("Items", [])
-                                        for item_obj in lib_items:
-                                            parsed_it = _parse_jellyfin_item(item_obj, lib_name)
-                                            if parsed_it:
-                                                sec_media_items.append(parsed_it)
+                                    if not sec_media_items and not is_target_mode:
+                                        lib_items, pages_fetched, fetch_err = await _fetch_jellyfin_library_items(
+                                            http_client, s_url, headers, items_params
+                                        )
+                                        if fetch_err:
+                                            write_log(f"  [-] Failed to fetch items for library '{lib_name}' ({fetch_err})")
+                                        else:
+                                            page_note = f" ({pages_fetched} pages)" if pages_fetched > 1 else ""
+                                            write_log(f"  [+] Library '{lib_name}': Discovered {len(lib_items)} items{page_note}.")
+                                            for item_obj in lib_items:
+                                                parsed_it = _parse_jellyfin_item(item_obj, lib_name)
+                                                if parsed_it:
+                                                    sec_media_items.append(parsed_it)
+                                    elif is_target_mode and not any(_matches_overlay_target(item, target) for item in sec_media_items for target in target_items):
+                                        lib_items, _, fetch_err = await _fetch_jellyfin_library_items(
+                                            http_client, s_url, headers, items_params
+                                        )
+                                        if fetch_err:
+                                            write_log(f"  [-] Failed to fetch items for library '{lib_name}' during targeted fallback ({fetch_err})")
+                                        else:
+                                            for item_obj in lib_items:
+                                                parsed_it = _parse_jellyfin_item(item_obj, lib_name)
+                                                if parsed_it:
+                                                    sec_media_items.append(parsed_it)
 
-                                media_items.extend(sec_media_items)
+                                    media_items.extend(sec_media_items)
+                                except Exception as lib_err:
+                                    write_log(f"  [-] Error querying {s_type.upper()} library '{lib_name}': {format_sync_error(lib_err, phase=f'fetching {s_type} items')}")
                         else:
                             write_log(f"  [-] Failed to fetch virtual folders on {s_type.upper()} ({vf_resp.status_code}): {vf_resp.text[:120]}")
                     except Exception as je:
-                        write_log(f"Error querying {s_type} API: {je}")
+                        write_log(f"Error querying {s_type} API: {format_sync_error(je, phase=f'querying {s_type} API')}")
 
                 if is_target_mode and not direct_id_targets:
                     matched_items = []
@@ -6976,7 +7053,7 @@ async def detect_media_changes(
     elif target_server.lower() in creds_map:
         servers_to_scan = [target_server.lower()]
 
-    async with httpx.AsyncClient(timeout=15.0, verify=False) as http_client:
+    async with httpx.AsyncClient(timeout=httpx.Timeout(45.0, connect=15.0), verify=False) as http_client:
         for s_type in servers_to_scan:
             creds = creds_map[s_type]
             s_url = creds["url"]
@@ -7211,7 +7288,7 @@ async def detect_media_changes(
                                             }
                                         })
                 except Exception as pe:
-                    logger.warning(f"[DetectChanges] Plex detection error: {pe}")
+                    logger.warning(f"[DetectChanges] Plex detection error: {format_sync_error(pe, phase='detecting plex changes')}")
 
             elif s_type in ["jellyfin", "emby"]:
                 api_key = creds.get("api_key")
@@ -7240,11 +7317,17 @@ async def detect_media_changes(
                                 "Recursive": "true",
                                 "IncludeItemTypes": "Movie,Series",
                                 "CollapseBoxSetItems": "false",
-                                "Fields": "MediaStreams,MediaSources,Width,Height,OfficialRating,CustomRating,RunTimeTicks,Status,ProviderIds,ProductionYear,Studios,CommunityRating,CriticRating,DateModified,DateCreated,Path,Overview",
+                                "Fields": _JELLYFIN_OVERLAY_ITEM_FIELDS,
                             }
-                            it_resp = await http_client.get(f"{s_url}/Items", params=items_params, headers=headers)
-                            if it_resp.status_code == 200:
-                                lib_items = it_resp.json().get("Items", [])
+                            try:
+                                lib_items, _, fetch_err = await _fetch_jellyfin_library_items(
+                                    http_client, s_url, headers, items_params
+                                )
+                                if fetch_err:
+                                    logger.warning(
+                                        f"[DetectChanges] Failed to fetch {s_type} items for library '{lib_name}': {fetch_err}"
+                                    )
+                                    continue
                                 for item_obj in lib_items:
                                     it_id = item_obj.get("Id")
                                     it_name = item_obj.get("Name", "")
@@ -7419,8 +7502,12 @@ async def detect_media_changes(
                                                 "server_updated_at": s_up_at
                                             }
                                         })
+                            except Exception as lib_err:
+                                logger.warning(
+                                    f"[DetectChanges] {s_type} library '{lib_name}' error: {format_sync_error(lib_err, phase=f'detecting {s_type} changes')}"
+                                )
                 except Exception as je:
-                    logger.warning(f"[DetectChanges] {s_type} detection error: {je}")
+                    logger.warning(f"[DetectChanges] {s_type} detection error: {format_sync_error(je, phase=f'detecting {s_type} changes')}")
 
     result_report = {
         "success": True,
