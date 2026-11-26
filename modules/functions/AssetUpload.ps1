@@ -34,17 +34,18 @@ function UploadOtherMediaServerArtwork {
         }
     }
 
-    # Check if current image already has exif data
-    $Imageinfo = Invoke-RestMethod -Method Get -Uri "$OtherMediaServerUrl/items/$itemId/images/" -Headers $global:OtherMediaServerHeaders
-    $Imageinfotemp = $Imageinfo | Where-Object imagetype -eq $imageType | Select-Object Height, Width, Path
-    if ($Imageinfotemp) {
-        $Imageinfotemp = $imageinfotemp[0]
-    }
     # Clear value to ensure no old data causes a false skip
     $value = $null
 
     # Only run the EXIF check if the switch was NOT provided
     if (-not $SkipExifCheck) {
+        # Check if current image already has exif data
+        $Imageinfo = Invoke-RestMethod -Method Get -Uri "$OtherMediaServerUrl/items/$itemId/images/" -Headers $global:OtherMediaServerHeaders
+        $Imageinfotemp = $Imageinfo | Where-Object imagetype -eq $imageType | Select-Object Height, Width, Path
+        if ($Imageinfotemp) {
+            $Imageinfotemp = $imageinfotemp[0]
+        }
+
         # Set the API endpoint URL for magick exif check
         if (($imageinfotemp.Height) -and ($imageinfotemp.width)) {
             try {
@@ -78,7 +79,10 @@ function UploadOtherMediaServerArtwork {
         Write-Entry -Subtext "Artwork has exif data from posterizarr/kometa/tcm, skip upload..." -Path $global:configLogging -Color Yellow -log Warning
     }
     Else {
-        if ($DisableHashValidation -eq 'false') {
+        if ($SkipExifCheck) {
+            Write-Entry -Subtext "Skipping EXIF check, starting upload..." -Path $global:configLogging -Color Green -log Info
+        }
+        elseif ($DisableHashValidation -eq 'false') {
             Write-Entry -Subtext "No posterizarr/kometa/tcm exif data found, starting upload..." -Path $global:configLogging -Color Green -log Info
         }
         # Read the image file as binary

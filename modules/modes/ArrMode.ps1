@@ -1,6 +1,10 @@
 #region Arr Mode
     $global:posterCount = 0
+    $global:SkipTBACount = 0
+    $global:SkipJapTitleCount = 0
     if ($global:runspaceStats) { $global:runspaceStats['posterCount'] = 0 }
+    if ($global:runspaceStats) { $global:runspaceStats['SkipTBACount'] = 0 }
+    if ($global:runspaceStats) { $global:runspaceStats['SkipJapTitleCount'] = 0 }
     if ($global:runspaceStats) { $global:runspaceStats['PlexRootPosterUploads'] = 0 }
     if ($global:runspaceStats) { $global:runspaceStats['PlexChildArtworkUploads'] = 0 }
     $arrplatform = $arrTriggers['arr_platform']
@@ -700,6 +704,14 @@
                     $SeasonId = $matchedSeason.Id
                 }
 
+                $OtherMediaServerTitleCardUrlsList = [System.Collections.Generic.List[string]]::new()
+                foreach ($epId in ($EpisodeIds -split ',')) {
+                    if ($epId) {
+                        $OtherMediaServerTitleCardUrlsList.Add("$OtherMediaServerUrl/Items/$epId/Images/Primary")
+                    }
+                }
+                $OtherMediaServerTitleCardUrls = $OtherMediaServerTitleCardUrlsList -join ','
+
                 # Create an object for the current season
                 $seasonObject = [PSCustomObject]@{
                     "Library Name"                 = $show."Library Name"
@@ -724,6 +736,7 @@
                     "extraFolder"                  = $show.extraFolder
                     "Path"                         = $show.Path
                     "OtherMediaServerBackgroundUrl"= $show.OtherMediaServerBackgroundUrl
+                    "OtherMediaServerTitleCardUrls"= $OtherMediaServerTitleCardUrls
                     "OtherMediaServerTitleCardTag" = $Thumbs
                     "OtherMediaServerSeasonTag"    = $SeasonEpisodes[0].SeriesPrimaryImageTag
                 }
@@ -830,6 +843,7 @@
                     'extraFolder'                  = $data.'extraFolder'
                     'Path'                         = $data.'Path'
                     'OtherMediaServerBackgroundUrl'= $data.'OtherMediaServerBackgroundUrl'
+                    'OtherMediaServerTitleCardUrls'= $data.'OtherMediaServerTitleCardUrls'
                     'OtherMediaServerTitleCardTag' = $data.'OtherMediaServerTitleCardTag'
                     'OtherMediaServerSeasonTag'    = $data.'OtherMediaServerSeasonTag'
                 })

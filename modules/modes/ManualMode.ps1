@@ -1262,9 +1262,7 @@
                     else {
                         Write-Entry -Subtext "Calling UploadOtherMediaServerArtwork for ID $FinalTargetID" -Path $global:configLogging -Color Cyan -log Debug
                         try {
-                            UploadOtherMediaServerArtwork -itemId $FinalTargetID -imageType $FinalImageType -imagePath $PosterImage
-                            # Send-SiloArtwork counts its own uploads
-                            if ($UseSilo -ne 'true') { $global:UploadCount = Increment-GlobalStat 'UploadCount' }
+                            UploadOtherMediaServerArtwork -itemId $FinalTargetID -imageType $FinalImageType -imagePath $PosterImage -SkipExifCheck
                         }
                         catch {
                             Write-Entry -Subtext "Manual media server upload failed: $($_.Exception.Message)" -Path $global:configLogging -Color Red -log Error

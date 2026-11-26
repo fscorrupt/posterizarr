@@ -4749,11 +4749,11 @@ function Invoke-TitleCardCreation {
 
                 if ($SkipTBA -eq 'true' -and $matchedWord) {
                     Write-Entry -Subtext "Skipping $global:FileNaming of $global:show_name because Title matches '$matchedText'" -Path $global:configLogging -Color Yellow -log Warning
-                    $SkipTBACount++
+                    $global:SkipTBACount = Increment-GlobalStat 'SkipTBACount'
                 }
                 Elseif ($SkipJapTitle -eq 'true' -and $global:EPTitle -match $cjkTitlePattern) {
                     Write-Entry -Subtext "Skipping $global:FileNaming of $global:show_name because Title contains Jap/Chinese Chars" -Path $global:configLogging -Color Yellow -log Warning
-                    $SkipJapTitleCount++
+                    $global:SkipJapTitleCount = Increment-GlobalStat 'SkipJapTitleCount'
                 }
                 Else {
                     $checkedItems.Add($hashtestpath)
@@ -5531,11 +5531,11 @@ function Invoke-TitleCardCreation {
 
                 if ($SkipTBA -eq 'true' -and $matchedWord) {
                     Write-Entry -Subtext "Skipping $global:FileNaming of $global:show_name because Title matches '$matchedText'" -Path $global:configLogging -Color Yellow -log Warning
-                    $SkipTBACount++
+                    $global:SkipTBACount = Increment-GlobalStat 'SkipTBACount'
                 }
                 Elseif ($SkipJapTitle -eq 'true' -and $global:EPTitle -match $cjkTitlePattern) {
                     Write-Entry -Subtext "Skipping $global:FileNaming of $global:show_name because Title contains Jap/Chinese Chars" -Path $global:configLogging -Color Yellow -log Warning
-                    $SkipJapTitleCount++
+                    $global:SkipJapTitleCount = Increment-GlobalStat 'SkipJapTitleCount'
                 }
                 Else {
                     $checkedItems.Add($hashtestpath)
@@ -6248,11 +6248,11 @@ function Invoke-TitleCardCreation {
 
                                     if ($SkipTBA -eq 'true' -and $matchedWord) {
                                         Write-Entry -Subtext "Skipping $global:FileNaming of $global:show_name because Title matches '$matchedText'" -Path $global:configLogging -Color Yellow -log Warning
-                                        $SkipTBACount++
+                                        $global:SkipTBACount = Increment-GlobalStat 'SkipTBACount'
                                     }
                                     Elseif ($SkipJapTitle -eq 'true' -and $global:EPTitle -match $cjkTitlePattern) {
                                         Write-Entry -Subtext "Skipping $global:FileNaming of $global:show_name because Title contains Jap/Chinese Chars" -Path $global:configLogging -Color Yellow -log Warning
-                                        $SkipJapTitleCount++
+                                        $global:SkipJapTitleCount = Increment-GlobalStat 'SkipJapTitleCount'
                                     }
                                     Else {
                                         $checkedItems.Add($hashtestpath)

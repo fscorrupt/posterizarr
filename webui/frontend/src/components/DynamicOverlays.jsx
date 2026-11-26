@@ -751,6 +751,7 @@ export default function DynamicOverlays() {
   });
   const isChangeDetectionDryRun = featureSettings?.change_detection_dry_run !== false;
   const [isUpdatingFeatureSettings, setIsUpdatingFeatureSettings] = useState(false);
+  const [featureSettingsLoaded, setFeatureSettingsLoaded] = useState(false);
   const [ratingsCacheStats, setRatingsCacheStats] = useState(null);
   const [isClearingRatingsCache, setIsClearingRatingsCache] = useState(false);
   const [isBackdropPanelOpen, setIsBackdropPanelOpen] = useState(true);
@@ -801,6 +802,60 @@ export default function DynamicOverlays() {
       clearTimeout(clearTimer);
     };
   }, [location.state, visualConfig]);
+  const [highlightedOverlaySetting, setHighlightedOverlaySetting] = useState(null);
+  const lastOverlaySettingJumpTsRef = useRef(null);
+  useEffect(() => {
+    const targetSetting = location.state?.overlaySettingKey;
+    if (!targetSetting || !featureSettingsLoaded) return undefined;
+    const jumpTs = location.state?.ts || targetSetting;
+    if (lastOverlaySettingJumpTsRef.current === jumpTs) return undefined;
+
+    if (!featureSettings?.enabled) {
+      lastOverlaySettingJumpTsRef.current = jumpTs;
+      setHighlightedOverlaySetting("master_switch");
+      const scrollTimer = setTimeout(() => {
+        const masterEl = document.getElementById("overlay-master-switch");
+        masterEl?.scrollIntoView({ behavior: "smooth", block: "center" });
+      }, 100);
+      showToast("Enable Dynamic Overlays first to configure this setting.", "info");
+      const clearTimer = setTimeout(() => {
+        setHighlightedOverlaySetting((prev) => (prev === "master_switch" ? null : prev));
+      }, 3500);
+      return () => {
+        clearTimeout(scrollTimer);
+        clearTimeout(clearTimer);
+      };
+    }
+
+    if (location.state?.targetTab && activeTab !== location.state.targetTab) {
+      setActiveTab(location.state.targetTab);
+      return undefined;
+    }
+
+    lastOverlaySettingJumpTsRef.current = jumpTs;
+    if (location.state?.openEngineSettings) {
+      setIsGlobalSettingsOpen(true);
+    }
+    setHighlightedOverlaySetting(targetSetting);
+
+    const scrollTimer = setTimeout(() => {
+      const el = document.getElementById(`overlay-setting-${targetSetting}`);
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+        if (["mdblist_api_key", "omdb_api_key", "simkl_client_id", "animetafill_simkl_client_id"].includes(targetSetting)) {
+          const input = el.querySelector("input");
+          input?.focus({ preventScroll: true });
+        }
+      }
+    }, 180);
+    const clearTimer = setTimeout(() => {
+      setHighlightedOverlaySetting((prev) => (prev === targetSetting ? null : prev));
+    }, 3500);
+    return () => {
+      clearTimeout(scrollTimer);
+      clearTimeout(clearTimer);
+    };
+  }, [location.state, featureSettingsLoaded, featureSettings?.enabled, activeTab]);
   const [isVisualLoading, setIsVisualLoading] = useState(false);
   const [isVisualSaving, setIsVisualSaving] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
@@ -2250,6 +2305,8 @@ export default function DynamicOverlays() {
       }
     } catch (err) {
       console.error("Failed fetching dynamic overlays settings:", err);
+    } finally {
+      setFeatureSettingsLoaded(true);
     }
   };
 
@@ -5466,7 +5523,14 @@ export default function DynamicOverlays() {
               pendingCommunityEntry={pendingCommunityBundle}
               onPendingCommunityEntryHandled={() => setPendingCommunityBundle(null)}
             />
-            <div className="flex items-center gap-2.5 bg-theme-bg border border-theme px-3 py-1.5 rounded-lg">
+            <div
+              id="overlay-master-switch"
+              className={`flex items-center gap-2.5 bg-theme-bg border px-3 py-1.5 rounded-lg transition-all duration-300 ${
+                highlightedOverlaySetting === "master_switch"
+                  ? "ring-2 ring-theme-primary border-theme-primary bg-theme-primary/10"
+                  : "border-theme"
+              }`}
+            >
               <span className="text-xs font-semibold text-theme-muted">Master Switch:</span>
               <button
                 type="button"
@@ -8410,10 +8474,20 @@ export default function DynamicOverlays() {
                     </>
                   );
                 })()}
+              </div>
+            );
+          })()}
 
                 {/* CENTRAL ENGINE SETTINGS & PROVIDER KEYS (ACCORDION CARD) */}
                 {/* RATINGS PROVIDERS & AUTO-REFRESH (ACCORDION CARD) */}
-                <div className="bg-theme-card border border-theme rounded-2xl shadow-sm overflow-hidden transition-all mt-6">
+                <div
+                  id="overlay-setting-overlay_engine_settings"
+                  className={`bg-theme-card border rounded-2xl shadow-sm overflow-hidden transition-all mt-6 ${
+                    highlightedOverlaySetting === "overlay_engine_settings"
+                      ? "ring-2 ring-theme-primary border-theme-primary"
+                      : "border-theme"
+                  }`}
+                >
                   <div className="p-4 sm:p-5 flex items-center justify-between gap-4 bg-theme-hover/20 border-b border-theme/60">
                     <div className="flex items-center gap-3">
                       <div className="p-2 rounded-xl bg-theme-primary/10 text-theme-primary border border-theme-primary/20">
@@ -8451,7 +8525,14 @@ export default function DynamicOverlays() {
                   {isGlobalSettingsOpen && (
                     <div className="p-5 space-y-4">
                       {/* Auto-Sync Toggle */}
-                      <div className="flex items-center justify-between p-3.5 rounded-xl bg-theme-hover/30 border border-theme">
+                      <div
+                        id="overlay-setting-auto_sync_on_startup"
+                        className={`flex items-center justify-between p-3.5 rounded-xl border transition-all duration-300 ${
+                          highlightedOverlaySetting === "auto_sync_on_startup"
+                            ? "ring-2 ring-theme-primary border-theme-primary bg-theme-primary/10"
+                            : "bg-theme-hover/30 border-theme"
+                        }`}
+                      >
                         <div>
                           <span className="text-xs font-bold text-theme-text block">Auto-Sync on New Artwork</span>
                           <span className="text-[11px] text-theme-muted">
@@ -8476,7 +8557,14 @@ export default function DynamicOverlays() {
                       {/* Optional API Keys */}
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
                         {/* MDBList */}
-                        <div className="space-y-1.5 p-3 rounded-xl bg-theme-hover/20 border border-theme">
+                        <div
+                          id="overlay-setting-mdblist_api_key"
+                          className={`space-y-1.5 p-3 rounded-xl border transition-all duration-300 ${
+                            highlightedOverlaySetting === "mdblist_api_key"
+                              ? "ring-2 ring-theme-primary border-theme-primary bg-theme-primary/10"
+                              : "bg-theme-hover/20 border-theme"
+                          }`}
+                        >
                           <div className="flex items-center justify-between">
                             <label className="text-[10px] font-bold text-theme-text uppercase tracking-wider flex items-center gap-1.5">
                               <Key className="w-3 h-3 text-amber-400" />
@@ -8537,7 +8625,14 @@ export default function DynamicOverlays() {
                         </div>
 
                         {/* OMDb */}
-                        <div className="space-y-1.5 p-3 rounded-xl bg-theme-hover/20 border border-theme">
+                        <div
+                          id="overlay-setting-omdb_api_key"
+                          className={`space-y-1.5 p-3 rounded-xl border transition-all duration-300 ${
+                            highlightedOverlaySetting === "omdb_api_key"
+                              ? "ring-2 ring-theme-primary border-theme-primary bg-theme-primary/10"
+                              : "bg-theme-hover/20 border-theme"
+                          }`}
+                        >
                           <div className="flex items-center justify-between">
                             <label className="text-[10px] font-bold text-theme-text uppercase tracking-wider flex items-center gap-1.5">
                               <Key className="w-3 h-3 text-cyan-400" />
@@ -8598,7 +8693,14 @@ export default function DynamicOverlays() {
                         </div>
                       </div>
 
-                      <div className="space-y-2 p-3 rounded-lg bg-theme-hover/20 border border-theme">
+                      <div
+                        id="overlay-setting-simkl_client_id"
+                        className={`space-y-2 p-3 rounded-lg border transition-all duration-300 ${
+                          highlightedOverlaySetting === "simkl_client_id"
+                            ? "ring-2 ring-theme-primary border-theme-primary bg-theme-primary/10"
+                            : "bg-theme-hover/20 border-theme"
+                        }`}
+                      >
                         <div className="flex items-center justify-between gap-2 flex-wrap">
                           <label htmlFor="ratings-simkl-client-id" className="text-xs font-semibold text-theme-text flex items-center gap-1.5">
                             <Key className="w-3.5 h-3.5 text-theme-primary" />
@@ -8635,7 +8737,14 @@ export default function DynamicOverlays() {
                             {apiKeyTestResult.simkl.message || apiKeyTestResult.simkl.error}
                           </p>
                         )}
-                        <fieldset className="pt-3 border-t border-theme space-y-2">
+                        <fieldset
+                          id="overlay-setting-season_rating_libraries"
+                          className={`pt-3 border-t space-y-2 transition-all duration-300 ${
+                            highlightedOverlaySetting === "season_rating_libraries"
+                              ? "ring-2 ring-theme-primary border-theme-primary rounded-lg p-2 bg-theme-primary/10"
+                              : "border-theme"
+                          }`}
+                        >
                           <legend className="text-xs font-semibold text-theme-text px-1">Libraries for Anime Season Ratings</legend>
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 min-w-0">
                             {seasonRatingLibraryOptions.map(libraryName => (
@@ -8656,7 +8765,14 @@ export default function DynamicOverlays() {
                       </div>
 
                       {/* Tiered TTL Summary & Clear Ratings Cache */}
-                      <div className="p-3.5 rounded-xl bg-theme-hover/20 border border-theme/60 space-y-3">
+                      <div
+                        id="overlay-setting-ratings_cache_rules"
+                        className={`p-3.5 rounded-xl border space-y-3 transition-all duration-300 ${
+                          highlightedOverlaySetting === "ratings_cache_rules"
+                            ? "ring-2 ring-theme-primary border-theme-primary bg-theme-primary/10"
+                            : "bg-theme-hover/20 border-theme/60"
+                        }`}
+                      >
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                           <div>
                             <div className="font-semibold text-xs text-theme-text flex items-center gap-1.5">
@@ -8686,7 +8802,14 @@ export default function DynamicOverlays() {
                       </div>
 
                       {/* Debug Coordinates Logging Toggle */}
-                      <div className="flex items-center justify-between p-3.5 rounded-xl bg-theme-hover/30 border border-theme">
+                      <div
+                        id="overlay-setting-debug_logging"
+                        className={`flex items-center justify-between p-3.5 rounded-xl border transition-all duration-300 ${
+                          highlightedOverlaySetting === "debug_logging"
+                            ? "ring-2 ring-theme-primary border-theme-primary bg-theme-primary/10"
+                            : "bg-theme-hover/30 border-theme"
+                        }`}
+                      >
                         <div className="space-y-0.5 pr-4">
                           <div className="flex items-center gap-2">
                             <span className="text-xs font-bold text-theme-text">Debug Pixel Coordinates Logging</span>
@@ -8719,7 +8842,14 @@ export default function DynamicOverlays() {
                       </div>
 
                       {/* Parallel In-Memory Processing Concurrency */}
-                      <div className="p-3.5 rounded-xl bg-theme-hover/30 border border-theme space-y-2">
+                      <div
+                        id="overlay-setting-concurrency"
+                        className={`p-3.5 rounded-xl border space-y-2 transition-all duration-300 ${
+                          highlightedOverlaySetting === "concurrency"
+                            ? "ring-2 ring-theme-primary border-theme-primary bg-theme-primary/10"
+                            : "bg-theme-hover/30 border-theme"
+                        }`}
+                      >
                         <div className="flex items-center justify-between">
                           <div>
                             <span className="text-xs font-bold text-theme-text block">Parallel In-Memory Processing</span>
@@ -8758,9 +8888,6 @@ export default function DynamicOverlays() {
                     </div>
                   )}
                 </div>
-              </div>
-            );
-          })()}
         </div>
       )}
 
@@ -11800,7 +11927,14 @@ export default function DynamicOverlays() {
               </div>
 
               {/* Setting 3: Upload Dry Run */}
-              <div className="p-4 rounded-xl bg-theme-hover/40 border border-theme flex flex-col justify-between gap-3">
+              <div
+                id="overlay-setting-change_detection_dry_run"
+                className={`p-4 rounded-xl border flex flex-col justify-between gap-3 transition-all duration-300 ${
+                  highlightedOverlaySetting === "change_detection_dry_run"
+                    ? "ring-2 ring-theme-primary border-theme-primary bg-theme-primary/10"
+                    : "bg-theme-hover/40 border-theme"
+                }`}
+              >
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <div className="text-xs font-bold text-theme-text flex items-center gap-1.5">
@@ -12003,7 +12137,14 @@ export default function DynamicOverlays() {
 
           {/* RATINGS CACHE & AUTO-REFRESH CARD */}
           {activeTab === "ratings-cache" && (
-          <div className="bg-theme-card border border-theme rounded-2xl p-5 sm:p-6 shadow-sm space-y-4">
+          <div
+            id="overlay-setting-ratings_cache"
+            className={`bg-theme-card border rounded-2xl p-5 sm:p-6 shadow-sm space-y-4 transition-all duration-300 ${
+              highlightedOverlaySetting === "ratings_cache"
+                ? "ring-2 ring-theme-primary border-theme-primary"
+                : "border-theme"
+            }`}
+          >
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
                 <h3 className="font-bold text-theme-text text-base flex items-center gap-2">
@@ -12453,7 +12594,14 @@ export default function DynamicOverlays() {
               </div>
 
               {/* 3. SONARR CREDENTIALS & TEST BUTTON (OPTIONAL) */}
-              <div className="space-y-3 pt-2 border-t border-theme">
+              <div
+                id="overlay-setting-animetafill_sonarr"
+                className={`space-y-3 pt-2 border-t transition-all duration-300 ${
+                  highlightedOverlaySetting === "animetafill_sonarr"
+                    ? "ring-2 ring-theme-primary border-theme-primary rounded-xl p-3 bg-theme-primary/10"
+                    : "border-theme"
+                }`}
+              >
                 <div className="flex items-center justify-between flex-wrap gap-2">
                   <div className="flex items-center gap-1.5">
                     <Zap className="w-3.5 h-3.5 text-blue-400" />
@@ -12539,7 +12687,14 @@ export default function DynamicOverlays() {
               </div>
 
               {/* 4. SIMKL CLIENT ID (REQUIRED) */}
-              <div className="space-y-2 pt-2 border-t border-theme text-xs">
+              <div
+                id="overlay-setting-animetafill_simkl_client_id"
+                className={`space-y-2 pt-2 border-t text-xs transition-all duration-300 ${
+                  highlightedOverlaySetting === "animetafill_simkl_client_id"
+                    ? "ring-2 ring-theme-primary border-theme-primary rounded-xl p-3 bg-theme-primary/10"
+                    : "border-theme"
+                }`}
+              >
                 <div className="flex items-center justify-between">
                   <label className="text-theme-text font-semibold flex items-center gap-1.5">
                     <span>SIMKL Client ID</span>
