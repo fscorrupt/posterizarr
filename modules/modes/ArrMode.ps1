@@ -1,4 +1,4 @@
-﻿#region Arr Mode
+#region Arr Mode
     $global:posterCount = 0
     if ($global:runspaceStats) { $global:runspaceStats['posterCount'] = 0 }
     if ($global:runspaceStats) { $global:runspaceStats['PlexRootPosterUploads'] = 0 }

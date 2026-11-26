@@ -135,6 +135,9 @@ configuration.
 **On Import** and **On Upgrade**, set the method to `POST`, then save. No script
 file or shared container volume is needed for the native webhook.
 
+!!! note "Webhook authentication options"
+    All `/api/webhook/*` endpoints always require a Web UI API key (HTTP Basic Auth is not accepted). Instead of passing `?api_key=YOUR_API_KEY` in the URL, you can send an `X-API-Key: YOUR_API_KEY` or `Authorization: Bearer YOUR_API_KEY` header without the query parameter. Built-in Sonarr/Radarr webhook settings do not expose custom headers, so use `?api_key=...` there unless a proxy or custom script injects the header.
+
 See the [Tautulli and Sonarr/Radarr setup notes](#native-webhook-setup) for the
 external-app steps.
 
@@ -552,7 +555,7 @@ This mode lets Tautulli trigger Posterizarr for a specific Plex item, such as a 
 2. Click `Add a new notification agent` and select **Webhook**.
 3. **Configuration Tab:**
     * **Webhook URL:** `http://YOUR_POSTERIZARR_IP:8000/api/webhook/tautulli?api_key=YOUR_API_KEY`
-      - *(Generate an API Key in Posterizarr settings under WebUI)*
+      - *(Generate an API Key in Posterizarr settings under WebUI. Alternatively, omit `?api_key=...` and send an `X-API-Key: YOUR_API_KEY` or `Authorization: Bearer YOUR_API_KEY` header instead.)*
     * **Webhook Method:** `POST`
 4. **Triggers Tab:**
     * Check `Recently Added`.
@@ -617,7 +620,7 @@ For the legacy script-based setup, configure a script in Sonarr or Radarr as fol
 5. **On Import:** Yes
 6. **On Upgrade:** Yes
 7. **URL:** `http://YOUR_POSTERIZARR_IP:8000/api/webhook/arr?api_key=YOUR_API_KEY`
-    - *(Generate an API Key in Posterizarr settings under WebUI)*
+    - *(Generate an API Key in Posterizarr settings under WebUI. Posterizarr also accepts `X-API-Key` or `Authorization: Bearer` headers instead of `?api_key=...`, e.g., when called from a proxy or custom script; built-in Sonarr/Radarr webhooks do not support custom headers and ignore Basic Auth on `/api/webhook/*`.)*
 8. **Method:** POST
 9. Click **Save**.
 
