@@ -761,6 +761,45 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#cleaning-up-deleted-media" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Cleaning Up Deleted Media
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Cleaning Up Deleted Media">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#automatic-cleanup" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Automatic Cleanup
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#manual-cleanup-deleted-action" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Manual "Cleanup Deleted" Action
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#faq" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -1850,6 +1889,45 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#cleaning-up-deleted-media" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Cleaning Up Deleted Media
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Cleaning Up Deleted Media">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#automatic-cleanup" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Automatic Cleanup
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#manual-cleanup-deleted-action" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Manual "Cleanup Deleted" Action
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#faq" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2002,6 +2080,24 @@ suggestions, not necessarily failed jobs.</p>
 <div class="admonition tip">
 <p class="admonition-title">Filtering First</p>
 <p>Use the search bar and dropdown filters (Type, Library, Category) to narrow down the list before using bulk actions. For example, you can filter for all "Title Cards" in your "Anime" library and mark them all as resolved at once.</p>
+</div>
+<hr />
+<h2 id="cleaning-up-deleted-media">Cleaning Up Deleted Media</h2>
+<p>Posterizarr automatically keeps Action Center records aligned with your media servers and also offers a manual cleanup action when items have been removed from Plex, Jellyfin, or Emby.</p>
+<h3 id="automatic-cleanup">Automatic Cleanup</h3>
+<ul>
+<li><strong>On Media Server Export Import:</strong> Whenever Plex or Jellyfin/Emby library exports are imported (automatically after a Posterizarr run or manually under <strong>Media Server Export</strong>), Posterizarr compares active items per library and prunes orphaned <code>imagechoices</code> and <code>skipped_items</code> records for items that no longer exist.</li>
+<li><strong>On Media Server HTTP 404:</strong> When Dynamic Overlays receives an HTTP 404 for a deleted item, Posterizarr removes its stale <code>media_export.db</code> row along with matching <code>imagechoices</code> and <code>skipped_items</code> entries in <code>imagechoices.db</code> (without touching files on disk).</li>
+</ul>
+<h3 id="manual-cleanup-deleted-action">Manual "Cleanup Deleted" Action</h3>
+<ol>
+<li>Click <strong>Cleanup Deleted</strong> in the Action Center toolbar and confirm <strong>Check &amp; Cleanup</strong>.</li>
+<li>Posterizarr queries your active configured <strong>Plex</strong>, <strong>Jellyfin</strong>, and <strong>Emby</strong> libraries (respecting library exclusions).</li>
+<li>Orphaned entries in Action Center (<code>imagechoices</code>, <code>skipped_items</code>) and <code>media_export.db</code> are removed, and a summary shows the removed count and checked libraries.</li>
+</ol>
+<div class="admonition note">
+<p class="admonition-title">Non-destructive safety guard</p>
+<p><strong>Cleanup Deleted</strong> never deletes media or artwork files on disk. Any unreachable media server or library that returns <code>0</code> active items is skipped so temporary server outages cannot wipe your tracking records.</p>
 </div>
 <hr />
 <h2 id="faq">FAQ</h2>

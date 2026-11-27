@@ -3288,19 +3288,22 @@ do not send it the Jellyfin/Emby parameter.</p>
 <a id="__codelineno-0-61" name="__codelineno-0-61" href="#__codelineno-0-61"></a>│   │   ├── migrate_runtime_data.py # Database migration utility for upgrading schemas between versions
 <a id="__codelineno-0-62" name="__codelineno-0-62" href="#__codelineno-0-62"></a>│   │   ├── release_notes.py       # Cached GitHub Releases fetcher &amp; post-update "What's New" evaluator
 <a id="__codelineno-0-63" name="__codelineno-0-63" href="#__codelineno-0-63"></a>│   │   ├── support_bundle.py      # Diagnostic support ZIP builder with credential &amp; IP redaction
-<a id="__codelineno-0-64" name="__codelineno-0-64" href="#__codelineno-0-64"></a>│   │   ├── animetafill_service.py # Integration service for AniMetaFill anime episode classification
-<a id="__codelineno-0-65" name="__codelineno-0-65" href="#__codelineno-0-65"></a>│   │   └── animetafill_core/      # Core anime classification engine, providers, and overlay YAML generator
-<a id="__codelineno-0-66" name="__codelineno-0-66" href="#__codelineno-0-66"></a>│   └── frontend/              # Vite + React 18 single-page application
-<a id="__codelineno-0-67" name="__codelineno-0-67" href="#__codelineno-0-67"></a>│       ├── src/
-<a id="__codelineno-0-68" name="__codelineno-0-68" href="#__codelineno-0-68"></a>│       │   ├── App.jsx        # Root routing table, theme provider, and top-level modals
-<a id="__codelineno-0-69" name="__codelineno-0-69" href="#__codelineno-0-69"></a>│       │   ├── index.css      # Tailwind CSS directives and custom UI animations
-<a id="__codelineno-0-70" name="__codelineno-0-70" href="#__codelineno-0-70"></a>│       │   ├── components/    # 50+ React components (Dashboard, AssetOverview, CollectionLiveEditor, etc.)
-<a id="__codelineno-0-71" name="__codelineno-0-71" href="#__codelineno-0-71"></a>│       │   ├── context/       # AuthContext, ThemeContext, SidebarContext, ToastContext, DashboardLoadingContext
-<a id="__codelineno-0-72" name="__codelineno-0-72" href="#__codelineno-0-72"></a>│       │   ├── locales/       # Translation dictionaries (en, de, fr, it, pt)
-<a id="__codelineno-0-73" name="__codelineno-0-73" href="#__codelineno-0-73"></a>│       │   └── utils/         # fetchInterceptor.js (auth &amp; headers), markdownParser.js, uiLogger.js
-<a id="__codelineno-0-74" name="__codelineno-0-74" href="#__codelineno-0-74"></a>│       └── package.json
-<a id="__codelineno-0-75" name="__codelineno-0-75" href="#__codelineno-0-75"></a>│
-<a id="__codelineno-0-76" name="__codelineno-0-76" href="#__codelineno-0-76"></a>└── docs/                      # Complete MkDocs documentation suite
+<a id="__codelineno-0-64" name="__codelineno-0-64" href="#__codelineno-0-64"></a>│   │   ├── overlay_external_lists.py # IMDb chart/award, MDBList, and TMDb keyword resolvers with SQLite caching
+<a id="__codelineno-0-65" name="__codelineno-0-65" href="#__codelineno-0-65"></a>│   │   ├── action_center_cleanup.py  # Stale Action Center &amp; media_export cleanup on export import, 404, or manual prune
+<a id="__codelineno-0-66" name="__codelineno-0-66" href="#__codelineno-0-66"></a>│   │   ├── bundled_assets/        # Packaged fallback overlay assets (e.g. regional flags) seeded on startup
+<a id="__codelineno-0-67" name="__codelineno-0-67" href="#__codelineno-0-67"></a>│   │   ├── animetafill_service.py # Integration service for AniMetaFill anime episode classification
+<a id="__codelineno-0-68" name="__codelineno-0-68" href="#__codelineno-0-68"></a>│   │   └── animetafill_core/      # Core anime classification engine, providers, and overlay YAML generator
+<a id="__codelineno-0-69" name="__codelineno-0-69" href="#__codelineno-0-69"></a>│   └── frontend/              # Vite + React 18 single-page application
+<a id="__codelineno-0-70" name="__codelineno-0-70" href="#__codelineno-0-70"></a>│       ├── src/
+<a id="__codelineno-0-71" name="__codelineno-0-71" href="#__codelineno-0-71"></a>│       │   ├── App.jsx        # Root routing table, theme provider, and top-level modals
+<a id="__codelineno-0-72" name="__codelineno-0-72" href="#__codelineno-0-72"></a>│       │   ├── index.css      # Tailwind CSS directives and custom UI animations
+<a id="__codelineno-0-73" name="__codelineno-0-73" href="#__codelineno-0-73"></a>│       │   ├── components/    # 50+ React components (Dashboard, AssetOverview, CollectionLiveEditor, etc.)
+<a id="__codelineno-0-74" name="__codelineno-0-74" href="#__codelineno-0-74"></a>│       │   ├── context/       # AuthContext, ThemeContext, SidebarContext, ToastContext, DashboardLoadingContext
+<a id="__codelineno-0-75" name="__codelineno-0-75" href="#__codelineno-0-75"></a>│       │   ├── locales/       # Translation dictionaries (en, de, fr, it, pt)
+<a id="__codelineno-0-76" name="__codelineno-0-76" href="#__codelineno-0-76"></a>│       │   └── utils/         # fetchInterceptor.js (auth &amp; headers), markdownParser.js, uiLogger.js
+<a id="__codelineno-0-77" name="__codelineno-0-77" href="#__codelineno-0-77"></a>│       └── package.json
+<a id="__codelineno-0-78" name="__codelineno-0-78" href="#__codelineno-0-78"></a>│
+<a id="__codelineno-0-79" name="__codelineno-0-79" href="#__codelineno-0-79"></a>└── docs/                      # Complete MkDocs documentation suite
 </code></pre></div>
 <hr />
 <h2 id="4-runtime-container-lifecycle">4. Runtime &amp; Container Lifecycle</h2>
@@ -3420,7 +3423,7 @@ do not send it the Jellyfin/Emby parameter.</p>
 <a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>├── server_libraries.db    # Media server library caches (Plex/Jellyfin/Emby/Silo section IDs)
 <a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>├── media_export.db        # Media library exports and item metadata
 <a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>├── runtime_stats.db       # Historical run metrics, processing durations, and asset counts
-<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>├── overlay_cache.db       # Dynamic Overlays state, ratings cache, layer snapshots, and title-change baselines
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>├── overlay_cache.db       # Dynamic Overlays state, ratings cache, external list/TMDb keyword caches, layer snapshots, and title-change baselines
 <a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>├── animetafill.db         # Anime episode Canon/Filler/Mixed classifications and manual overrides
 <a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a>├── plex_push_cache.db     # Plex Collection Explorer &amp; Plex Sync push state and hashes
 <a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a>└── imdb_dataset.db        # Optional local IMDb title/episode/ratings index and manual episode mappings

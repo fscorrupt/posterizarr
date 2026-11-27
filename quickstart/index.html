@@ -1869,6 +1869,7 @@ first-run wizard launches automatically:</p>
    yet).</li>
 <li><strong>API Keys:</strong> Enter a <strong>TMDb Read Access Token</strong> or <strong>TheTVDB Project API
    key</strong> (at least one is required) and test the connection.</li>
+<li><strong>Poster Style:</strong> Pick how your clean base posters should look — <strong>Textless + Original ClearLogos</strong> (recommended), <strong>Standard Posters (Kometa-style)</strong>, or <strong>Textless + Uniform Text</strong>. You can adjust or change styles anytime under <strong>Blueprints</strong> or <strong>Config → Global Visuals</strong>.</li>
 <li><strong>Dynamic Overlays step:</strong> Turn on <strong>Dynamic Overlays</strong> here. It starts safely
    in <strong>Dry Run</strong>, so nothing is uploaded while you preview and test.</li>
 <li>Click <strong>Finish Setup</strong>.</li>
@@ -1909,9 +1910,10 @@ to <strong>Builders &gt; Dynamic Overlays</strong> and click <strong>Setup Wizar
 <li>Open <strong>Sync &amp; Maintenance &gt; Synchronize</strong>, click <strong>Targeted Reapply</strong> (or
    <strong>Select Movie / Show</strong>), and pick the <strong>single item</strong> you generated in
    Step 2.</li>
-<li>Run the sync while <strong>Dry Run</strong> is still <strong>ON</strong>, and confirm in
-   <code>DynamicOverlaysSync.log</code> that Posterizarr matched the asset and rendered its
-   overlays without errors.</li>
+<li>Run the sync while <strong>Dry Run</strong> is still <strong>ON</strong>. Rendered items appear right
+   away under <strong>Sync &amp; Maintenance &gt; Synchronize &gt; Dry-Run Previews</strong> (with
+   zero uploads to your media server), and detailed logs are written to
+   <code>DynamicOverlaysSync.log</code>.</li>
 </ol>
 <hr />
 <h2 id="step-5-push-your-first-live-overlaid-poster">Step 5: Push Your First Live Overlaid Poster</h2>

@@ -990,6 +990,84 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Language Priority and Parent Video Formats">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#uncapped-max-flags-regional-flags-and-custom-flag-overrides" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Uncapped Max Flags, Regional Flags, and Custom Flag Overrides
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#representative-episode-filepath-aggregation" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Representative Episode Filepath Aggregation
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#resolution-tier-and-variant-filtering" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Resolution Tier and Variant Filtering
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#external-builders-for-ribbons-and-mediastinger" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        External Builders for Ribbons and MediaStinger
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="External Builders for Ribbons and MediaStinger">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#award-chart-ribbon-default-ribbon" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Award / Chart Ribbon (<code>default: ribbon</code>)
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#media-stinger-default-mediastinger" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Media Stinger (<code>default: mediastinger</code>)
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -2039,6 +2117,84 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Language Priority and Parent Video Formats">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#uncapped-max-flags-regional-flags-and-custom-flag-overrides" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Uncapped Max Flags, Regional Flags, and Custom Flag Overrides
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#representative-episode-filepath-aggregation" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Representative Episode Filepath Aggregation
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#resolution-tier-and-variant-filtering" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Resolution Tier and Variant Filtering
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#external-builders-for-ribbons-and-mediastinger" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        External Builders for Ribbons and MediaStinger
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="External Builders for Ribbons and MediaStinger">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#award-chart-ribbon-default-ribbon" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Award / Chart Ribbon (<code>default: ribbon</code>)
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#media-stinger-default-mediastinger" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Media Stinger (<code>default: mediastinger</code>)
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -2252,8 +2408,8 @@ checksums. Byte-identical, downloadable defaults, images, and fonts are recorded
 as dependencies rather than copied into the ZIP. Locally modified files remain
 included even if they use a standard filename. Export needs access to GitHub
 to verify the official catalog; it does not download the default asset files.
-After import, use readiness checks to download missing official dependencies
-before syncing.</p>
+Missing official dependencies can be downloaded automatically during bundle or
+Community Gallery import, or fetched afterward via readiness checks before syncing.</p>
 <p>API keys, tokens, passwords, media-server connections, and the main application
 configuration are not exported. Import does not replace existing provider keys
 with blank, null, or masked values and does not change the destination media server.
@@ -2270,15 +2426,21 @@ rewritten; an asset containing credential data still requires metadata cleanup.<
 <li>Choose <strong>AniMetaFill</strong> and <strong>Season ratings</strong> for the mapped show libraries.
    <strong>Restore feature settings</strong> also restores the exported rating sources,
    styles, and enabled states. Leave it off to import layouts/assets without
-   replacing shared feature preferences.</li>
+   replacing shared feature preferences. Keep <strong>Automatically download missing
+   official Kometa dependencies (defaults, images, and fonts)</strong> enabled to fetch
+   required manifest defaults, images, and fonts automatically (plus indirect
+   template dependencies).</li>
 <li>Review any conflicting shared YAML/assets. Replacing them requires explicit
    confirmation and can affect other libraries using those same files. Changed
    files are backed up under <code>dynamic_overlays/bundle_backups/</code>; each backup has
    an <code>index.json</code> recording its original destination paths.</li>
-<li>Confirm <strong>Import bundle</strong>. Review the imported layout in preview and Dry Run
-   before deliberately enabling uploads. The import itself uploads no artwork
-   and always sets change detection to <strong>Dry Run</strong>, including when shared
-   feature settings are not restored.</li>
+<li>Confirm <strong>Import bundle</strong>. When automatic dependency download is enabled,
+   partial failures do not abort the import—missing items are listed so you can
+   retry them later in <strong>Config &amp; YAML Files</strong>. If disabled, use readiness checks
+   to download missing files before syncing. Review the imported layout in
+   preview and Dry Run before deliberately enabling uploads. The import itself
+   uploads no artwork and always sets change detection to <strong>Dry Run</strong>, including
+   when shared feature settings are not restored.</li>
 </ol>
 <p>The import review preserves the local server selection and only lists libraries
 available from that server. Refresh the server's library list first if it is
@@ -2289,9 +2451,10 @@ empty. An active overlay or AniMetaFill run blocks imports.</p>
 mappings are not transferred. The local IMDb feature flag can be restored,
 but its datasets must be downloaded separately. AniMetaFill classification
 can be regenerated against the mapped local libraries. Remote-only or missing
-dependencies are not downloaded during export; use readiness checks after
-import. Only share fonts and artwork you have permission to redistribute,
-and only import bundles from sources you trust.</p>
+dependencies are not stored inside the exported ZIP, but can be downloaded
+automatically during bundle and Community Gallery import (or fetched afterward
+via readiness checks). Only share fonts and artwork you have permission to
+redistribute, and only import bundles from sources you trust.</p>
 </div>
 <p>Bundles are limited to 128 MiB compressed, 256 MiB expanded, and 2,048 files.
 Archive paths, checksums, file types, and library mappings are validated before
@@ -2620,8 +2783,11 @@ sync can still query providers.</p>
 <p>When the media server itself returns metadata HTTP 404, Posterizarr removes that
 server/item's ratings, retry and season-mapping records, all cached overlay assets,
 orphaned layer snapshots, and skipped-item record across <code>overlay_cache.db</code> and
-<code>imagechoices.db</code>. Provider-side 404 responses do not trigger this cleanup.
-Media-export history and provider caches keyed by shared TMDb IDs are retained.</p>
+<code>imagechoices.db</code>. It also resolves the item's library and root folder from
+<code>media_export.db</code>, deletes the stale <code>media_export.db</code> entry, and removes matching
+Action Center <code>imagechoices</code> and <code>skipped_items</code> rows in <code>imagechoices.db</code>
+(without touching files on disk). Provider-side 404 responses do not trigger this
+cleanup; provider caches keyed by shared TMDb IDs are retained.</p>
 <h2 id="rule-artwork-targets">Rule Artwork Targets</h2>
 <p>In the rule's <strong>Visual Settings</strong>, use <strong>Artwork Type</strong> to choose <strong>Both</strong>,
 <strong>Posters / Titlecards Only</strong>, or <strong>Backgrounds Only</strong>. This applies to native
@@ -2705,6 +2871,55 @@ artwork; portrait tier banners retain their existing resolution-only design.
 Unrecognized Plex resolution labels fall back to reported video dimensions to
 identify 4K, 1080p, 720p, or SD without depending on the codec/profile description.
 After updating, run a full overlay sync for the affected shows and seasons.</p>
+<h3 id="uncapped-max-flags-regional-flags-and-custom-flag-overrides">Uncapped Max Flags, Regional Flags, and Custom Flag Overrides</h3>
+<ul>
+<li><strong>Uncapped flag limit:</strong> <code>overlay_limit</code> (and <strong>Max flags</strong> in <strong>Visual Badges</strong> / <strong>Live Preview</strong>) accepts any positive integer <code>&gt;= 1</code> (default <code>5</code>; existing settings are preserved).</li>
+<li><strong>Bundled regional flags:</strong> Posterizarr includes built-in support and bundled artwork in <code>webui/backend/bundled_assets/flag/{round,square}/</code> for Spanish co-official languages:</li>
+<li><code>ca</code> (Catalan — Senyera, <code>es-ct.png</code>)</li>
+<li><code>ca-valencia</code> (Valencian — <code>es-vc.png</code>; displays <code>VAL</code> when language codes are enabled and normalizes <code>val</code>, <code>ca-ES-valencia</code>, and <code>valencian</code>)</li>
+<li><code>eu</code> (Basque — Ikurriña, <code>es-pv.png</code>)</li>
+<li><code>gl</code> (Galician — <code>es-ga.png</code>)
+  Missing bundled assets are non-destructively seeded into <code>Overlayfiles/dynamic_overlays/assets/flag/{round,square}/</code> on backend startup (never overwriting existing files) and remain available as a resolver fallback.</li>
+<li><strong>Custom flag overrides:</strong> Place custom <code>.png</code>, <code>.webp</code>, <code>.jpg</code>, or <code>.jpeg</code> files named <code>&lt;language-tag&gt;.&lt;ext&gt;</code> (for example <code>ca-valencia.png</code>) in <code>Overlayfiles/dynamic_overlays/assets/flag/custom/</code> or style-specific subfolders <code>flag/custom/round/</code> and <code>flag/custom/square/</code> (<code>flags/custom/</code> is also checked). Style-specific subfolders take precedence over the shared <code>custom/</code> directory, and custom flags override bundled or downloaded flags without triggering remote downloads.</li>
+</ul>
+<h3 id="representative-episode-filepath-aggregation">Representative Episode Filepath Aggregation</h3>
+<p>When aggregating episode streams for show and season artwork, Posterizarr also selects a representative episode <code>filepath</code> (preferring episodes matching the selected aggregate video format and audio codec, then the most frequent technical filename tag signature across resolution, HDR/DV, audio codec, source, and video codec). Custom <code>filepath.regex</code> and video-source rules therefore evaluate reliably on show and season posters.</p>
+<hr />
+<h2 id="resolution-tier-and-variant-filtering">Resolution Tier and Variant Filtering</h2>
+<p><code>default: resolution</code> rules support Kometa-compatible tier and variant filtering across both portrait <strong>Top Ribbon Banner</strong> (<code>mode: banner</code>) and <strong>Corner Badge</strong> (<code>mode: corner_badge</code>) layouts:</p>
+<ul>
+<li>Set <code>use_all: false</code> paired with explicit <code>use_&lt;tier&gt;: true</code> keys (<code>use_4k</code>, <code>use_1080p</code>, <code>use_720p</code>, <code>use_576p</code>, <code>use_480p</code>), disable individual tiers with <code>use_&lt;tier&gt;: false</code>, or disable the rule with <code>use_resolution: false</code>.</li>
+<li>Example (displaying only 4K items so 1080p/lower items receive no banner or badge):</li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">default</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">resolution</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">  </span><span class="nt">template_variables</span><span class="p">:</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">    </span><span class="nt">use_all</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">false</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="w">    </span><span class="nt">use_4k</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+</code></pre></div>
+<ul>
+<li><strong>HDR / Dolby Vision variant filtering:</strong> Control variant badges with <code>use_hdr</code>, <code>use_dv</code>, <code>use_dvhdr</code>, or per-tier keys such as <code>use_4k_dv</code>, <code>use_4k_hdr</code>, and <code>use_4k_dvhdr</code>.</li>
+<li><strong>Legacy compatibility &amp; banner flags:</strong> Existing configurations without tier flags continue displaying all five resolution tiers. Posterizarr also accepts a <code>tiers</code> list, while <code>&lt;tier&gt;_banner: false</code> flags apply only when <code>mode: banner</code> so they never suppress Corner Badges.</li>
+<li><strong>Visual Badges controls:</strong> Under <strong>Visual Badges &gt; Enabled Resolution Tiers</strong>, toggle individual tiers (<code>4K UHD (HDR/DV)</code>, <code>1080p Full HD</code>, <code>720p HD</code>, <code>576p PAL</code>, <code>480p SD</code>) or apply quick presets (<strong>4K Only</strong>, <strong>4K + 1080p</strong>, <strong>All</strong>). Whenever a subset is chosen, Posterizarr compiles it cleanly to Kometa <code>use_all: false</code> and <code>use_&lt;tier&gt;: true</code> variables.</li>
+</ul>
+<hr />
+<h2 id="external-builders-for-ribbons-and-mediastinger">External Builders for Ribbons and MediaStinger</h2>
+<p>Native external list, award, and TMDb keyword resolvers (<code>overlay_external_lists.py</code>) evaluate Kometa chart/award/keyword rules locally and persist results in <code>overlay_cache.db</code> (<code>external_list_cache</code> and <code>tmdb_keywords_cache</code>):</p>
+<ul>
+<li><strong><code>imdb_chart</code>:</strong> Queries IMDb's public GraphQL endpoint (no API key required; 24-hour cache with stale-cache fallback on errors). Supported charts: <code>top_movies</code>, <code>top_shows</code>, <code>popular_movies</code>, <code>popular_shows</code>, <code>lowest_rated</code>, <code>top_english</code>, <code>top_indian</code>, <code>top_tamil</code>, <code>top_telugu</code>, <code>top_malayalam</code>, <code>box_office</code>, <code>trending_india</code>, <code>trending_tamil</code>, <code>trending_telugu</code>.</li>
+<li><strong><code>imdb_award</code>:</strong> Fetches Kometa's <code>IMDb-Awards</code> YAML datasets by validated <code>ev...</code> event ID (7-day / 168-hour cache with stale-cache fallback; no API key required). Supports <code>event_year</code> (<code>all</code>, <code>latest</code>, or specific years), <code>award_filter</code>, <code>category_filter</code>, and <code>winning</code>.</li>
+<li><strong><code>mdblist_list</code>:</strong> Validates <code>mdblist.com</code> / <code>api.mdblist.com</code> list URLs, reads the public JSON feed first (falling back to the MDBList API with a configured MDBList API key if non-200), and caches IMDb/TMDb IDs for 24 hours (with stale-cache fallback).</li>
+<li><strong><code>tmdb_keyword</code>:</strong> Queries TMDb v3 keywords using the configured TMDb token and caches results for 7 days in <code>tmdb_keywords_cache</code>. On lookup failure, reuses an expired cache entry if present; otherwise leaves the item's artwork untouched rather than rendering an incorrect state.</li>
+</ul>
+<h3 id="award-chart-ribbon-default-ribbon">Award / Chart Ribbon (<code>default: ribbon</code>)</h3>
+<ul>
+<li>Supported on both <strong>Movies</strong> and <strong>TV Shows</strong> (<code>builder_level: movie</code> or <code>show</code>; adding it from <strong>Libraries &amp; Rules</strong> presets automatically selects <code>show</code> for TV libraries and <code>movie</code> for Movie libraries).</li>
+<li>Configurable directly in <strong>Visual Badges</strong> and <strong>Live Preview</strong> with ribbon styles <strong><code>yellow</code></strong> (default), <strong><code>red</code></strong>, <strong><code>black</code></strong>, and <strong><code>gray</code></strong>, plus position, offsets, and scope level.</li>
+</ul>
+<h3 id="media-stinger-default-mediastinger">Media Stinger (<code>default: mediastinger</code>)</h3>
+<ul>
+<li>Supported on <strong>Movies</strong> only; matches TMDb <code>aftercreditsstinger</code> and <code>duringcreditsstinger</code> keywords (requires a configured TMDb token).</li>
+<li>Configurable directly in <strong>Visual Badges</strong> and <strong>Live Preview</strong> with background color, <code>back_width</code>, <code>back_height</code>, position, and offsets.</li>
+</ul>
 <hr />
 <h2 id="jellyfin-emby-box-sets">Jellyfin / Emby Box Sets</h2>
 <p>Dynamic Overlay Sync explicitly sends <code>CollapseBoxSetItems=false</code> on Jellyfin/Emby
@@ -2718,14 +2933,16 @@ and a separate collections endpoint. The Jellyfin/Emby parameter does not apply 
 Silo.</p>
 <h2 id="folder-layout">Folder Layout</h2>
 <p>The canonical location is <code>Overlayfiles/dynamic_overlays/</code> under the writable application data directory. In Docker this is normally <code>/config/Overlayfiles/dynamic_overlays/</code>; local installations use the application data/project root.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>Overlayfiles/
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>├── (asset-creation fonts and frame overlays, when configured)
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>└── dynamic_overlays/
-<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>   ├── configs/        # YAML configuration files (config.yml, anime_overlays.yml, etc.)
-<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>   ├── defaults/       # Downloaded Kometa-compatible YAML templates
-<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>   │   └── images/     # Images downloaded for those templates
-<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>   ├── assets/         # Custom/local overlay images
-<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>   └── fonts/          # Custom/local overlay fonts
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>Overlayfiles/
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>├── (asset-creation fonts and frame overlays, when configured)
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>└── dynamic_overlays/
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>   ├── configs/        # YAML configuration files (config.yml, anime_overlays.yml, etc.)
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>   ├── defaults/       # Downloaded Kometa-compatible YAML templates
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>   │   └── images/     # Images downloaded for those templates
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>   ├── assets/         # Custom/local overlay images
+<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>   │   └── flag/
+<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a>   │       └── custom/ # Custom flag overrides (also custom/round/ &amp; custom/square/)
+<a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a>   └── fonts/          # Custom/local overlay fonts
 </code></pre></div>
 <p>Place Dynamic Overlays configuration and assets in <code>Overlayfiles/dynamic_overlays/</code>.</p>
 <h2 id="kometa-compatibility-and-attribution">Kometa Compatibility and Attribution</h2>
@@ -2786,9 +3003,10 @@ guessed meaning. Reading or clicking an info icon does not change the setting.</
 <li>Live, interactive canvas preview for both Movie Posters (1000 × 1500) and Titlecards / Backdrops (1920 × 1080).</li>
 <li>Real-time adjustment of ratings, resolution, series status, runtimes, and anime tags.</li>
 <li><strong>Runtime text:</strong> Duration-only is the default. The Label field can add an optional prefix, while Format selects hours/minutes or total minutes. These values are also available in Visual Badges and survive Save Layout, including for new libraries.</li>
-<li><strong>Language text:</strong> Audio and subtitle flags each have a separate Show Language Codes checkbox. Flags-only is the default; enable codes to add EN/DE/etc. Language-to-country flag aliases are resolved for both local files and on-demand downloads.</li>
-<li><strong>Optional badges:</strong> Subtitle flags, aspect ratio, studio, and streaming services have explicit enable checkboxes. Enabling one creates a temporary preview rule even if the selected library has not saved that badge yet. Save Layout persists the rule.</li>
-<li><strong>Resolution style:</strong> The top-banner choice is part of the production recipe. Portrait banners use matching local <code>4K_banner.png</code>, <code>1080p_banner.png</code>, <code>720p_banner.png</code>, <code>576p_banner.png</code>, or <code>480p_banner.png</code> artwork when present; otherwise they render a full-width tier label. Variant asset overrides can select another local image. Landscape/titlecard formats retain corner badges. The banner can coexist with single-score/provider ratings and audio-codec badges.</li>
+<li><strong>Series Status states &amp; colors:</strong> <strong>Series Status</strong> supports per-state toggles (<code>use_airing</code>, <code>use_returning</code>, <code>use_ended</code>, <code>use_canceled</code>), custom labels (<code>text_&lt;state&gt;</code>), and per-state font colors (<code>font_color_&lt;state&gt;</code>) across <strong>Visual Badges</strong>, <strong>Live Preview</strong> (<strong>Save Layout</strong>), and <strong>Edit Template Variables</strong>.</li>
+<li><strong>Language text:</strong> Audio and subtitle flags each have a separate <strong>Show Language Codes</strong> checkbox and an uncapped <strong>Max flags</strong> numeric input (<code>&gt;= 1</code>). Flags-only is the default; enable codes to display labels (<code>EN</code>, <code>DE</code>, <code>CA</code>, <code>VAL</code>, <code>EU</code>, <code>GL</code>, etc.). Bundled Spanish regional flags (<code>ca</code>, <code>ca-valencia</code>, <code>eu</code>, <code>gl</code>) and custom flag overrides in <code>assets/flag/custom/</code> are supported alongside on-demand official downloads.</li>
+<li><strong>Optional badges &amp; Ribbon / Stinger previews:</strong> Subtitle flags, aspect ratio, studio, streaming services, <strong>Award / Chart Ribbon</strong>, and <strong>Media Stinger</strong> (movie formats only) have explicit preview toggles and position controls. Enabling a badge lets you inspect sample artwork (<strong>Award / Chart Ribbon</strong> provides sample charts/awards such as IMDb Top 250, Emmys, Golden Globes, RT Certified Fresh, Metacritic Must See, Common Sense Selection, plus movie-only awards, alongside <strong><code>yellow</code></strong>, <strong><code>red</code></strong>, <strong><code>black</code></strong>, and <strong><code>gray</code></strong> styles), drag and drop placement, and persist rules via <strong>Save Layout</strong>.</li>
+<li><strong>Resolution style &amp; tier filtering:</strong> The top-banner choice is part of the production recipe, and enabled tiers (<code>use_all</code> / <code>use_&lt;tier&gt;</code> or the Visual Badges <strong>Enabled Resolution Tiers</strong> checklist) control which resolutions render in both Top Ribbon Banner and Corner Badge modes. Portrait banners use matching local <code>4K_banner.png</code>, <code>1080p_banner.png</code>, <code>720p_banner.png</code>, <code>576p_banner.png</code>, or <code>480p_banner.png</code> artwork when present; otherwise they render a full-width tier label. Variant asset overrides can select another local image. Landscape/titlecard formats retain corner badges. The banner can coexist with single-score/provider ratings and audio-codec badges.</li>
 <li><strong>Corner badge sizing:</strong> Resolution images fit proportionally inside their configured pill/container instead of allowing wide quality/HDR artwork to extend outside it or be clipped at an edge. Positions remain configurable; this does not automatically resolve overlaps caused by custom positions of separate badges. Imported YAML resolution images do not receive an extra backdrop unless one is configured.</li>
 <li>Banner and corner styles are mutually exclusive, including when legacy movie/TV overlay files are configured. Full-poster transparent banner artwork keeps its original canvas positioning instead of being centered inside the small corner-badge box. Corner badges use the separate resolution badge assets and the displayed contrast settings. Saving an explicit style retains its native rule without re-enabling the competing legacy banner or overwriting another format's rule. A number such as <code>8.4</code> is a separately enabled rating overlay, not part of the resolution image.</li>
 <li>Subtitle languages, aspect ratio, and studio have separate sample values and position controls. Audio and subtitle flags use independent queues. Their metadata must be available at the chosen target level; a show poster does not automatically aggregate streams from all episodes.</li>
@@ -2912,8 +3130,14 @@ guessed meaning. Reading or clicking an info icon does not change the setting.</
 <tr>
 <td style="text-align: left;"><strong>Corner Ribbon</strong></td>
 <td style="text-align: left;"><code>default: ribbon</code></td>
+<td style="text-align: left;"><code>movie</code> or <code>show</code></td>
+<td style="text-align: left;">Kometa award &amp; chart corner ribbons (<code>IMDb Top 250</code>, <code>Oscars</code>, <code>Golden Globes</code>, <code>Emmys</code>, <code>Rotten Tomatoes Certified Fresh</code>, <code>Metacritic Must See</code>, etc.).</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>MediaStinger</strong></td>
+<td style="text-align: left;"><code>default: mediastinger</code></td>
 <td style="text-align: left;"><code>movie</code></td>
-<td style="text-align: left;">Corner ribbon badge for resolution or editions.</td>
+<td style="text-align: left;">Post/mid-credits scene indicator matched via TMDb keywords (<code>aftercreditsstinger</code>, <code>duringcreditsstinger</code>).</td>
 </tr>
 <tr>
 <td style="text-align: left;"><strong>Streaming Platform</strong></td>
@@ -3010,8 +3234,8 @@ guessed meaning. Reading or clicking an info icon does not change the setting.</
 <hr />
 <h2 id="open-source-attribution-license">Open Source Attribution &amp; License</h2>
 <p>The coordinate placement and text/backdrop rendering algorithms in <a href="https://github.com/fscorrupt/posterizarr/blob/main/webui/backend/overlay_engine.py"><code>webui/backend/overlay_engine.py</code></a> are adapted from <a href="https://github.com/Kometa-Team/Kometa/blob/master/modules/overlay.py">Kometa's <code>modules/overlay.py</code></a>, by <strong>meisnate12</strong> and the Kometa team, under the <strong>MIT License</strong>. Posterizarr's YAML handling, media-server integration, preview, sync, and cache are separate Posterizarr implementations; see the source map above.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>MIT License
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>Copyright (c) 2026 meisnate12
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>MIT License
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>Copyright (c) 2026 meisnate12
 </code></pre></div>
 <p>Posterizarr's maintainer thanks the Kometa community for its contributions to media server automation.</p>
 

@@ -2724,6 +2724,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#post-apiassetsprune-deleted" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code>POST /api/assets/prune-deleted</code>
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#apirefresh-cache" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -5521,6 +5532,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#post-apiassetsprune-deleted" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code>POST /api/assets/prune-deleted</code>
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#apirefresh-cache" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -6913,6 +6935,10 @@ configurations are unaffected.</p>
 <td><code>POST /api/dynamic-overlays/rules/add-custom-image</code></td>
 <td>Multipart upload (<code>file</code>) or existing-image reuse (<code>existing_source</code> + <code>existing_image</code>) that copies/validates the image, writes a <code>custom_&lt;name&gt;.yml</code> (<code>plex_all: true</code>) rule, and attaches it to a single library in <code>config.yml</code>.</td>
 </tr>
+<tr>
+<td><code>GET /api/dynamic-overlays/preview</code></td>
+<td>Renders the live preview canvas or transparent drag-and-drop badge sprites for sample or uploaded artwork. Accepts layout coordinates, asset-boundary options, and badge preview parameters including <code>ribbon</code>, <code>ribbon_style</code> (<code>yellow</code>, <code>red</code>, <code>black</code>, <code>gray</code>), <code>mediastinger</code>, <code>mediastinger_back_color</code>, <code>mediastinger_back_width</code>, and <code>mediastinger_back_height</code>.</td>
+</tr>
 </tbody>
 </table>
 <h3 id="overlay-bundles">Overlay Bundles</h3>
@@ -6934,7 +6960,7 @@ configurations are unaffected.</p>
 </tr>
 <tr>
 <td><code>POST /api/dynamic-overlays/bundle/import</code></td>
-<td>Multipart upload with <code>file</code>, JSON-string <code>mapping</code>, JSON-string <code>anime_libraries</code>/<code>season_libraries</code>, and boolean <code>import_settings</code>/<code>replace_files</code>. Applies validated mappings and starts in Dry Run, without uploading artwork.</td>
+<td>Multipart upload with <code>file</code>, JSON-string <code>mapping</code>, JSON-string <code>anime_libraries</code>/<code>season_libraries</code>, and boolean <code>import_settings</code>, <code>replace_files</code>, and <code>fetch_dependencies</code> (default <code>true</code>). Applies validated mappings in Dry Run without uploading artwork, and optionally downloads missing official Kometa dependencies (<code>POST /api/dynamic-overlays/community/import</code> accepts the same <code>fetch_dependencies</code> boolean).</td>
 </tr>
 </tbody>
 </table>
@@ -6951,9 +6977,13 @@ so clients can translate the error. Preview responses also include
 <code>warning_codes</code> alongside the existing readable <code>warnings</code> list. An active
 sync/classification/import returns <code>409</code>. See the
 <a href="../dynamic_overlays_reference/#share-a-complete-overlay-bundle">bundle workflow and limits</a>.</p>
-<p><code>official_dependency_count</code> in the preview reports omitted downloadable defaults.
-Export returns <code>503</code> with code <code>officialCatalogUnavailable</code> if the official
-Kometa catalog cannot be verified; it does not silently export the whole catalog.</p>
+<p><code>official_dependency_count</code> and <code>missing_official_dependency_count</code> in the
+preview report omitted downloadable defaults and how many are currently absent
+locally. Import responses include a <code>dependencies</code> summary (<code>enabled</code>,
+<code>requested</code>, <code>downloaded_count</code>, <code>already_present_count</code>, <code>failed_count</code>,
+<code>downloaded</code>, <code>failed</code>, <code>sha_changed_count</code>, and <code>readiness</code>). Export returns
+<code>503</code> with code <code>officialCatalogUnavailable</code> if the official Kometa catalog
+cannot be verified; it does not silently export the whole catalog.</p>
 <h3 id="post-apidynamic-overlayssync"><code>POST /api/dynamic-overlays/sync</code></h3>
 <p>Starts a background overlay sync. Without <code>target_items</code>, <code>library</code> and <code>target_server</code> select the libraries and servers to scan. <code>scope: "incremental"</code> skips unchanged artwork; <code>scope: "all"</code> forces uploads.</p>
 <p>For an item-only request, supply its media-server ID, server, and library:</p>
@@ -8265,22 +8295,36 @@ modification-time ordering; pagination limits the response, not the database sca
 <a id="__codelineno-99-3" name="__codelineno-99-3" href="#__codelineno-99-3"></a><span class="p">}</span>
 </code></pre></div>
 </details>
+<h3 id="post-apiassetsprune-deleted"><code>POST /api/assets/prune-deleted</code></h3>
+<p>Queries active configured media server libraries (<strong>Plex</strong>, <strong>Jellyfin</strong>, and <strong>Emby</strong>) and removes orphaned Action Center (<code>imagechoices</code>, <code>skipped_items</code>) and <code>media_export.db</code> records for media that no longer exists on the server, without deleting any files on disk. Excluded libraries and libraries that error or return <code>0</code> active items are skipped. Returns <code>400</code> if no active libraries could be queried and <code>503</code> if the database is unavailable.</p>
+<details class="example">
+<summary>View Response</summary>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-100-1" name="__codelineno-100-1" href="#__codelineno-100-1"></a><span class="p">{</span>
+<a id="__codelineno-100-2" name="__codelineno-100-2" href="#__codelineno-100-2"></a><span class="w">  </span><span class="nt">"success"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<a id="__codelineno-100-3" name="__codelineno-100-3" href="#__codelineno-100-3"></a><span class="w">  </span><span class="nt">"imagechoices_deleted"</span><span class="p">:</span><span class="w"> </span><span class="mi">4</span><span class="p">,</span>
+<a id="__codelineno-100-4" name="__codelineno-100-4" href="#__codelineno-100-4"></a><span class="w">  </span><span class="nt">"skipped_deleted"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<a id="__codelineno-100-5" name="__codelineno-100-5" href="#__codelineno-100-5"></a><span class="w">  </span><span class="nt">"export_deleted"</span><span class="p">:</span><span class="w"> </span><span class="mi">3</span><span class="p">,</span>
+<a id="__codelineno-100-6" name="__codelineno-100-6" href="#__codelineno-100-6"></a><span class="w">  </span><span class="nt">"libraries_checked"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"Movies"</span><span class="p">,</span><span class="w"> </span><span class="s2">"TV Shows"</span><span class="p">],</span>
+<a id="__codelineno-100-7" name="__codelineno-100-7" href="#__codelineno-100-7"></a><span class="w">  </span><span class="nt">"warnings"</span><span class="p">:</span><span class="w"> </span><span class="p">[]</span>
+<a id="__codelineno-100-8" name="__codelineno-100-8" href="#__codelineno-100-8"></a><span class="p">}</span>
+</code></pre></div>
+</details>
 <h3 id="apirefresh-cache"><code>/api/refresh-cache</code></h3>
 <p>Submits data or triggers an action at <code>/api/refresh-cache</code>.</p>
 <details class="example">
 <summary>View Response</summary>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-100-1" name="__codelineno-100-1" href="#__codelineno-100-1"></a><span class="p">{</span>
-<a id="__codelineno-100-2" name="__codelineno-100-2" href="#__codelineno-100-2"></a><span class="w">  </span><span class="nt">"success"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
-<a id="__codelineno-100-3" name="__codelineno-100-3" href="#__codelineno-100-3"></a><span class="p">}</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-101-1" name="__codelineno-101-1" href="#__codelineno-101-1"></a><span class="p">{</span>
+<a id="__codelineno-101-2" name="__codelineno-101-2" href="#__codelineno-101-2"></a><span class="w">  </span><span class="nt">"success"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
+<a id="__codelineno-101-3" name="__codelineno-101-3" href="#__codelineno-101-3"></a><span class="p">}</span>
 </code></pre></div>
 </details>
 <h3 id="apicachestatus"><code>/api/cache/status</code></h3>
 <p>Retrieves data from <code>/api/cache/status</code>.</p>
 <details class="example">
 <summary>View Response</summary>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-101-1" name="__codelineno-101-1" href="#__codelineno-101-1"></a><span class="p">{</span>
-<a id="__codelineno-101-2" name="__codelineno-101-2" href="#__codelineno-101-2"></a><span class="w">  </span><span class="nt">"success"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
-<a id="__codelineno-101-3" name="__codelineno-101-3" href="#__codelineno-101-3"></a><span class="p">}</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-102-1" name="__codelineno-102-1" href="#__codelineno-102-1"></a><span class="p">{</span>
+<a id="__codelineno-102-2" name="__codelineno-102-2" href="#__codelineno-102-2"></a><span class="w">  </span><span class="nt">"success"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
+<a id="__codelineno-102-3" name="__codelineno-102-3" href="#__codelineno-102-3"></a><span class="p">}</span>
 </code></pre></div>
 </details>
 <hr />
@@ -8289,22 +8333,13 @@ modification-time ordering; pagination limits the response, not the database sca
 <p>Retrieves data from <code>/api/scheduler/config</code>.</p>
 <details class="example">
 <summary>View Response</summary>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-102-1" name="__codelineno-102-1" href="#__codelineno-102-1"></a><span class="p">{</span>
-<a id="__codelineno-102-2" name="__codelineno-102-2" href="#__codelineno-102-2"></a><span class="w">  </span><span class="nt">"success"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
-<a id="__codelineno-102-3" name="__codelineno-102-3" href="#__codelineno-102-3"></a><span class="p">}</span>
-</code></pre></div>
-</details>
-<h3 id="apischedulerconfig_1"><code>/api/scheduler/config</code></h3>
-<p>Submits data or triggers an action at <code>/api/scheduler/config</code>.</p>
-<details class="example">
-<summary>View Response</summary>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-103-1" name="__codelineno-103-1" href="#__codelineno-103-1"></a><span class="p">{</span>
 <a id="__codelineno-103-2" name="__codelineno-103-2" href="#__codelineno-103-2"></a><span class="w">  </span><span class="nt">"success"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
 <a id="__codelineno-103-3" name="__codelineno-103-3" href="#__codelineno-103-3"></a><span class="p">}</span>
 </code></pre></div>
 </details>
-<h3 id="apischedulerschedule"><code>/api/scheduler/schedule</code></h3>
-<p>Submits data or triggers an action at <code>/api/scheduler/schedule</code>.</p>
+<h3 id="apischedulerconfig_1"><code>/api/scheduler/config</code></h3>
+<p>Submits data or triggers an action at <code>/api/scheduler/config</code>.</p>
 <details class="example">
 <summary>View Response</summary>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-104-1" name="__codelineno-104-1" href="#__codelineno-104-1"></a><span class="p">{</span>
@@ -8312,8 +8347,8 @@ modification-time ordering; pagination limits the response, not the database sca
 <a id="__codelineno-104-3" name="__codelineno-104-3" href="#__codelineno-104-3"></a><span class="p">}</span>
 </code></pre></div>
 </details>
-<h3 id="apischedulerscheduletime"><code>/api/scheduler/schedule/{time}</code></h3>
-<p>Deletes a resource at <code>/api/scheduler/schedule/{time}</code>.</p>
+<h3 id="apischedulerschedule"><code>/api/scheduler/schedule</code></h3>
+<p>Submits data or triggers an action at <code>/api/scheduler/schedule</code>.</p>
 <details class="example">
 <summary>View Response</summary>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-105-1" name="__codelineno-105-1" href="#__codelineno-105-1"></a><span class="p">{</span>
@@ -8321,8 +8356,8 @@ modification-time ordering; pagination limits the response, not the database sca
 <a id="__codelineno-105-3" name="__codelineno-105-3" href="#__codelineno-105-3"></a><span class="p">}</span>
 </code></pre></div>
 </details>
-<h3 id="apischedulerschedules"><code>/api/scheduler/schedules</code></h3>
-<p>Deletes a resource at <code>/api/scheduler/schedules</code>.</p>
+<h3 id="apischedulerscheduletime"><code>/api/scheduler/schedule/{time}</code></h3>
+<p>Deletes a resource at <code>/api/scheduler/schedule/{time}</code>.</p>
 <details class="example">
 <summary>View Response</summary>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-106-1" name="__codelineno-106-1" href="#__codelineno-106-1"></a><span class="p">{</span>
@@ -8330,8 +8365,8 @@ modification-time ordering; pagination limits the response, not the database sca
 <a id="__codelineno-106-3" name="__codelineno-106-3" href="#__codelineno-106-3"></a><span class="p">}</span>
 </code></pre></div>
 </details>
-<h3 id="apischedulerenable"><code>/api/scheduler/enable</code></h3>
-<p>Submits data or triggers an action at <code>/api/scheduler/enable</code>.</p>
+<h3 id="apischedulerschedules"><code>/api/scheduler/schedules</code></h3>
+<p>Deletes a resource at <code>/api/scheduler/schedules</code>.</p>
 <details class="example">
 <summary>View Response</summary>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-107-1" name="__codelineno-107-1" href="#__codelineno-107-1"></a><span class="p">{</span>
@@ -8339,8 +8374,8 @@ modification-time ordering; pagination limits the response, not the database sca
 <a id="__codelineno-107-3" name="__codelineno-107-3" href="#__codelineno-107-3"></a><span class="p">}</span>
 </code></pre></div>
 </details>
-<h3 id="apischedulerdisable"><code>/api/scheduler/disable</code></h3>
-<p>Submits data or triggers an action at <code>/api/scheduler/disable</code>.</p>
+<h3 id="apischedulerenable"><code>/api/scheduler/enable</code></h3>
+<p>Submits data or triggers an action at <code>/api/scheduler/enable</code>.</p>
 <details class="example">
 <summary>View Response</summary>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-108-1" name="__codelineno-108-1" href="#__codelineno-108-1"></a><span class="p">{</span>
@@ -8348,8 +8383,8 @@ modification-time ordering; pagination limits the response, not the database sca
 <a id="__codelineno-108-3" name="__codelineno-108-3" href="#__codelineno-108-3"></a><span class="p">}</span>
 </code></pre></div>
 </details>
-<h3 id="apischedulerrestart"><code>/api/scheduler/restart</code></h3>
-<p>Submits data or triggers an action at <code>/api/scheduler/restart</code>.</p>
+<h3 id="apischedulerdisable"><code>/api/scheduler/disable</code></h3>
+<p>Submits data or triggers an action at <code>/api/scheduler/disable</code>.</p>
 <details class="example">
 <summary>View Response</summary>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-109-1" name="__codelineno-109-1" href="#__codelineno-109-1"></a><span class="p">{</span>
@@ -8357,8 +8392,8 @@ modification-time ordering; pagination limits the response, not the database sca
 <a id="__codelineno-109-3" name="__codelineno-109-3" href="#__codelineno-109-3"></a><span class="p">}</span>
 </code></pre></div>
 </details>
-<h3 id="apischedulerrun-now"><code>/api/scheduler/run-now</code></h3>
-<p>Submits data or triggers an action at <code>/api/scheduler/run-now</code>.</p>
+<h3 id="apischedulerrestart"><code>/api/scheduler/restart</code></h3>
+<p>Submits data or triggers an action at <code>/api/scheduler/restart</code>.</p>
 <details class="example">
 <summary>View Response</summary>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-110-1" name="__codelineno-110-1" href="#__codelineno-110-1"></a><span class="p">{</span>
@@ -8366,8 +8401,8 @@ modification-time ordering; pagination limits the response, not the database sca
 <a id="__codelineno-110-3" name="__codelineno-110-3" href="#__codelineno-110-3"></a><span class="p">}</span>
 </code></pre></div>
 </details>
-<h3 id="apiqueue"><code>/api/queue</code></h3>
-<p>Retrieves data from <code>/api/queue</code>.</p>
+<h3 id="apischedulerrun-now"><code>/api/scheduler/run-now</code></h3>
+<p>Submits data or triggers an action at <code>/api/scheduler/run-now</code>.</p>
 <details class="example">
 <summary>View Response</summary>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-111-1" name="__codelineno-111-1" href="#__codelineno-111-1"></a><span class="p">{</span>
@@ -8375,8 +8410,8 @@ modification-time ordering; pagination limits the response, not the database sca
 <a id="__codelineno-111-3" name="__codelineno-111-3" href="#__codelineno-111-3"></a><span class="p">}</span>
 </code></pre></div>
 </details>
-<h3 id="apiqueueitem_id"><code>/api/queue/{item_id}</code></h3>
-<p>Deletes a resource at <code>/api/queue/{item_id}</code>.</p>
+<h3 id="apiqueue"><code>/api/queue</code></h3>
+<p>Retrieves data from <code>/api/queue</code>.</p>
 <details class="example">
 <summary>View Response</summary>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-112-1" name="__codelineno-112-1" href="#__codelineno-112-1"></a><span class="p">{</span>
@@ -8384,8 +8419,8 @@ modification-time ordering; pagination limits the response, not the database sca
 <a id="__codelineno-112-3" name="__codelineno-112-3" href="#__codelineno-112-3"></a><span class="p">}</span>
 </code></pre></div>
 </details>
-<h3 id="apiqueueclear"><code>/api/queue/clear</code></h3>
-<p>Submits data or triggers an action at <code>/api/queue/clear</code>.</p>
+<h3 id="apiqueueitem_id"><code>/api/queue/{item_id}</code></h3>
+<p>Deletes a resource at <code>/api/queue/{item_id}</code>.</p>
 <details class="example">
 <summary>View Response</summary>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-113-1" name="__codelineno-113-1" href="#__codelineno-113-1"></a><span class="p">{</span>
@@ -8393,8 +8428,8 @@ modification-time ordering; pagination limits the response, not the database sca
 <a id="__codelineno-113-3" name="__codelineno-113-3" href="#__codelineno-113-3"></a><span class="p">}</span>
 </code></pre></div>
 </details>
-<h3 id="apiqueuerun"><code>/api/queue/run</code></h3>
-<p>Submits data or triggers an action at <code>/api/queue/run</code>.</p>
+<h3 id="apiqueueclear"><code>/api/queue/clear</code></h3>
+<p>Submits data or triggers an action at <code>/api/queue/clear</code>.</p>
 <details class="example">
 <summary>View Response</summary>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-114-1" name="__codelineno-114-1" href="#__codelineno-114-1"></a><span class="p">{</span>
@@ -8402,13 +8437,22 @@ modification-time ordering; pagination limits the response, not the database sca
 <a id="__codelineno-114-3" name="__codelineno-114-3" href="#__codelineno-114-3"></a><span class="p">}</span>
 </code></pre></div>
 </details>
-<h3 id="apiqueuedelete"><code>/api/queue/delete</code></h3>
-<p>Submits data or triggers an action at <code>/api/queue/delete</code>.</p>
+<h3 id="apiqueuerun"><code>/api/queue/run</code></h3>
+<p>Submits data or triggers an action at <code>/api/queue/run</code>.</p>
 <details class="example">
 <summary>View Response</summary>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-115-1" name="__codelineno-115-1" href="#__codelineno-115-1"></a><span class="p">{</span>
 <a id="__codelineno-115-2" name="__codelineno-115-2" href="#__codelineno-115-2"></a><span class="w">  </span><span class="nt">"success"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
 <a id="__codelineno-115-3" name="__codelineno-115-3" href="#__codelineno-115-3"></a><span class="p">}</span>
+</code></pre></div>
+</details>
+<h3 id="apiqueuedelete"><code>/api/queue/delete</code></h3>
+<p>Submits data or triggers an action at <code>/api/queue/delete</code>.</p>
+<details class="example">
+<summary>View Response</summary>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-116-1" name="__codelineno-116-1" href="#__codelineno-116-1"></a><span class="p">{</span>
+<a id="__codelineno-116-2" name="__codelineno-116-2" href="#__codelineno-116-2"></a><span class="w">  </span><span class="nt">"success"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
+<a id="__codelineno-116-3" name="__codelineno-116-3" href="#__codelineno-116-3"></a><span class="p">}</span>
 </code></pre></div>
 </details>
 <hr />
@@ -8417,22 +8461,13 @@ modification-time ordering; pagination limits the response, not the database sca
 <p>Submits data or triggers an action at <code>/api/overlayfiles/upload</code>.</p>
 <details class="example">
 <summary>View Response</summary>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-116-1" name="__codelineno-116-1" href="#__codelineno-116-1"></a><span class="p">{</span>
-<a id="__codelineno-116-2" name="__codelineno-116-2" href="#__codelineno-116-2"></a><span class="w">  </span><span class="nt">"success"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
-<a id="__codelineno-116-3" name="__codelineno-116-3" href="#__codelineno-116-3"></a><span class="p">}</span>
-</code></pre></div>
-</details>
-<h3 id="apioverlayfilesfilename"><code>/api/overlayfiles/{filename}</code></h3>
-<p>Deletes a resource at <code>/api/overlayfiles/{filename}</code>.</p>
-<details class="example">
-<summary>View Response</summary>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-117-1" name="__codelineno-117-1" href="#__codelineno-117-1"></a><span class="p">{</span>
 <a id="__codelineno-117-2" name="__codelineno-117-2" href="#__codelineno-117-2"></a><span class="w">  </span><span class="nt">"success"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
 <a id="__codelineno-117-3" name="__codelineno-117-3" href="#__codelineno-117-3"></a><span class="p">}</span>
 </code></pre></div>
 </details>
-<h3 id="apioverlayfilespreviewfilename"><code>/api/overlayfiles/preview/{filename}</code></h3>
-<p>Retrieves data from <code>/api/overlayfiles/preview/{filename}</code>.</p>
+<h3 id="apioverlayfilesfilename"><code>/api/overlayfiles/{filename}</code></h3>
+<p>Deletes a resource at <code>/api/overlayfiles/{filename}</code>.</p>
 <details class="example">
 <summary>View Response</summary>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-118-1" name="__codelineno-118-1" href="#__codelineno-118-1"></a><span class="p">{</span>
@@ -8440,8 +8475,8 @@ modification-time ordering; pagination limits the response, not the database sca
 <a id="__codelineno-118-3" name="__codelineno-118-3" href="#__codelineno-118-3"></a><span class="p">}</span>
 </code></pre></div>
 </details>
-<h3 id="apifonts"><code>/api/fonts</code></h3>
-<p>Retrieves data from <code>/api/fonts</code>.</p>
+<h3 id="apioverlayfilespreviewfilename"><code>/api/overlayfiles/preview/{filename}</code></h3>
+<p>Retrieves data from <code>/api/overlayfiles/preview/{filename}</code>.</p>
 <details class="example">
 <summary>View Response</summary>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-119-1" name="__codelineno-119-1" href="#__codelineno-119-1"></a><span class="p">{</span>
@@ -8449,8 +8484,8 @@ modification-time ordering; pagination limits the response, not the database sca
 <a id="__codelineno-119-3" name="__codelineno-119-3" href="#__codelineno-119-3"></a><span class="p">}</span>
 </code></pre></div>
 </details>
-<h3 id="apifontsupload"><code>/api/fonts/upload</code></h3>
-<p>Submits data or triggers an action at <code>/api/fonts/upload</code>.</p>
+<h3 id="apifonts"><code>/api/fonts</code></h3>
+<p>Retrieves data from <code>/api/fonts</code>.</p>
 <details class="example">
 <summary>View Response</summary>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-120-1" name="__codelineno-120-1" href="#__codelineno-120-1"></a><span class="p">{</span>
@@ -8458,8 +8493,8 @@ modification-time ordering; pagination limits the response, not the database sca
 <a id="__codelineno-120-3" name="__codelineno-120-3" href="#__codelineno-120-3"></a><span class="p">}</span>
 </code></pre></div>
 </details>
-<h3 id="apifontsfilename"><code>/api/fonts/{filename}</code></h3>
-<p>Deletes a resource at <code>/api/fonts/{filename}</code>.</p>
+<h3 id="apifontsupload"><code>/api/fonts/upload</code></h3>
+<p>Submits data or triggers an action at <code>/api/fonts/upload</code>.</p>
 <details class="example">
 <summary>View Response</summary>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-121-1" name="__codelineno-121-1" href="#__codelineno-121-1"></a><span class="p">{</span>
@@ -8467,8 +8502,8 @@ modification-time ordering; pagination limits the response, not the database sca
 <a id="__codelineno-121-3" name="__codelineno-121-3" href="#__codelineno-121-3"></a><span class="p">}</span>
 </code></pre></div>
 </details>
-<h3 id="apifontsdownloadfilename"><code>/api/fonts/download/{filename}</code></h3>
-<p>Retrieves data from <code>/api/fonts/download/{filename}</code>.</p>
+<h3 id="apifontsfilename"><code>/api/fonts/{filename}</code></h3>
+<p>Deletes a resource at <code>/api/fonts/{filename}</code>.</p>
 <details class="example">
 <summary>View Response</summary>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-122-1" name="__codelineno-122-1" href="#__codelineno-122-1"></a><span class="p">{</span>
@@ -8476,8 +8511,8 @@ modification-time ordering; pagination limits the response, not the database sca
 <a id="__codelineno-122-3" name="__codelineno-122-3" href="#__codelineno-122-3"></a><span class="p">}</span>
 </code></pre></div>
 </details>
-<h3 id="apifontspreviewfilename"><code>/api/fonts/preview/{filename}</code></h3>
-<p>Retrieves data from <code>/api/fonts/preview/{filename}</code>.</p>
+<h3 id="apifontsdownloadfilename"><code>/api/fonts/download/{filename}</code></h3>
+<p>Retrieves data from <code>/api/fonts/download/{filename}</code>.</p>
 <details class="example">
 <summary>View Response</summary>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-123-1" name="__codelineno-123-1" href="#__codelineno-123-1"></a><span class="p">{</span>
@@ -8485,8 +8520,8 @@ modification-time ordering; pagination limits the response, not the database sca
 <a id="__codelineno-123-3" name="__codelineno-123-3" href="#__codelineno-123-3"></a><span class="p">}</span>
 </code></pre></div>
 </details>
-<h3 id="apioverlay-creatorpreview"><code>/api/overlay-creator/preview</code></h3>
-<p>Submits data or triggers an action at <code>/api/overlay-creator/preview</code>.</p>
+<h3 id="apifontspreviewfilename"><code>/api/fonts/preview/{filename}</code></h3>
+<p>Retrieves data from <code>/api/fonts/preview/{filename}</code>.</p>
 <details class="example">
 <summary>View Response</summary>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-124-1" name="__codelineno-124-1" href="#__codelineno-124-1"></a><span class="p">{</span>
@@ -8494,13 +8529,22 @@ modification-time ordering; pagination limits the response, not the database sca
 <a id="__codelineno-124-3" name="__codelineno-124-3" href="#__codelineno-124-3"></a><span class="p">}</span>
 </code></pre></div>
 </details>
-<h3 id="apioverlay-creatorsave"><code>/api/overlay-creator/save</code></h3>
-<p>Submits data or triggers an action at <code>/api/overlay-creator/save</code>.</p>
+<h3 id="apioverlay-creatorpreview"><code>/api/overlay-creator/preview</code></h3>
+<p>Submits data or triggers an action at <code>/api/overlay-creator/preview</code>.</p>
 <details class="example">
 <summary>View Response</summary>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-125-1" name="__codelineno-125-1" href="#__codelineno-125-1"></a><span class="p">{</span>
 <a id="__codelineno-125-2" name="__codelineno-125-2" href="#__codelineno-125-2"></a><span class="w">  </span><span class="nt">"success"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
 <a id="__codelineno-125-3" name="__codelineno-125-3" href="#__codelineno-125-3"></a><span class="p">}</span>
+</code></pre></div>
+</details>
+<h3 id="apioverlay-creatorsave"><code>/api/overlay-creator/save</code></h3>
+<p>Submits data or triggers an action at <code>/api/overlay-creator/save</code>.</p>
+<details class="example">
+<summary>View Response</summary>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-126-1" name="__codelineno-126-1" href="#__codelineno-126-1"></a><span class="p">{</span>
+<a id="__codelineno-126-2" name="__codelineno-126-2" href="#__codelineno-126-2"></a><span class="w">  </span><span class="nt">"success"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
+<a id="__codelineno-126-3" name="__codelineno-126-3" href="#__codelineno-126-3"></a><span class="p">}</span>
 </code></pre></div>
 </details>
 <hr />
@@ -8509,22 +8553,13 @@ modification-time ordering; pagination limits the response, not the database sca
 <p>Retrieves data from <code>/api/runtime-stats</code>.</p>
 <details class="example">
 <summary>View Response</summary>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-126-1" name="__codelineno-126-1" href="#__codelineno-126-1"></a><span class="p">{</span>
-<a id="__codelineno-126-2" name="__codelineno-126-2" href="#__codelineno-126-2"></a><span class="w">  </span><span class="nt">"success"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
-<a id="__codelineno-126-3" name="__codelineno-126-3" href="#__codelineno-126-3"></a><span class="p">}</span>
-</code></pre></div>
-</details>
-<h3 id="apiruntime-summary"><code>/api/runtime-summary</code></h3>
-<p>Retrieves data from <code>/api/runtime-summary</code>.</p>
-<details class="example">
-<summary>View Response</summary>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-127-1" name="__codelineno-127-1" href="#__codelineno-127-1"></a><span class="p">{</span>
 <a id="__codelineno-127-2" name="__codelineno-127-2" href="#__codelineno-127-2"></a><span class="w">  </span><span class="nt">"success"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
 <a id="__codelineno-127-3" name="__codelineno-127-3" href="#__codelineno-127-3"></a><span class="p">}</span>
 </code></pre></div>
 </details>
-<h3 id="apiruntime-historycleanup"><code>/api/runtime-history/cleanup</code></h3>
-<p>Deletes a resource at <code>/api/runtime-history/cleanup</code>.</p>
+<h3 id="apiruntime-summary"><code>/api/runtime-summary</code></h3>
+<p>Retrieves data from <code>/api/runtime-summary</code>.</p>
 <details class="example">
 <summary>View Response</summary>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-128-1" name="__codelineno-128-1" href="#__codelineno-128-1"></a><span class="p">{</span>
@@ -8532,8 +8567,8 @@ modification-time ordering; pagination limits the response, not the database sca
 <a id="__codelineno-128-3" name="__codelineno-128-3" href="#__codelineno-128-3"></a><span class="p">}</span>
 </code></pre></div>
 </details>
-<h3 id="apiruntime-historymigrate"><code>/api/runtime-history/migrate</code></h3>
-<p>Submits data or triggers an action at <code>/api/runtime-history/migrate</code>.</p>
+<h3 id="apiruntime-historycleanup"><code>/api/runtime-history/cleanup</code></h3>
+<p>Deletes a resource at <code>/api/runtime-history/cleanup</code>.</p>
 <details class="example">
 <summary>View Response</summary>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-129-1" name="__codelineno-129-1" href="#__codelineno-129-1"></a><span class="p">{</span>
@@ -8541,8 +8576,8 @@ modification-time ordering; pagination limits the response, not the database sca
 <a id="__codelineno-129-3" name="__codelineno-129-3" href="#__codelineno-129-3"></a><span class="p">}</span>
 </code></pre></div>
 </details>
-<h3 id="apiruntime-historymigration-status"><code>/api/runtime-history/migration-status</code></h3>
-<p>Retrieves data from <code>/api/runtime-history/migration-status</code>.</p>
+<h3 id="apiruntime-historymigrate"><code>/api/runtime-history/migrate</code></h3>
+<p>Submits data or triggers an action at <code>/api/runtime-history/migrate</code>.</p>
 <details class="example">
 <summary>View Response</summary>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-130-1" name="__codelineno-130-1" href="#__codelineno-130-1"></a><span class="p">{</span>
@@ -8550,8 +8585,8 @@ modification-time ordering; pagination limits the response, not the database sca
 <a id="__codelineno-130-3" name="__codelineno-130-3" href="#__codelineno-130-3"></a><span class="p">}</span>
 </code></pre></div>
 </details>
-<h3 id="apiruntime-historymigrate-format"><code>/api/runtime-history/migrate-format</code></h3>
-<p>Submits data or triggers an action at <code>/api/runtime-history/migrate-format</code>.</p>
+<h3 id="apiruntime-historymigration-status"><code>/api/runtime-history/migration-status</code></h3>
+<p>Retrieves data from <code>/api/runtime-history/migration-status</code>.</p>
 <details class="example">
 <summary>View Response</summary>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-131-1" name="__codelineno-131-1" href="#__codelineno-131-1"></a><span class="p">{</span>
@@ -8559,8 +8594,8 @@ modification-time ordering; pagination limits the response, not the database sca
 <a id="__codelineno-131-3" name="__codelineno-131-3" href="#__codelineno-131-3"></a><span class="p">}</span>
 </code></pre></div>
 </details>
-<h3 id="apiruntime-historyimport-json"><code>/api/runtime-history/import-json</code></h3>
-<p>Submits data or triggers an action at <code>/api/runtime-history/import-json</code>.</p>
+<h3 id="apiruntime-historymigrate-format"><code>/api/runtime-history/migrate-format</code></h3>
+<p>Submits data or triggers an action at <code>/api/runtime-history/migrate-format</code>.</p>
 <details class="example">
 <summary>View Response</summary>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-132-1" name="__codelineno-132-1" href="#__codelineno-132-1"></a><span class="p">{</span>
@@ -8568,8 +8603,8 @@ modification-time ordering; pagination limits the response, not the database sca
 <a id="__codelineno-132-3" name="__codelineno-132-3" href="#__codelineno-132-3"></a><span class="p">}</span>
 </code></pre></div>
 </details>
-<h3 id="apiplex-exportlibrary"><code>/api/plex-export/library</code></h3>
-<p>Retrieves data from <code>/api/plex-export/library</code>.</p>
+<h3 id="apiruntime-historyimport-json"><code>/api/runtime-history/import-json</code></h3>
+<p>Submits data or triggers an action at <code>/api/runtime-history/import-json</code>.</p>
 <details class="example">
 <summary>View Response</summary>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-133-1" name="__codelineno-133-1" href="#__codelineno-133-1"></a><span class="p">{</span>
@@ -8577,8 +8612,8 @@ modification-time ordering; pagination limits the response, not the database sca
 <a id="__codelineno-133-3" name="__codelineno-133-3" href="#__codelineno-133-3"></a><span class="p">}</span>
 </code></pre></div>
 </details>
-<h3 id="apiplex-exportepisodes"><code>/api/plex-export/episodes</code></h3>
-<p>Retrieves data from <code>/api/plex-export/episodes</code>.</p>
+<h3 id="apiplex-exportlibrary"><code>/api/plex-export/library</code></h3>
+<p>Retrieves data from <code>/api/plex-export/library</code>.</p>
 <details class="example">
 <summary>View Response</summary>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-134-1" name="__codelineno-134-1" href="#__codelineno-134-1"></a><span class="p">{</span>
@@ -8586,8 +8621,8 @@ modification-time ordering; pagination limits the response, not the database sca
 <a id="__codelineno-134-3" name="__codelineno-134-3" href="#__codelineno-134-3"></a><span class="p">}</span>
 </code></pre></div>
 </details>
-<h3 id="apiplex-exportimport"><code>/api/plex-export/import</code></h3>
-<p>Submits data or triggers an action at <code>/api/plex-export/import</code>.</p>
+<h3 id="apiplex-exportepisodes"><code>/api/plex-export/episodes</code></h3>
+<p>Retrieves data from <code>/api/plex-export/episodes</code>.</p>
 <details class="example">
 <summary>View Response</summary>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-135-1" name="__codelineno-135-1" href="#__codelineno-135-1"></a><span class="p">{</span>
@@ -8595,8 +8630,8 @@ modification-time ordering; pagination limits the response, not the database sca
 <a id="__codelineno-135-3" name="__codelineno-135-3" href="#__codelineno-135-3"></a><span class="p">}</span>
 </code></pre></div>
 </details>
-<h3 id="apiother-media-exportlibrary"><code>/api/other-media-export/library</code></h3>
-<p>Retrieves data from <code>/api/other-media-export/library</code>.</p>
+<h3 id="apiplex-exportimport"><code>/api/plex-export/import</code></h3>
+<p>Submits data or triggers an action at <code>/api/plex-export/import</code>.</p>
 <details class="example">
 <summary>View Response</summary>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-136-1" name="__codelineno-136-1" href="#__codelineno-136-1"></a><span class="p">{</span>
@@ -8604,8 +8639,8 @@ modification-time ordering; pagination limits the response, not the database sca
 <a id="__codelineno-136-3" name="__codelineno-136-3" href="#__codelineno-136-3"></a><span class="p">}</span>
 </code></pre></div>
 </details>
-<h3 id="apiother-media-exportepisodes"><code>/api/other-media-export/episodes</code></h3>
-<p>Retrieves data from <code>/api/other-media-export/episodes</code>.</p>
+<h3 id="apiother-media-exportlibrary"><code>/api/other-media-export/library</code></h3>
+<p>Retrieves data from <code>/api/other-media-export/library</code>.</p>
 <details class="example">
 <summary>View Response</summary>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-137-1" name="__codelineno-137-1" href="#__codelineno-137-1"></a><span class="p">{</span>
@@ -8613,13 +8648,22 @@ modification-time ordering; pagination limits the response, not the database sca
 <a id="__codelineno-137-3" name="__codelineno-137-3" href="#__codelineno-137-3"></a><span class="p">}</span>
 </code></pre></div>
 </details>
-<h3 id="apiother-media-exportimport"><code>/api/other-media-export/import</code></h3>
-<p>Submits data or triggers an action at <code>/api/other-media-export/import</code>.</p>
+<h3 id="apiother-media-exportepisodes"><code>/api/other-media-export/episodes</code></h3>
+<p>Retrieves data from <code>/api/other-media-export/episodes</code>.</p>
 <details class="example">
 <summary>View Response</summary>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-138-1" name="__codelineno-138-1" href="#__codelineno-138-1"></a><span class="p">{</span>
 <a id="__codelineno-138-2" name="__codelineno-138-2" href="#__codelineno-138-2"></a><span class="w">  </span><span class="nt">"success"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
 <a id="__codelineno-138-3" name="__codelineno-138-3" href="#__codelineno-138-3"></a><span class="p">}</span>
+</code></pre></div>
+</details>
+<h3 id="apiother-media-exportimport"><code>/api/other-media-export/import</code></h3>
+<p>Submits data or triggers an action at <code>/api/other-media-export/import</code>.</p>
+<details class="example">
+<summary>View Response</summary>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-139-1" name="__codelineno-139-1" href="#__codelineno-139-1"></a><span class="p">{</span>
+<a id="__codelineno-139-2" name="__codelineno-139-2" href="#__codelineno-139-2"></a><span class="w">  </span><span class="nt">"success"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
+<a id="__codelineno-139-3" name="__codelineno-139-3" href="#__codelineno-139-3"></a><span class="p">}</span>
 </code></pre></div>
 </details>
 <hr />
@@ -8628,22 +8672,13 @@ modification-time ordering; pagination limits the response, not the database sca
 <p>Submits data or triggers an action at <code>/api/config/backup</code>.</p>
 <details class="example">
 <summary>View Response</summary>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-139-1" name="__codelineno-139-1" href="#__codelineno-139-1"></a><span class="p">{</span>
-<a id="__codelineno-139-2" name="__codelineno-139-2" href="#__codelineno-139-2"></a><span class="w">  </span><span class="nt">"success"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
-<a id="__codelineno-139-3" name="__codelineno-139-3" href="#__codelineno-139-3"></a><span class="p">}</span>
-</code></pre></div>
-</details>
-<h3 id="apiconfigexport"><code>/api/config/export</code></h3>
-<p>Retrieves data from <code>/api/config/export</code>.</p>
-<details class="example">
-<summary>View Response</summary>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-140-1" name="__codelineno-140-1" href="#__codelineno-140-1"></a><span class="p">{</span>
 <a id="__codelineno-140-2" name="__codelineno-140-2" href="#__codelineno-140-2"></a><span class="w">  </span><span class="nt">"success"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
 <a id="__codelineno-140-3" name="__codelineno-140-3" href="#__codelineno-140-3"></a><span class="p">}</span>
 </code></pre></div>
 </details>
-<h3 id="apiconfigimport"><code>/api/config/import</code></h3>
-<p>Submits data or triggers an action at <code>/api/config/import</code>.</p>
+<h3 id="apiconfigexport"><code>/api/config/export</code></h3>
+<p>Retrieves data from <code>/api/config/export</code>.</p>
 <details class="example">
 <summary>View Response</summary>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-141-1" name="__codelineno-141-1" href="#__codelineno-141-1"></a><span class="p">{</span>
@@ -8651,8 +8686,8 @@ modification-time ordering; pagination limits the response, not the database sca
 <a id="__codelineno-141-3" name="__codelineno-141-3" href="#__codelineno-141-3"></a><span class="p">}</span>
 </code></pre></div>
 </details>
-<h3 id="apicustom-blueprints"><code>/api/custom-blueprints</code></h3>
-<p>Retrieves data from <code>/api/custom-blueprints</code>.</p>
+<h3 id="apiconfigimport"><code>/api/config/import</code></h3>
+<p>Submits data or triggers an action at <code>/api/config/import</code>.</p>
 <details class="example">
 <summary>View Response</summary>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-142-1" name="__codelineno-142-1" href="#__codelineno-142-1"></a><span class="p">{</span>
@@ -8660,8 +8695,8 @@ modification-time ordering; pagination limits the response, not the database sca
 <a id="__codelineno-142-3" name="__codelineno-142-3" href="#__codelineno-142-3"></a><span class="p">}</span>
 </code></pre></div>
 </details>
-<h3 id="apicustom-blueprints_1"><code>/api/custom-blueprints</code></h3>
-<p>Submits data or triggers an action at <code>/api/custom-blueprints</code>.</p>
+<h3 id="apicustom-blueprints"><code>/api/custom-blueprints</code></h3>
+<p>Retrieves data from <code>/api/custom-blueprints</code>.</p>
 <details class="example">
 <summary>View Response</summary>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-143-1" name="__codelineno-143-1" href="#__codelineno-143-1"></a><span class="p">{</span>
@@ -8669,8 +8704,8 @@ modification-time ordering; pagination limits the response, not the database sca
 <a id="__codelineno-143-3" name="__codelineno-143-3" href="#__codelineno-143-3"></a><span class="p">}</span>
 </code></pre></div>
 </details>
-<h3 id="apiconfig-dbstatus"><code>/api/config-db/status</code></h3>
-<p>Retrieves data from <code>/api/config-db/status</code>.</p>
+<h3 id="apicustom-blueprints_1"><code>/api/custom-blueprints</code></h3>
+<p>Submits data or triggers an action at <code>/api/custom-blueprints</code>.</p>
 <details class="example">
 <summary>View Response</summary>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-144-1" name="__codelineno-144-1" href="#__codelineno-144-1"></a><span class="p">{</span>
@@ -8678,8 +8713,8 @@ modification-time ordering; pagination limits the response, not the database sca
 <a id="__codelineno-144-3" name="__codelineno-144-3" href="#__codelineno-144-3"></a><span class="p">}</span>
 </code></pre></div>
 </details>
-<h3 id="apiconfig-dbsectionsection"><code>/api/config-db/section/{section}</code></h3>
-<p>Retrieves data from <code>/api/config-db/section/{section}</code>.</p>
+<h3 id="apiconfig-dbstatus"><code>/api/config-db/status</code></h3>
+<p>Retrieves data from <code>/api/config-db/status</code>.</p>
 <details class="example">
 <summary>View Response</summary>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-145-1" name="__codelineno-145-1" href="#__codelineno-145-1"></a><span class="p">{</span>
@@ -8687,8 +8722,8 @@ modification-time ordering; pagination limits the response, not the database sca
 <a id="__codelineno-145-3" name="__codelineno-145-3" href="#__codelineno-145-3"></a><span class="p">}</span>
 </code></pre></div>
 </details>
-<h3 id="apiconfig-dbvaluesectionkey"><code>/api/config-db/value/{section}/{key}</code></h3>
-<p>Retrieves data from <code>/api/config-db/value/{section}/{key}</code>.</p>
+<h3 id="apiconfig-dbsectionsection"><code>/api/config-db/section/{section}</code></h3>
+<p>Retrieves data from <code>/api/config-db/section/{section}</code>.</p>
 <details class="example">
 <summary>View Response</summary>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-146-1" name="__codelineno-146-1" href="#__codelineno-146-1"></a><span class="p">{</span>
@@ -8696,8 +8731,8 @@ modification-time ordering; pagination limits the response, not the database sca
 <a id="__codelineno-146-3" name="__codelineno-146-3" href="#__codelineno-146-3"></a><span class="p">}</span>
 </code></pre></div>
 </details>
-<h3 id="apiconfig-dbsync"><code>/api/config-db/sync</code></h3>
-<p>Submits data or triggers an action at <code>/api/config-db/sync</code>.</p>
+<h3 id="apiconfig-dbvaluesectionkey"><code>/api/config-db/value/{section}/{key}</code></h3>
+<p>Retrieves data from <code>/api/config-db/value/{section}/{key}</code>.</p>
 <details class="example">
 <summary>View Response</summary>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-147-1" name="__codelineno-147-1" href="#__codelineno-147-1"></a><span class="p">{</span>
@@ -8705,8 +8740,8 @@ modification-time ordering; pagination limits the response, not the database sca
 <a id="__codelineno-147-3" name="__codelineno-147-3" href="#__codelineno-147-3"></a><span class="p">}</span>
 </code></pre></div>
 </details>
-<h3 id="apiconfig-dbexport"><code>/api/config-db/export</code></h3>
-<p>Retrieves data from <code>/api/config-db/export</code>.</p>
+<h3 id="apiconfig-dbsync"><code>/api/config-db/sync</code></h3>
+<p>Submits data or triggers an action at <code>/api/config-db/sync</code>.</p>
 <details class="example">
 <summary>View Response</summary>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-148-1" name="__codelineno-148-1" href="#__codelineno-148-1"></a><span class="p">{</span>
@@ -8714,8 +8749,8 @@ modification-time ordering; pagination limits the response, not the database sca
 <a id="__codelineno-148-3" name="__codelineno-148-3" href="#__codelineno-148-3"></a><span class="p">}</span>
 </code></pre></div>
 </details>
-<h3 id="apiwebui-settings"><code>/api/webui-settings</code></h3>
-<p>Retrieves data from <code>/api/webui-settings</code>.</p>
+<h3 id="apiconfig-dbexport"><code>/api/config-db/export</code></h3>
+<p>Retrieves data from <code>/api/config-db/export</code>.</p>
 <details class="example">
 <summary>View Response</summary>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-149-1" name="__codelineno-149-1" href="#__codelineno-149-1"></a><span class="p">{</span>
@@ -8723,13 +8758,22 @@ modification-time ordering; pagination limits the response, not the database sca
 <a id="__codelineno-149-3" name="__codelineno-149-3" href="#__codelineno-149-3"></a><span class="p">}</span>
 </code></pre></div>
 </details>
-<h3 id="apiwebui-settings_1"><code>/api/webui-settings</code></h3>
-<p>Submits data or triggers an action at <code>/api/webui-settings</code>.</p>
+<h3 id="apiwebui-settings"><code>/api/webui-settings</code></h3>
+<p>Retrieves data from <code>/api/webui-settings</code>.</p>
 <details class="example">
 <summary>View Response</summary>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-150-1" name="__codelineno-150-1" href="#__codelineno-150-1"></a><span class="p">{</span>
 <a id="__codelineno-150-2" name="__codelineno-150-2" href="#__codelineno-150-2"></a><span class="w">  </span><span class="nt">"success"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
 <a id="__codelineno-150-3" name="__codelineno-150-3" href="#__codelineno-150-3"></a><span class="p">}</span>
+</code></pre></div>
+</details>
+<h3 id="apiwebui-settings_1"><code>/api/webui-settings</code></h3>
+<p>Submits data or triggers an action at <code>/api/webui-settings</code>.</p>
+<details class="example">
+<summary>View Response</summary>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-151-1" name="__codelineno-151-1" href="#__codelineno-151-1"></a><span class="p">{</span>
+<a id="__codelineno-151-2" name="__codelineno-151-2" href="#__codelineno-151-2"></a><span class="w">  </span><span class="nt">"success"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
+<a id="__codelineno-151-3" name="__codelineno-151-3" href="#__codelineno-151-3"></a><span class="p">}</span>
 </code></pre></div>
 </details>
 <hr />
@@ -8738,22 +8782,13 @@ modification-time ordering; pagination limits the response, not the database sca
 <p>Submits data or triggers an action at <code>/api/logs/ui</code>.</p>
 <details class="example">
 <summary>View Response</summary>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-151-1" name="__codelineno-151-1" href="#__codelineno-151-1"></a><span class="p">{</span>
-<a id="__codelineno-151-2" name="__codelineno-151-2" href="#__codelineno-151-2"></a><span class="w">  </span><span class="nt">"success"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
-<a id="__codelineno-151-3" name="__codelineno-151-3" href="#__codelineno-151-3"></a><span class="p">}</span>
-</code></pre></div>
-</details>
-<h3 id="apilogsuibatch"><code>/api/logs/ui/batch</code></h3>
-<p>Submits data or triggers an action at <code>/api/logs/ui/batch</code>.</p>
-<details class="example">
-<summary>View Response</summary>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-152-1" name="__codelineno-152-1" href="#__codelineno-152-1"></a><span class="p">{</span>
 <a id="__codelineno-152-2" name="__codelineno-152-2" href="#__codelineno-152-2"></a><span class="w">  </span><span class="nt">"success"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
 <a id="__codelineno-152-3" name="__codelineno-152-3" href="#__codelineno-152-3"></a><span class="p">}</span>
 </code></pre></div>
 </details>
-<h3 id="apilogslog_name"><code>/api/logs/{log_name}</code></h3>
-<p>Retrieves data from <code>/api/logs/{log_name}</code>.</p>
+<h3 id="apilogsuibatch"><code>/api/logs/ui/batch</code></h3>
+<p>Submits data or triggers an action at <code>/api/logs/ui/batch</code>.</p>
 <details class="example">
 <summary>View Response</summary>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-153-1" name="__codelineno-153-1" href="#__codelineno-153-1"></a><span class="p">{</span>
@@ -8761,8 +8796,8 @@ modification-time ordering; pagination limits the response, not the database sca
 <a id="__codelineno-153-3" name="__codelineno-153-3" href="#__codelineno-153-3"></a><span class="p">}</span>
 </code></pre></div>
 </details>
-<h3 id="apilogslog_nameexists"><code>/api/logs/{log_name}/exists</code></h3>
-<p>Retrieves data from <code>/api/logs/{log_name}/exists</code>.</p>
+<h3 id="apilogslog_name"><code>/api/logs/{log_name}</code></h3>
+<p>Retrieves data from <code>/api/logs/{log_name}</code>.</p>
 <details class="example">
 <summary>View Response</summary>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-154-1" name="__codelineno-154-1" href="#__codelineno-154-1"></a><span class="p">{</span>
@@ -8770,8 +8805,8 @@ modification-time ordering; pagination limits the response, not the database sca
 <a id="__codelineno-154-3" name="__codelineno-154-3" href="#__codelineno-154-3"></a><span class="p">}</span>
 </code></pre></div>
 </details>
-<h3 id="apilogsuiunified"><code>/api/logs/ui/unified</code></h3>
-<p>Retrieves data from <code>/api/logs/ui/unified</code>.</p>
+<h3 id="apilogslog_nameexists"><code>/api/logs/{log_name}/exists</code></h3>
+<p>Retrieves data from <code>/api/logs/{log_name}/exists</code>.</p>
 <details class="example">
 <summary>View Response</summary>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-155-1" name="__codelineno-155-1" href="#__codelineno-155-1"></a><span class="p">{</span>
@@ -8779,8 +8814,8 @@ modification-time ordering; pagination limits the response, not the database sca
 <a id="__codelineno-155-3" name="__codelineno-155-3" href="#__codelineno-155-3"></a><span class="p">}</span>
 </code></pre></div>
 </details>
-<h3 id="apiupload-diagnostics"><code>/api/upload-diagnostics</code></h3>
-<p>Retrieves data from <code>/api/upload-diagnostics</code>.</p>
+<h3 id="apilogsuiunified"><code>/api/logs/ui/unified</code></h3>
+<p>Retrieves data from <code>/api/logs/ui/unified</code>.</p>
 <details class="example">
 <summary>View Response</summary>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-156-1" name="__codelineno-156-1" href="#__codelineno-156-1"></a><span class="p">{</span>
@@ -8788,8 +8823,8 @@ modification-time ordering; pagination limits the response, not the database sca
 <a id="__codelineno-156-3" name="__codelineno-156-3" href="#__codelineno-156-3"></a><span class="p">}</span>
 </code></pre></div>
 </details>
-<h3 id="apiadminsupport-zip"><code>/api/admin/support-zip</code></h3>
-<p>Submits data or triggers an action at <code>/api/admin/support-zip</code>.</p>
+<h3 id="apiupload-diagnostics"><code>/api/upload-diagnostics</code></h3>
+<p>Retrieves data from <code>/api/upload-diagnostics</code>.</p>
 <details class="example">
 <summary>View Response</summary>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-157-1" name="__codelineno-157-1" href="#__codelineno-157-1"></a><span class="p">{</span>
@@ -8797,8 +8832,8 @@ modification-time ordering; pagination limits the response, not the database sca
 <a id="__codelineno-157-3" name="__codelineno-157-3" href="#__codelineno-157-3"></a><span class="p">}</span>
 </code></pre></div>
 </details>
-<h3 id="apilogs-watcherstatus"><code>/api/logs-watcher/status</code></h3>
-<p>Retrieves data from <code>/api/logs-watcher/status</code>.</p>
+<h3 id="apiadminsupport-zip"><code>/api/admin/support-zip</code></h3>
+<p>Submits data or triggers an action at <code>/api/admin/support-zip</code>.</p>
 <details class="example">
 <summary>View Response</summary>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-158-1" name="__codelineno-158-1" href="#__codelineno-158-1"></a><span class="p">{</span>
@@ -8806,8 +8841,8 @@ modification-time ordering; pagination limits the response, not the database sca
 <a id="__codelineno-158-3" name="__codelineno-158-3" href="#__codelineno-158-3"></a><span class="p">}</span>
 </code></pre></div>
 </details>
-<h3 id="apianalyticsproviders"><code>/api/analytics/providers</code></h3>
-<p>Retrieves data from <code>/api/analytics/providers</code>.</p>
+<h3 id="apilogs-watcherstatus"><code>/api/logs-watcher/status</code></h3>
+<p>Retrieves data from <code>/api/logs-watcher/status</code>.</p>
 <details class="example">
 <summary>View Response</summary>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-159-1" name="__codelineno-159-1" href="#__codelineno-159-1"></a><span class="p">{</span>
@@ -8815,8 +8850,8 @@ modification-time ordering; pagination limits the response, not the database sca
 <a id="__codelineno-159-3" name="__codelineno-159-3" href="#__codelineno-159-3"></a><span class="p">}</span>
 </code></pre></div>
 </details>
-<h3 id="apirunning-file"><code>/api/running-file</code></h3>
-<p>Deletes a resource at <code>/api/running-file</code>.</p>
+<h3 id="apianalyticsproviders"><code>/api/analytics/providers</code></h3>
+<p>Retrieves data from <code>/api/analytics/providers</code>.</p>
 <details class="example">
 <summary>View Response</summary>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-160-1" name="__codelineno-160-1" href="#__codelineno-160-1"></a><span class="p">{</span>
@@ -8824,13 +8859,22 @@ modification-time ordering; pagination limits the response, not the database sca
 <a id="__codelineno-160-3" name="__codelineno-160-3" href="#__codelineno-160-3"></a><span class="p">}</span>
 </code></pre></div>
 </details>
-<h3 id="apiversion-ui"><code>/api/version-ui</code></h3>
-<p>Retrieves data from <code>/api/version-ui</code>.</p>
+<h3 id="apirunning-file"><code>/api/running-file</code></h3>
+<p>Deletes a resource at <code>/api/running-file</code>.</p>
 <details class="example">
 <summary>View Response</summary>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-161-1" name="__codelineno-161-1" href="#__codelineno-161-1"></a><span class="p">{</span>
 <a id="__codelineno-161-2" name="__codelineno-161-2" href="#__codelineno-161-2"></a><span class="w">  </span><span class="nt">"success"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
 <a id="__codelineno-161-3" name="__codelineno-161-3" href="#__codelineno-161-3"></a><span class="p">}</span>
+</code></pre></div>
+</details>
+<h3 id="apiversion-ui"><code>/api/version-ui</code></h3>
+<p>Retrieves data from <code>/api/version-ui</code>.</p>
+<details class="example">
+<summary>View Response</summary>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-162-1" name="__codelineno-162-1" href="#__codelineno-162-1"></a><span class="p">{</span>
+<a id="__codelineno-162-2" name="__codelineno-162-2" href="#__codelineno-162-2"></a><span class="w">  </span><span class="nt">"success"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
+<a id="__codelineno-162-3" name="__codelineno-162-3" href="#__codelineno-162-3"></a><span class="p">}</span>
 </code></pre></div>
 </details>
 <hr />
@@ -8839,14 +8883,14 @@ modification-time ordering; pagination limits the response, not the database sca
 <p>Get collection presets from the configuration database.</p>
 <details class="example">
 <summary>View Response</summary>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-162-1" name="__codelineno-162-1" href="#__codelineno-162-1"></a><span class="p">[</span>
-<a id="__codelineno-162-2" name="__codelineno-162-2" href="#__codelineno-162-2"></a><span class="w">  </span><span class="p">{</span>
-<a id="__codelineno-162-3" name="__codelineno-162-3" href="#__codelineno-162-3"></a><span class="w">    </span><span class="nt">"id"</span><span class="p">:</span><span class="w"> </span><span class="s2">"1234567890"</span><span class="p">,</span>
-<a id="__codelineno-162-4" name="__codelineno-162-4" href="#__codelineno-162-4"></a><span class="w">    </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"My Custom Blue Preset"</span><span class="p">,</span>
-<a id="__codelineno-162-5" name="__codelineno-162-5" href="#__codelineno-162-5"></a><span class="w">    </span><span class="nt">"bgType"</span><span class="p">:</span><span class="w"> </span><span class="s2">"texture"</span><span class="p">,</span>
-<a id="__codelineno-162-6" name="__codelineno-162-6" href="#__codelineno-162-6"></a><span class="w">    </span><span class="nt">"overlayImage"</span><span class="p">:</span><span class="w"> </span><span class="s2">"data:image/png;base64,..."</span>
-<a id="__codelineno-162-7" name="__codelineno-162-7" href="#__codelineno-162-7"></a><span class="w">  </span><span class="p">}</span>
-<a id="__codelineno-162-8" name="__codelineno-162-8" href="#__codelineno-162-8"></a><span class="p">]</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-163-1" name="__codelineno-163-1" href="#__codelineno-163-1"></a><span class="p">[</span>
+<a id="__codelineno-163-2" name="__codelineno-163-2" href="#__codelineno-163-2"></a><span class="w">  </span><span class="p">{</span>
+<a id="__codelineno-163-3" name="__codelineno-163-3" href="#__codelineno-163-3"></a><span class="w">    </span><span class="nt">"id"</span><span class="p">:</span><span class="w"> </span><span class="s2">"1234567890"</span><span class="p">,</span>
+<a id="__codelineno-163-4" name="__codelineno-163-4" href="#__codelineno-163-4"></a><span class="w">    </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"My Custom Blue Preset"</span><span class="p">,</span>
+<a id="__codelineno-163-5" name="__codelineno-163-5" href="#__codelineno-163-5"></a><span class="w">    </span><span class="nt">"bgType"</span><span class="p">:</span><span class="w"> </span><span class="s2">"texture"</span><span class="p">,</span>
+<a id="__codelineno-163-6" name="__codelineno-163-6" href="#__codelineno-163-6"></a><span class="w">    </span><span class="nt">"overlayImage"</span><span class="p">:</span><span class="w"> </span><span class="s2">"data:image/png;base64,..."</span>
+<a id="__codelineno-163-7" name="__codelineno-163-7" href="#__codelineno-163-7"></a><span class="w">  </span><span class="p">}</span>
+<a id="__codelineno-163-8" name="__codelineno-163-8" href="#__codelineno-163-8"></a><span class="p">]</span>
 </code></pre></div>
 </details>
 <h3 id="post-apicollectionspresets"><code>POST /api/collections/presets</code></h3>
@@ -8861,77 +8905,77 @@ modification-time ordering; pagination limits the response, not the database sca
 <p>Uploads a single local collection poster directly to Plex via PMS REST API and updates the local push cache database (<code>database/plex_push_cache.db</code>).</p>
 <details class="example">
 <summary>View Request</summary>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-163-1" name="__codelineno-163-1" href="#__codelineno-163-1"></a><span class="p">{</span>
-<a id="__codelineno-163-2" name="__codelineno-163-2" href="#__codelineno-163-2"></a><span class="w">  </span><span class="nt">"rating_key"</span><span class="p">:</span><span class="w"> </span><span class="s2">"12345"</span><span class="p">,</span>
-<a id="__codelineno-163-3" name="__codelineno-163-3" href="#__codelineno-163-3"></a><span class="w">  </span><span class="nt">"local_path"</span><span class="p">:</span><span class="w"> </span><span class="s2">"/assets/Collections/Star Wars Collection.png"</span><span class="p">,</span>
-<a id="__codelineno-163-4" name="__codelineno-163-4" href="#__codelineno-163-4"></a><span class="w">  </span><span class="nt">"url"</span><span class="p">:</span><span class="w"> </span><span class="s2">"http://192.168.1.50:32400"</span><span class="p">,</span>
-<a id="__codelineno-163-5" name="__codelineno-163-5" href="#__codelineno-163-5"></a><span class="w">  </span><span class="nt">"token"</span><span class="p">:</span><span class="w"> </span><span class="s2">"plex-token"</span><span class="p">,</span>
-<a id="__codelineno-163-6" name="__codelineno-163-6" href="#__codelineno-163-6"></a><span class="w">  </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Star Wars Collection"</span>
-<a id="__codelineno-163-7" name="__codelineno-163-7" href="#__codelineno-163-7"></a><span class="p">}</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-164-1" name="__codelineno-164-1" href="#__codelineno-164-1"></a><span class="p">{</span>
+<a id="__codelineno-164-2" name="__codelineno-164-2" href="#__codelineno-164-2"></a><span class="w">  </span><span class="nt">"rating_key"</span><span class="p">:</span><span class="w"> </span><span class="s2">"12345"</span><span class="p">,</span>
+<a id="__codelineno-164-3" name="__codelineno-164-3" href="#__codelineno-164-3"></a><span class="w">  </span><span class="nt">"local_path"</span><span class="p">:</span><span class="w"> </span><span class="s2">"/assets/Collections/Star Wars Collection.png"</span><span class="p">,</span>
+<a id="__codelineno-164-4" name="__codelineno-164-4" href="#__codelineno-164-4"></a><span class="w">  </span><span class="nt">"url"</span><span class="p">:</span><span class="w"> </span><span class="s2">"http://192.168.1.50:32400"</span><span class="p">,</span>
+<a id="__codelineno-164-5" name="__codelineno-164-5" href="#__codelineno-164-5"></a><span class="w">  </span><span class="nt">"token"</span><span class="p">:</span><span class="w"> </span><span class="s2">"plex-token"</span><span class="p">,</span>
+<a id="__codelineno-164-6" name="__codelineno-164-6" href="#__codelineno-164-6"></a><span class="w">  </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Star Wars Collection"</span>
+<a id="__codelineno-164-7" name="__codelineno-164-7" href="#__codelineno-164-7"></a><span class="p">}</span>
 </code></pre></div>
 </details>
 <details class="example">
 <summary>View Response</summary>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-164-1" name="__codelineno-164-1" href="#__codelineno-164-1"></a><span class="p">{</span>
-<a id="__codelineno-164-2" name="__codelineno-164-2" href="#__codelineno-164-2"></a><span class="w">  </span><span class="nt">"success"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
-<a id="__codelineno-164-3" name="__codelineno-164-3" href="#__codelineno-164-3"></a><span class="w">  </span><span class="nt">"message"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Pushed poster for 'Star Wars Collection' to Plex"</span><span class="p">,</span>
-<a id="__codelineno-164-4" name="__codelineno-164-4" href="#__codelineno-164-4"></a><span class="w">  </span><span class="nt">"rating_key"</span><span class="p">:</span><span class="w"> </span><span class="s2">"12345"</span><span class="p">,</span>
-<a id="__codelineno-164-5" name="__codelineno-164-5" href="#__codelineno-164-5"></a><span class="w">  </span><span class="nt">"status"</span><span class="p">:</span><span class="w"> </span><span class="s2">"synced"</span>
-<a id="__codelineno-164-6" name="__codelineno-164-6" href="#__codelineno-164-6"></a><span class="p">}</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-165-1" name="__codelineno-165-1" href="#__codelineno-165-1"></a><span class="p">{</span>
+<a id="__codelineno-165-2" name="__codelineno-165-2" href="#__codelineno-165-2"></a><span class="w">  </span><span class="nt">"success"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<a id="__codelineno-165-3" name="__codelineno-165-3" href="#__codelineno-165-3"></a><span class="w">  </span><span class="nt">"message"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Pushed poster for 'Star Wars Collection' to Plex"</span><span class="p">,</span>
+<a id="__codelineno-165-4" name="__codelineno-165-4" href="#__codelineno-165-4"></a><span class="w">  </span><span class="nt">"rating_key"</span><span class="p">:</span><span class="w"> </span><span class="s2">"12345"</span><span class="p">,</span>
+<a id="__codelineno-165-5" name="__codelineno-165-5" href="#__codelineno-165-5"></a><span class="w">  </span><span class="nt">"status"</span><span class="p">:</span><span class="w"> </span><span class="s2">"synced"</span>
+<a id="__codelineno-165-6" name="__codelineno-165-6" href="#__codelineno-165-6"></a><span class="p">}</span>
 </code></pre></div>
 </details>
 <h3 id="post-apiplexcollectionspush-batch"><code>POST /api/plex/collections/push-batch</code></h3>
 <p>Concurrently uploads multiple out-of-sync collection posters to Plex. Uses a controlled concurrency semaphore to prevent overwhelming the Plex Media Server.</p>
 <details class="example">
 <summary>View Request</summary>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-165-1" name="__codelineno-165-1" href="#__codelineno-165-1"></a><span class="p">{</span>
-<a id="__codelineno-165-2" name="__codelineno-165-2" href="#__codelineno-165-2"></a><span class="w">  </span><span class="nt">"items"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
-<a id="__codelineno-165-3" name="__codelineno-165-3" href="#__codelineno-165-3"></a><span class="w">    </span><span class="p">{</span>
-<a id="__codelineno-165-4" name="__codelineno-165-4" href="#__codelineno-165-4"></a><span class="w">      </span><span class="nt">"rating_key"</span><span class="p">:</span><span class="w"> </span><span class="s2">"12345"</span><span class="p">,</span>
-<a id="__codelineno-165-5" name="__codelineno-165-5" href="#__codelineno-165-5"></a><span class="w">      </span><span class="nt">"local_path"</span><span class="p">:</span><span class="w"> </span><span class="s2">"/assets/Collections/Star Wars Collection.png"</span><span class="p">,</span>
-<a id="__codelineno-165-6" name="__codelineno-165-6" href="#__codelineno-165-6"></a><span class="w">      </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Star Wars Collection"</span>
-<a id="__codelineno-165-7" name="__codelineno-165-7" href="#__codelineno-165-7"></a><span class="w">    </span><span class="p">}</span>
-<a id="__codelineno-165-8" name="__codelineno-165-8" href="#__codelineno-165-8"></a><span class="w">  </span><span class="p">],</span>
-<a id="__codelineno-165-9" name="__codelineno-165-9" href="#__codelineno-165-9"></a><span class="w">  </span><span class="nt">"url"</span><span class="p">:</span><span class="w"> </span><span class="s2">"http://192.168.1.50:32400"</span><span class="p">,</span>
-<a id="__codelineno-165-10" name="__codelineno-165-10" href="#__codelineno-165-10"></a><span class="w">  </span><span class="nt">"token"</span><span class="p">:</span><span class="w"> </span><span class="s2">"plex-token"</span>
-<a id="__codelineno-165-11" name="__codelineno-165-11" href="#__codelineno-165-11"></a><span class="p">}</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-166-1" name="__codelineno-166-1" href="#__codelineno-166-1"></a><span class="p">{</span>
+<a id="__codelineno-166-2" name="__codelineno-166-2" href="#__codelineno-166-2"></a><span class="w">  </span><span class="nt">"items"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<a id="__codelineno-166-3" name="__codelineno-166-3" href="#__codelineno-166-3"></a><span class="w">    </span><span class="p">{</span>
+<a id="__codelineno-166-4" name="__codelineno-166-4" href="#__codelineno-166-4"></a><span class="w">      </span><span class="nt">"rating_key"</span><span class="p">:</span><span class="w"> </span><span class="s2">"12345"</span><span class="p">,</span>
+<a id="__codelineno-166-5" name="__codelineno-166-5" href="#__codelineno-166-5"></a><span class="w">      </span><span class="nt">"local_path"</span><span class="p">:</span><span class="w"> </span><span class="s2">"/assets/Collections/Star Wars Collection.png"</span><span class="p">,</span>
+<a id="__codelineno-166-6" name="__codelineno-166-6" href="#__codelineno-166-6"></a><span class="w">      </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Star Wars Collection"</span>
+<a id="__codelineno-166-7" name="__codelineno-166-7" href="#__codelineno-166-7"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-166-8" name="__codelineno-166-8" href="#__codelineno-166-8"></a><span class="w">  </span><span class="p">],</span>
+<a id="__codelineno-166-9" name="__codelineno-166-9" href="#__codelineno-166-9"></a><span class="w">  </span><span class="nt">"url"</span><span class="p">:</span><span class="w"> </span><span class="s2">"http://192.168.1.50:32400"</span><span class="p">,</span>
+<a id="__codelineno-166-10" name="__codelineno-166-10" href="#__codelineno-166-10"></a><span class="w">  </span><span class="nt">"token"</span><span class="p">:</span><span class="w"> </span><span class="s2">"plex-token"</span>
+<a id="__codelineno-166-11" name="__codelineno-166-11" href="#__codelineno-166-11"></a><span class="p">}</span>
 </code></pre></div>
 </details>
 <details class="example">
 <summary>View Response</summary>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-166-1" name="__codelineno-166-1" href="#__codelineno-166-1"></a><span class="p">{</span>
-<a id="__codelineno-166-2" name="__codelineno-166-2" href="#__codelineno-166-2"></a><span class="w">  </span><span class="nt">"success"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
-<a id="__codelineno-166-3" name="__codelineno-166-3" href="#__codelineno-166-3"></a><span class="w">  </span><span class="nt">"total"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
-<a id="__codelineno-166-4" name="__codelineno-166-4" href="#__codelineno-166-4"></a><span class="w">  </span><span class="nt">"pushed"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
-<a id="__codelineno-166-5" name="__codelineno-166-5" href="#__codelineno-166-5"></a><span class="w">  </span><span class="nt">"failed"</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
-<a id="__codelineno-166-6" name="__codelineno-166-6" href="#__codelineno-166-6"></a><span class="w">  </span><span class="nt">"results"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
-<a id="__codelineno-166-7" name="__codelineno-166-7" href="#__codelineno-166-7"></a><span class="w">    </span><span class="p">{</span>
-<a id="__codelineno-166-8" name="__codelineno-166-8" href="#__codelineno-166-8"></a><span class="w">      </span><span class="nt">"rating_key"</span><span class="p">:</span><span class="w"> </span><span class="s2">"12345"</span><span class="p">,</span>
-<a id="__codelineno-166-9" name="__codelineno-166-9" href="#__codelineno-166-9"></a><span class="w">      </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Star Wars Collection"</span><span class="p">,</span>
-<a id="__codelineno-166-10" name="__codelineno-166-10" href="#__codelineno-166-10"></a><span class="w">      </span><span class="nt">"status"</span><span class="p">:</span><span class="w"> </span><span class="s2">"synced"</span>
-<a id="__codelineno-166-11" name="__codelineno-166-11" href="#__codelineno-166-11"></a><span class="w">    </span><span class="p">}</span>
-<a id="__codelineno-166-12" name="__codelineno-166-12" href="#__codelineno-166-12"></a><span class="w">  </span><span class="p">]</span>
-<a id="__codelineno-166-13" name="__codelineno-166-13" href="#__codelineno-166-13"></a><span class="p">}</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-167-1" name="__codelineno-167-1" href="#__codelineno-167-1"></a><span class="p">{</span>
+<a id="__codelineno-167-2" name="__codelineno-167-2" href="#__codelineno-167-2"></a><span class="w">  </span><span class="nt">"success"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<a id="__codelineno-167-3" name="__codelineno-167-3" href="#__codelineno-167-3"></a><span class="w">  </span><span class="nt">"total"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<a id="__codelineno-167-4" name="__codelineno-167-4" href="#__codelineno-167-4"></a><span class="w">  </span><span class="nt">"pushed"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<a id="__codelineno-167-5" name="__codelineno-167-5" href="#__codelineno-167-5"></a><span class="w">  </span><span class="nt">"failed"</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<a id="__codelineno-167-6" name="__codelineno-167-6" href="#__codelineno-167-6"></a><span class="w">  </span><span class="nt">"results"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<a id="__codelineno-167-7" name="__codelineno-167-7" href="#__codelineno-167-7"></a><span class="w">    </span><span class="p">{</span>
+<a id="__codelineno-167-8" name="__codelineno-167-8" href="#__codelineno-167-8"></a><span class="w">      </span><span class="nt">"rating_key"</span><span class="p">:</span><span class="w"> </span><span class="s2">"12345"</span><span class="p">,</span>
+<a id="__codelineno-167-9" name="__codelineno-167-9" href="#__codelineno-167-9"></a><span class="w">      </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Star Wars Collection"</span><span class="p">,</span>
+<a id="__codelineno-167-10" name="__codelineno-167-10" href="#__codelineno-167-10"></a><span class="w">      </span><span class="nt">"status"</span><span class="p">:</span><span class="w"> </span><span class="s2">"synced"</span>
+<a id="__codelineno-167-11" name="__codelineno-167-11" href="#__codelineno-167-11"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-167-12" name="__codelineno-167-12" href="#__codelineno-167-12"></a><span class="w">  </span><span class="p">]</span>
+<a id="__codelineno-167-13" name="__codelineno-167-13" href="#__codelineno-167-13"></a><span class="p">}</span>
 </code></pre></div>
 </details>
 <h3 id="post-apiplexsyncrun"><code>POST /api/plex/sync/run</code></h3>
 <p>Triggers an on-demand, lightweight background Plex artwork sync in Python (without invoking PowerShell). Scans for modified or missing assets according to specified library and asset types, pushes them to Plex, and writes execution logs to <code>UILogs/PlexSync.log</code>.</p>
 <details class="example">
 <summary>View Request</summary>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-167-1" name="__codelineno-167-1" href="#__codelineno-167-1"></a><span class="p">{</span>
-<a id="__codelineno-167-2" name="__codelineno-167-2" href="#__codelineno-167-2"></a><span class="w">  </span><span class="nt">"library"</span><span class="p">:</span><span class="w"> </span><span class="s2">"all"</span><span class="p">,</span>
-<a id="__codelineno-167-3" name="__codelineno-167-3" href="#__codelineno-167-3"></a><span class="w">  </span><span class="nt">"asset_types"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"collection"</span><span class="p">,</span><span class="w"> </span><span class="s2">"poster"</span><span class="p">,</span><span class="w"> </span><span class="s2">"season"</span><span class="p">,</span><span class="w"> </span><span class="s2">"titlecard"</span><span class="p">,</span><span class="w"> </span><span class="s2">"background"</span><span class="p">]</span>
-<a id="__codelineno-167-4" name="__codelineno-167-4" href="#__codelineno-167-4"></a><span class="p">}</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-168-1" name="__codelineno-168-1" href="#__codelineno-168-1"></a><span class="p">{</span>
+<a id="__codelineno-168-2" name="__codelineno-168-2" href="#__codelineno-168-2"></a><span class="w">  </span><span class="nt">"library"</span><span class="p">:</span><span class="w"> </span><span class="s2">"all"</span><span class="p">,</span>
+<a id="__codelineno-168-3" name="__codelineno-168-3" href="#__codelineno-168-3"></a><span class="w">  </span><span class="nt">"asset_types"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"collection"</span><span class="p">,</span><span class="w"> </span><span class="s2">"poster"</span><span class="p">,</span><span class="w"> </span><span class="s2">"season"</span><span class="p">,</span><span class="w"> </span><span class="s2">"titlecard"</span><span class="p">,</span><span class="w"> </span><span class="s2">"background"</span><span class="p">]</span>
+<a id="__codelineno-168-4" name="__codelineno-168-4" href="#__codelineno-168-4"></a><span class="p">}</span>
 </code></pre></div>
 </details>
 <details class="example">
 <summary>View Response</summary>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-168-1" name="__codelineno-168-1" href="#__codelineno-168-1"></a><span class="p">{</span>
-<a id="__codelineno-168-2" name="__codelineno-168-2" href="#__codelineno-168-2"></a><span class="w">  </span><span class="nt">"success"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
-<a id="__codelineno-168-3" name="__codelineno-168-3" href="#__codelineno-168-3"></a><span class="w">  </span><span class="nt">"message"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Plex sync started in background"</span><span class="p">,</span>
-<a id="__codelineno-168-4" name="__codelineno-168-4" href="#__codelineno-168-4"></a><span class="w">  </span><span class="nt">"library"</span><span class="p">:</span><span class="w"> </span><span class="s2">"all"</span><span class="p">,</span>
-<a id="__codelineno-168-5" name="__codelineno-168-5" href="#__codelineno-168-5"></a><span class="w">  </span><span class="nt">"asset_types"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"collection"</span><span class="p">,</span><span class="w"> </span><span class="s2">"poster"</span><span class="p">,</span><span class="w"> </span><span class="s2">"season"</span><span class="p">,</span><span class="w"> </span><span class="s2">"titlecard"</span><span class="p">,</span><span class="w"> </span><span class="s2">"background"</span><span class="p">]</span>
-<a id="__codelineno-168-6" name="__codelineno-168-6" href="#__codelineno-168-6"></a><span class="p">}</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-169-1" name="__codelineno-169-1" href="#__codelineno-169-1"></a><span class="p">{</span>
+<a id="__codelineno-169-2" name="__codelineno-169-2" href="#__codelineno-169-2"></a><span class="w">  </span><span class="nt">"success"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<a id="__codelineno-169-3" name="__codelineno-169-3" href="#__codelineno-169-3"></a><span class="w">  </span><span class="nt">"message"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Plex sync started in background"</span><span class="p">,</span>
+<a id="__codelineno-169-4" name="__codelineno-169-4" href="#__codelineno-169-4"></a><span class="w">  </span><span class="nt">"library"</span><span class="p">:</span><span class="w"> </span><span class="s2">"all"</span><span class="p">,</span>
+<a id="__codelineno-169-5" name="__codelineno-169-5" href="#__codelineno-169-5"></a><span class="w">  </span><span class="nt">"asset_types"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"collection"</span><span class="p">,</span><span class="w"> </span><span class="s2">"poster"</span><span class="p">,</span><span class="w"> </span><span class="s2">"season"</span><span class="p">,</span><span class="w"> </span><span class="s2">"titlecard"</span><span class="p">,</span><span class="w"> </span><span class="s2">"background"</span><span class="p">]</span>
+<a id="__codelineno-169-6" name="__codelineno-169-6" href="#__codelineno-169-6"></a><span class="p">}</span>
 </code></pre></div>
 </details>
 <h3 id="get-apistudio-logos"><code>GET /api/studio-logos</code></h3>
@@ -8948,18 +8992,18 @@ modification-time ordering; pagination limits the response, not the database sca
 <p>Get folders from the assets directory. If <code>library_name</code> is provided, returns all media folders within that library; otherwise returns all top-level library directories.</p>
 <details class="example">
 <summary>View Response</summary>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-169-1" name="__codelineno-169-1" href="#__codelineno-169-1"></a><span class="p">{</span>
-<a id="__codelineno-169-2" name="__codelineno-169-2" href="#__codelineno-169-2"></a><span class="w">  </span><span class="nt">"success"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
-<a id="__codelineno-169-3" name="__codelineno-169-3" href="#__codelineno-169-3"></a><span class="w">  </span><span class="nt">"folders"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
-<a id="__codelineno-169-4" name="__codelineno-169-4" href="#__codelineno-169-4"></a><span class="w">    </span><span class="p">{</span>
-<a id="__codelineno-169-5" name="__codelineno-169-5" href="#__codelineno-169-5"></a><span class="w">      </span><span class="nt">"folderName"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Inception (2010) {tmdb-27205}"</span><span class="p">,</span>
-<a id="__codelineno-169-6" name="__codelineno-169-6" href="#__codelineno-169-6"></a><span class="w">      </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Inception"</span><span class="p">,</span>
-<a id="__codelineno-169-7" name="__codelineno-169-7" href="#__codelineno-169-7"></a><span class="w">      </span><span class="nt">"year"</span><span class="p">:</span><span class="w"> </span><span class="s2">"2010"</span><span class="p">,</span>
-<a id="__codelineno-169-8" name="__codelineno-169-8" href="#__codelineno-169-8"></a><span class="w">      </span><span class="nt">"path"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Movies/Inception (2010) {tmdb-27205}"</span>
-<a id="__codelineno-169-9" name="__codelineno-169-9" href="#__codelineno-169-9"></a><span class="w">    </span><span class="p">}</span>
-<a id="__codelineno-169-10" name="__codelineno-169-10" href="#__codelineno-169-10"></a><span class="w">  </span><span class="p">],</span>
-<a id="__codelineno-169-11" name="__codelineno-169-11" href="#__codelineno-169-11"></a><span class="w">  </span><span class="nt">"library"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Movies"</span>
-<a id="__codelineno-169-12" name="__codelineno-169-12" href="#__codelineno-169-12"></a><span class="p">}</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-170-1" name="__codelineno-170-1" href="#__codelineno-170-1"></a><span class="p">{</span>
+<a id="__codelineno-170-2" name="__codelineno-170-2" href="#__codelineno-170-2"></a><span class="w">  </span><span class="nt">"success"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<a id="__codelineno-170-3" name="__codelineno-170-3" href="#__codelineno-170-3"></a><span class="w">  </span><span class="nt">"folders"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<a id="__codelineno-170-4" name="__codelineno-170-4" href="#__codelineno-170-4"></a><span class="w">    </span><span class="p">{</span>
+<a id="__codelineno-170-5" name="__codelineno-170-5" href="#__codelineno-170-5"></a><span class="w">      </span><span class="nt">"folderName"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Inception (2010) {tmdb-27205}"</span><span class="p">,</span>
+<a id="__codelineno-170-6" name="__codelineno-170-6" href="#__codelineno-170-6"></a><span class="w">      </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Inception"</span><span class="p">,</span>
+<a id="__codelineno-170-7" name="__codelineno-170-7" href="#__codelineno-170-7"></a><span class="w">      </span><span class="nt">"year"</span><span class="p">:</span><span class="w"> </span><span class="s2">"2010"</span><span class="p">,</span>
+<a id="__codelineno-170-8" name="__codelineno-170-8" href="#__codelineno-170-8"></a><span class="w">      </span><span class="nt">"path"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Movies/Inception (2010) {tmdb-27205}"</span>
+<a id="__codelineno-170-9" name="__codelineno-170-9" href="#__codelineno-170-9"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-170-10" name="__codelineno-170-10" href="#__codelineno-170-10"></a><span class="w">  </span><span class="p">],</span>
+<a id="__codelineno-170-11" name="__codelineno-170-11" href="#__codelineno-170-11"></a><span class="w">  </span><span class="nt">"library"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Movies"</span>
+<a id="__codelineno-170-12" name="__codelineno-170-12" href="#__codelineno-170-12"></a><span class="p">}</span>
 </code></pre></div>
 </details>
 <h3 id="get-apiassetsskipped"><code>GET /api/assets/skipped</code></h3>
@@ -8974,14 +9018,14 @@ modification-time ordering; pagination limits the response, not the database sca
 <p>Fetch paginated items from a connected media server (Plex, Jellyfin, Emby) with clearLogo presence detection and proxied image URLs.</p>
 <details class="example">
 <summary>View Request</summary>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-170-1" name="__codelineno-170-1" href="#__codelineno-170-1"></a><span class="p">{</span>
-<a id="__codelineno-170-2" name="__codelineno-170-2" href="#__codelineno-170-2"></a><span class="w">  </span><span class="nt">"server_type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"plex"</span><span class="p">,</span>
-<a id="__codelineno-170-3" name="__codelineno-170-3" href="#__codelineno-170-3"></a><span class="w">  </span><span class="nt">"url"</span><span class="p">:</span><span class="w"> </span><span class="s2">"http://192.168.1.50:32400"</span><span class="p">,</span>
-<a id="__codelineno-170-4" name="__codelineno-170-4" href="#__codelineno-170-4"></a><span class="w">  </span><span class="nt">"token"</span><span class="p">:</span><span class="w"> </span><span class="s2">"plex-token-here"</span><span class="p">,</span>
-<a id="__codelineno-170-5" name="__codelineno-170-5" href="#__codelineno-170-5"></a><span class="w">  </span><span class="nt">"library_id"</span><span class="p">:</span><span class="w"> </span><span class="s2">"1"</span><span class="p">,</span>
-<a id="__codelineno-170-6" name="__codelineno-170-6" href="#__codelineno-170-6"></a><span class="w">  </span><span class="nt">"start"</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
-<a id="__codelineno-170-7" name="__codelineno-170-7" href="#__codelineno-170-7"></a><span class="w">  </span><span class="nt">"limit"</span><span class="p">:</span><span class="w"> </span><span class="mi">50</span>
-<a id="__codelineno-170-8" name="__codelineno-170-8" href="#__codelineno-170-8"></a><span class="p">}</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-171-1" name="__codelineno-171-1" href="#__codelineno-171-1"></a><span class="p">{</span>
+<a id="__codelineno-171-2" name="__codelineno-171-2" href="#__codelineno-171-2"></a><span class="w">  </span><span class="nt">"server_type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"plex"</span><span class="p">,</span>
+<a id="__codelineno-171-3" name="__codelineno-171-3" href="#__codelineno-171-3"></a><span class="w">  </span><span class="nt">"url"</span><span class="p">:</span><span class="w"> </span><span class="s2">"http://192.168.1.50:32400"</span><span class="p">,</span>
+<a id="__codelineno-171-4" name="__codelineno-171-4" href="#__codelineno-171-4"></a><span class="w">  </span><span class="nt">"token"</span><span class="p">:</span><span class="w"> </span><span class="s2">"plex-token-here"</span><span class="p">,</span>
+<a id="__codelineno-171-5" name="__codelineno-171-5" href="#__codelineno-171-5"></a><span class="w">  </span><span class="nt">"library_id"</span><span class="p">:</span><span class="w"> </span><span class="s2">"1"</span><span class="p">,</span>
+<a id="__codelineno-171-6" name="__codelineno-171-6" href="#__codelineno-171-6"></a><span class="w">  </span><span class="nt">"start"</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<a id="__codelineno-171-7" name="__codelineno-171-7" href="#__codelineno-171-7"></a><span class="w">  </span><span class="nt">"limit"</span><span class="p">:</span><span class="w"> </span><span class="mi">50</span>
+<a id="__codelineno-171-8" name="__codelineno-171-8" href="#__codelineno-171-8"></a><span class="p">}</span>
 </code></pre></div>
 </details>
 <h3 id="post-apimedia-servercheck-logos"><code>POST /api/media-server/check-logos</code></h3>
@@ -9010,13 +9054,13 @@ modification-time ordering; pagination limits the response, not the database sca
 - Requires <code>X-API-Key: YOUR_KEY</code> or <code>Authorization: Bearer YOUR_KEY</code> HTTP header.</p>
 <details class="example">
 <summary>View Response</summary>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-171-1" name="__codelineno-171-1" href="#__codelineno-171-1"></a><span class="p">{</span>
-<a id="__codelineno-171-2" name="__codelineno-171-2" href="#__codelineno-171-2"></a><span class="w">  </span><span class="nt">"status"</span><span class="p">:</span><span class="w"> </span><span class="s2">"online"</span><span class="p">,</span>
-<a id="__codelineno-171-3" name="__codelineno-171-3" href="#__codelineno-171-3"></a><span class="w">  </span><span class="nt">"websocket"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
-<a id="__codelineno-171-4" name="__codelineno-171-4" href="#__codelineno-171-4"></a><span class="w">  </span><span class="nt">"endpoint"</span><span class="p">:</span><span class="w"> </span><span class="s2">"/ws/events"</span><span class="p">,</span>
-<a id="__codelineno-171-5" name="__codelineno-171-5" href="#__codelineno-171-5"></a><span class="w">  </span><span class="nt">"version"</span><span class="p">:</span><span class="w"> </span><span class="s2">"2.0"</span><span class="p">,</span>
-<a id="__codelineno-171-6" name="__codelineno-171-6" href="#__codelineno-171-6"></a><span class="w">  </span><span class="nt">"authenticated"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
-<a id="__codelineno-171-7" name="__codelineno-171-7" href="#__codelineno-171-7"></a><span class="p">}</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-172-1" name="__codelineno-172-1" href="#__codelineno-172-1"></a><span class="p">{</span>
+<a id="__codelineno-172-2" name="__codelineno-172-2" href="#__codelineno-172-2"></a><span class="w">  </span><span class="nt">"status"</span><span class="p">:</span><span class="w"> </span><span class="s2">"online"</span><span class="p">,</span>
+<a id="__codelineno-172-3" name="__codelineno-172-3" href="#__codelineno-172-3"></a><span class="w">  </span><span class="nt">"websocket"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<a id="__codelineno-172-4" name="__codelineno-172-4" href="#__codelineno-172-4"></a><span class="w">  </span><span class="nt">"endpoint"</span><span class="p">:</span><span class="w"> </span><span class="s2">"/ws/events"</span><span class="p">,</span>
+<a id="__codelineno-172-5" name="__codelineno-172-5" href="#__codelineno-172-5"></a><span class="w">  </span><span class="nt">"version"</span><span class="p">:</span><span class="w"> </span><span class="s2">"2.0"</span><span class="p">,</span>
+<a id="__codelineno-172-6" name="__codelineno-172-6" href="#__codelineno-172-6"></a><span class="w">  </span><span class="nt">"authenticated"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
+<a id="__codelineno-172-7" name="__codelineno-172-7" href="#__codelineno-172-7"></a><span class="p">}</span>
 </code></pre></div>
 </details>
 <h3 id="websocket-wsevents"><code>WebSocket /ws/events</code></h3>
@@ -9029,23 +9073,23 @@ modification-time ordering; pagination limits the response, not the database sca
 - <code>asset_updated</code>: Dispatched when an asset is modified, newly created, or overlay processing completes.</p>
 <details class="example">
 <summary>View Event Payload (<code>asset_updated</code>)</summary>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-172-1" name="__codelineno-172-1" href="#__codelineno-172-1"></a><span class="p">{</span>
-<a id="__codelineno-172-2" name="__codelineno-172-2" href="#__codelineno-172-2"></a><span class="w">  </span><span class="nt">"event"</span><span class="p">:</span><span class="w"> </span><span class="s2">"asset_updated"</span><span class="p">,</span>
-<a id="__codelineno-172-3" name="__codelineno-172-3" href="#__codelineno-172-3"></a><span class="w">  </span><span class="nt">"library_name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Movies"</span><span class="p">,</span>
-<a id="__codelineno-172-4" name="__codelineno-172-4" href="#__codelineno-172-4"></a><span class="w">  </span><span class="nt">"folder_name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Inception (2010) [tmdb-27205]"</span><span class="p">,</span>
-<a id="__codelineno-172-5" name="__codelineno-172-5" href="#__codelineno-172-5"></a><span class="w">  </span><span class="nt">"asset_type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"poster"</span><span class="p">,</span>
-<a id="__codelineno-172-6" name="__codelineno-172-6" href="#__codelineno-172-6"></a><span class="w">  </span><span class="nt">"season_number"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
-<a id="__codelineno-172-7" name="__codelineno-172-7" href="#__codelineno-172-7"></a><span class="w">  </span><span class="nt">"episode_number"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
-<a id="__codelineno-172-8" name="__codelineno-172-8" href="#__codelineno-172-8"></a><span class="w">  </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Inception"</span><span class="p">,</span>
-<a id="__codelineno-172-9" name="__codelineno-172-9" href="#__codelineno-172-9"></a><span class="w">  </span><span class="nt">"relative_path"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Movies/Inception (2010) [tmdb-27205]/poster.jpg"</span><span class="p">,</span>
-<a id="__codelineno-172-10" name="__codelineno-172-10" href="#__codelineno-172-10"></a><span class="w">  </span><span class="nt">"timestamp"</span><span class="p">:</span><span class="w"> </span><span class="s2">"2026-09-10T07:12:00Z"</span><span class="p">,</span>
-<a id="__codelineno-172-11" name="__codelineno-172-11" href="#__codelineno-172-11"></a><span class="w">  </span><span class="nt">"libraryName"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Movies"</span><span class="p">,</span>
-<a id="__codelineno-172-12" name="__codelineno-172-12" href="#__codelineno-172-12"></a><span class="w">  </span><span class="nt">"folderName"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Inception (2010) [tmdb-27205]"</span><span class="p">,</span>
-<a id="__codelineno-172-13" name="__codelineno-172-13" href="#__codelineno-172-13"></a><span class="w">  </span><span class="nt">"assetType"</span><span class="p">:</span><span class="w"> </span><span class="s2">"poster"</span><span class="p">,</span>
-<a id="__codelineno-172-14" name="__codelineno-172-14" href="#__codelineno-172-14"></a><span class="w">  </span><span class="nt">"seasonNumber"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
-<a id="__codelineno-172-15" name="__codelineno-172-15" href="#__codelineno-172-15"></a><span class="w">  </span><span class="nt">"episodeNumber"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
-<a id="__codelineno-172-16" name="__codelineno-172-16" href="#__codelineno-172-16"></a><span class="w">  </span><span class="nt">"relativePath"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Movies/Inception (2010) [tmdb-27205]/poster.jpg"</span>
-<a id="__codelineno-172-17" name="__codelineno-172-17" href="#__codelineno-172-17"></a><span class="p">}</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-173-1" name="__codelineno-173-1" href="#__codelineno-173-1"></a><span class="p">{</span>
+<a id="__codelineno-173-2" name="__codelineno-173-2" href="#__codelineno-173-2"></a><span class="w">  </span><span class="nt">"event"</span><span class="p">:</span><span class="w"> </span><span class="s2">"asset_updated"</span><span class="p">,</span>
+<a id="__codelineno-173-3" name="__codelineno-173-3" href="#__codelineno-173-3"></a><span class="w">  </span><span class="nt">"library_name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Movies"</span><span class="p">,</span>
+<a id="__codelineno-173-4" name="__codelineno-173-4" href="#__codelineno-173-4"></a><span class="w">  </span><span class="nt">"folder_name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Inception (2010) [tmdb-27205]"</span><span class="p">,</span>
+<a id="__codelineno-173-5" name="__codelineno-173-5" href="#__codelineno-173-5"></a><span class="w">  </span><span class="nt">"asset_type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"poster"</span><span class="p">,</span>
+<a id="__codelineno-173-6" name="__codelineno-173-6" href="#__codelineno-173-6"></a><span class="w">  </span><span class="nt">"season_number"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
+<a id="__codelineno-173-7" name="__codelineno-173-7" href="#__codelineno-173-7"></a><span class="w">  </span><span class="nt">"episode_number"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
+<a id="__codelineno-173-8" name="__codelineno-173-8" href="#__codelineno-173-8"></a><span class="w">  </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Inception"</span><span class="p">,</span>
+<a id="__codelineno-173-9" name="__codelineno-173-9" href="#__codelineno-173-9"></a><span class="w">  </span><span class="nt">"relative_path"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Movies/Inception (2010) [tmdb-27205]/poster.jpg"</span><span class="p">,</span>
+<a id="__codelineno-173-10" name="__codelineno-173-10" href="#__codelineno-173-10"></a><span class="w">  </span><span class="nt">"timestamp"</span><span class="p">:</span><span class="w"> </span><span class="s2">"2026-09-10T07:12:00Z"</span><span class="p">,</span>
+<a id="__codelineno-173-11" name="__codelineno-173-11" href="#__codelineno-173-11"></a><span class="w">  </span><span class="nt">"libraryName"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Movies"</span><span class="p">,</span>
+<a id="__codelineno-173-12" name="__codelineno-173-12" href="#__codelineno-173-12"></a><span class="w">  </span><span class="nt">"folderName"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Inception (2010) [tmdb-27205]"</span><span class="p">,</span>
+<a id="__codelineno-173-13" name="__codelineno-173-13" href="#__codelineno-173-13"></a><span class="w">  </span><span class="nt">"assetType"</span><span class="p">:</span><span class="w"> </span><span class="s2">"poster"</span><span class="p">,</span>
+<a id="__codelineno-173-14" name="__codelineno-173-14" href="#__codelineno-173-14"></a><span class="w">  </span><span class="nt">"seasonNumber"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
+<a id="__codelineno-173-15" name="__codelineno-173-15" href="#__codelineno-173-15"></a><span class="w">  </span><span class="nt">"episodeNumber"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
+<a id="__codelineno-173-16" name="__codelineno-173-16" href="#__codelineno-173-16"></a><span class="w">  </span><span class="nt">"relativePath"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Movies/Inception (2010) [tmdb-27205]/poster.jpg"</span>
+<a id="__codelineno-173-17" name="__codelineno-173-17" href="#__codelineno-173-17"></a><span class="p">}</span>
 </code></pre></div>
 </details>
 <h3 id="post-apiinternalasset-event"><code>POST /api/internal/asset-event</code></h3>
@@ -9054,13 +9098,13 @@ modification-time ordering; pagination limits the response, not the database sca
 - Bypassed for loopback connections (<code>127.0.0.1</code>, <code>::1</code>) or requires standard API key authentication.</p>
 <details class="example">
 <summary>View Request Body</summary>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-173-1" name="__codelineno-173-1" href="#__codelineno-173-1"></a><span class="p">{</span>
-<a id="__codelineno-173-2" name="__codelineno-173-2" href="#__codelineno-173-2"></a><span class="w">  </span><span class="nt">"library_name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Movies"</span><span class="p">,</span>
-<a id="__codelineno-173-3" name="__codelineno-173-3" href="#__codelineno-173-3"></a><span class="w">  </span><span class="nt">"folder_name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Gladiator II (2024)"</span><span class="p">,</span>
-<a id="__codelineno-173-4" name="__codelineno-173-4" href="#__codelineno-173-4"></a><span class="w">  </span><span class="nt">"asset_type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"poster"</span><span class="p">,</span>
-<a id="__codelineno-173-5" name="__codelineno-173-5" href="#__codelineno-173-5"></a><span class="w">  </span><span class="nt">"relative_path"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Movies/Gladiator II (2024)/poster.jpg"</span><span class="p">,</span>
-<a id="__codelineno-173-6" name="__codelineno-173-6" href="#__codelineno-173-6"></a><span class="w">  </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Gladiator II"</span>
-<a id="__codelineno-173-7" name="__codelineno-173-7" href="#__codelineno-173-7"></a><span class="p">}</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-174-1" name="__codelineno-174-1" href="#__codelineno-174-1"></a><span class="p">{</span>
+<a id="__codelineno-174-2" name="__codelineno-174-2" href="#__codelineno-174-2"></a><span class="w">  </span><span class="nt">"library_name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Movies"</span><span class="p">,</span>
+<a id="__codelineno-174-3" name="__codelineno-174-3" href="#__codelineno-174-3"></a><span class="w">  </span><span class="nt">"folder_name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Gladiator II (2024)"</span><span class="p">,</span>
+<a id="__codelineno-174-4" name="__codelineno-174-4" href="#__codelineno-174-4"></a><span class="w">  </span><span class="nt">"asset_type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"poster"</span><span class="p">,</span>
+<a id="__codelineno-174-5" name="__codelineno-174-5" href="#__codelineno-174-5"></a><span class="w">  </span><span class="nt">"relative_path"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Movies/Gladiator II (2024)/poster.jpg"</span><span class="p">,</span>
+<a id="__codelineno-174-6" name="__codelineno-174-6" href="#__codelineno-174-6"></a><span class="w">  </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Gladiator II"</span>
+<a id="__codelineno-174-7" name="__codelineno-174-7" href="#__codelineno-174-7"></a><span class="p">}</span>
 </code></pre></div>
 </details>
 <h3 id="websocket-wslogs"><code>WebSocket /ws/logs</code></h3>

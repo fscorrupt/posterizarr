@@ -1956,6 +1956,9 @@
 <li><strong><code>migrate_runtime_data.py</code></strong>: A migration script used to upgrade database schemas or runtime data formats between versions.</li>
 <li><strong><code>release_notes.py</code></strong>: TTL-cached GitHub Releases fetcher, strict stable SemVer parser, and post-update "What's New" evaluator backing <code>/api/releases</code>, <code>/api/whats-new</code>, and <code>/api/whats-new/dismiss</code>.</li>
 <li><strong><code>support_bundle.py</code></strong>: Builds the diagnostic ZIP requested by <code>POST /api/admin/support-zip</code>, independently of application startup tasks.</li>
+<li><strong><code>overlay_external_lists.py</code></strong>: Resolves and caches external Dynamic Overlays builders (<code>imdb_chart</code>, <code>imdb_award</code>, <code>mdblist_list</code>, <code>tmdb_keyword</code>) for award/chart ribbons and MediaStinger overlays.</li>
+<li><strong><code>action_center_cleanup.py</code></strong>: Prunes orphaned Action Center (<code>imagechoices</code>, <code>skipped_items</code>) and <code>media_export.db</code> entries on export import, media-server 404, or via <code>POST /api/assets/prune-deleted</code> without touching files on disk.</li>
+<li><strong><code>bundled_assets/</code></strong>: Ships fallback overlay assets (such as regional language flags under <code>flag/{round,square}/</code>) that are non-destructively seeded into <code>Overlayfiles/dynamic_overlays/assets/</code> on startup.</li>
 <li><strong><code>animetafill_service.py</code></strong>: Integration service bridging AniMetaFill into Posterizarr's backend. Coordinates anime canon/filler classification tasks, library scans, and triggers overlay generation.</li>
 <li><strong><code>animetafill_core/</code></strong>: Core engine for anime episode classification:</li>
 <li><strong><code>classifier.py</code></strong>: Evaluates episode data against SIMKL and AnimeFillerList providers.</li>

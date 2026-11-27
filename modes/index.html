@@ -2572,6 +2572,10 @@ configuration.</p>
 <code>http://YOUR_POSTERIZARR_HOST:8000/api/webhook/arr?api_key=YOUR_API_KEY</code>. Enable
 <strong>On Import</strong> and <strong>On Upgrade</strong>, set the method to <code>POST</code>, then save. No script
 file or shared container volume is needed for the native webhook.</p>
+<div class="admonition note">
+<p class="admonition-title">Webhook authentication options</p>
+<p>All <code>/api/webhook/*</code> endpoints always require a Web UI API key (HTTP Basic Auth is not accepted). Instead of passing <code>?api_key=YOUR_API_KEY</code> in the URL, you can send an <code>X-API-Key: YOUR_API_KEY</code> or <code>Authorization: Bearer YOUR_API_KEY</code> header without the query parameter. Built-in Sonarr/Radarr webhook settings do not expose custom headers, so use <code>?api_key=...</code> there unless a proxy or custom script injects the header.</p>
+</div>
 <p>See the <a href="#native-webhook-setup">Tautulli and Sonarr/Radarr setup notes</a> for the
 external-app steps.</p>
 <h2 id="cli-and-legacy-instructions-optional">CLI and legacy instructions (optional)</h2>
@@ -2887,7 +2891,7 @@ You can filter what gets restored using additional flags. These flags can be use
 <li>Click <code>Add a new notification agent</code> and select <strong>Webhook</strong>.</li>
 <li><strong>Configuration Tab:</strong><ul>
 <li><strong>Webhook URL:</strong> <code>http://YOUR_POSTERIZARR_IP:8000/api/webhook/tautulli?api_key=YOUR_API_KEY</code></li>
-<li><em>(Generate an API Key in Posterizarr settings under WebUI)</em></li>
+<li><em>(Generate an API Key in Posterizarr settings under WebUI. Alternatively, omit <code>?api_key=...</code> and send an <code>X-API-Key: YOUR_API_KEY</code> or <code>Authorization: Bearer YOUR_API_KEY</code> header instead.)</em></li>
 <li><strong>Webhook Method:</strong> <code>POST</code></li>
 </ul>
 </li>
@@ -2958,7 +2962,7 @@ You can filter what gets restored using additional flags. These flags can be use
 <li><strong>On Import:</strong> Yes</li>
 <li><strong>On Upgrade:</strong> Yes</li>
 <li><strong>URL:</strong> <code>http://YOUR_POSTERIZARR_IP:8000/api/webhook/arr?api_key=YOUR_API_KEY</code><ul>
-<li><em>(Generate an API Key in Posterizarr settings under WebUI)</em></li>
+<li><em>(Generate an API Key in Posterizarr settings under WebUI. Posterizarr also accepts <code>X-API-Key</code> or <code>Authorization: Bearer</code> headers instead of <code>?api_key=...</code>, e.g., when called from a proxy or custom script; built-in Sonarr/Radarr webhooks do not support custom headers and ignore Basic Auth on <code>/api/webhook/*</code>.)</em></li>
 </ul>
 </li>
 <li><strong>Method:</strong> POST</li>
