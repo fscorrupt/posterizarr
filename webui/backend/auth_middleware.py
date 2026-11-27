@@ -155,6 +155,7 @@ class BasicAuthMiddleware(BaseHTTPMiddleware):
             "/api/dynamic-overlays/preview",
             "/api/dynamic-overlays/sample-image",
             "/api/dynamic-overlays/custom-preview-image",
+            "/api/dynamic-overlays/dry-run-preview/",
             "/poster_assets/",
             "/manual_poster_assets/",
             "/backup_assets/",

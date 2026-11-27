@@ -46,7 +46,11 @@
     "exported": "Pacote de sobreposições exportado sem chaves API nem ligações a servidores multimédia.",
     "imported": "Pacote de sobreposições importado em simulação. Nenhuma imagem foi enviada.",
     "tooLarge": "Os pacotes de sobreposições devem ter menos de 128 MiB.",
-    "types": {"movie": "Filmes", "show": "Séries", "mixed": "Misto"},
+    "types": {
+      "movie": "Filmes",
+      "show": "Séries",
+      "mixed": "Misto"
+    },
     "errors": {
       "officialCatalogUnavailable": "Não foi possível verificar o catálogo oficial do Kometa. Tente novamente quando o GitHub estiver acessível.",
       "requestFailed": "O pedido falhou. Verifique a ligação e o registo do servidor.",
@@ -62,12 +66,23 @@
       "unsupportedBundle": "Este formato ou versão do pacote de sobreposições não é suportado."
     },
     "warnings": {
-      "officialDependencies": "Os ficheiros oficiais do Kometa não estão incluídos. Transfira os modelos, imagens e tipos de letra em falta na configuração antes de sincronizar.",
+      "officialDependencies": "Os ficheiros oficiais do Kometa não estão incluídos e a transferência automática está desativada. Transfira os modelos, imagens e tipos de letra em falta na configuração antes de sincronizar.",
       "simklRequired": "O AniMetaFill necessita de um ID de cliente SIMKL configurado nesta instalação.",
       "imdbDownload": "Descarregue o conjunto de dados IMDb local separadamente; o índice não está incluído.",
       "noLibraries": "Não existem bibliotecas de destino disponíveis. Atualize primeiro as bibliotecas do servidor multimédia configurado.",
       "unknown": "Algumas funcionalidades importadas podem necessitar de credenciais locais ou dados adicionais. Verifique as definições de destino."
-    }
+    },
+    "fetchDependencies": "Descarregar automaticamente dependências oficiais do Kometa em falta (modelos, imagens e tipos de letra)",
+    "fetchDependenciesMissing": "{{missing}} de {{total}} ficheiros oficiais do Kometa em falta localmente ({{defaults}} modelos, {{images}} imagens, {{fonts}} tipos de letra).",
+    "fetchDependenciesReady": "Todos os {{total}} ficheiros oficiais do Kometa deste pacote já existem localmente; as dependências indiretas dos modelos serão ainda verificadas.",
+    "importing": "A importar...",
+    "importingWithDeps": "A importar e a descarregar dependências...",
+    "importedWithDeps_one": "Pacote de sobreposições importado em simulação e {{count}} dependência do Kometa descarregada. Nenhuma imagem foi enviada.",
+    "importedWithDeps_other": "Pacote de sobreposições importado em simulação e {{count}} dependências do Kometa descarregadas. Nenhuma imagem foi enviada.",
+    "partialDepsTitle": "Pacote importado com dependências em falta",
+    "partialDepsSummary": "O pacote de sobreposições foi importado em simulação ({{downloaded}} descarregadas, {{failed}} falhadas). Pode tentar novamente mais tarde na configuração de Dynamic Overlays.",
+    "failedDependencies": "Transferências de dependências falhadas",
+    "doneReload": "Concluir e recarregar"
   },
   "imdbDataset": {
     "help": {
@@ -112,7 +127,14 @@
     "importing": "A importar",
     "license": "Dados IMDb: apenas utilização não comercial",
     "confirmImport": "Transferir os dados oficiais IMDb de avaliações, episódios e títulos? As transferências comprimidas ultrapassam 100 MB e podem exceder 1 GB. Reserve vários GB livres e tempo para indexação. A IMDb permite apenas utilização não comercial. O índice anterior permanece disponível durante a atualização.",
-    "states": { "loading": "A carregar", "disabled": "Desativado", "matched": "Associado", "unmapped": "Não associado", "ambiguous": "Ambíguo", "missing_series": "Série não identificada" }
+    "states": {
+      "loading": "A carregar",
+      "disabled": "Desativado",
+      "matched": "Associado",
+      "unmapped": "Não associado",
+      "ambiguous": "Ambíguo",
+      "missing_series": "Série não identificada"
+    }
   },
   "silo": {
     "support": {
@@ -242,7 +264,11 @@
       "title": "Regras de saída dos overlays",
       "description": "Os dados de classificação permanecem completos. Estas regras determinam quais badges serão gravados no YAML na próxima análise.",
       "categoriesLabel": "Categorias para overlay",
-      "categories": { "canon": "Cânone", "filler": "Filler", "mixed": "Misto" },
+      "categories": {
+        "canon": "Cânone",
+        "filler": "Filler",
+        "mixed": "Misto"
+      },
       "thresholdLabel": "Limite por série",
       "noThreshold": "Sem limite",
       "totalEpisodes": "Número total de episódios",
@@ -378,14 +404,14 @@
     "changeDetection": {
       "dryRunStatus": "Estado da simulação",
       "livePushStatus": "Estado do envio ao vivo",
-      "dryRunTooltip": "As sobreposições são renderizadas, mas não são enviadas ao servidor de mídia.",
+      "dryRunTooltip": "Renderiza as sobreposições nas pré-visualizações Dry Run (aba Synchronize) sem enviar imagens ao servidor de mídia.",
       "livePushTooltip": "As sincronizações podem enviar imagens aos servidores de mídia configurados.",
       "dryRunBadge": "SIMULAÇÃO",
       "livePushBadge": "ENVIO AO VIVO",
       "active": "Ativo",
       "pausedMasterOff": "Pausado · controle principal desligado",
       "dryRunTitle": "Simulação",
-      "dryRunDescription": "Com a ressincronização automática ativa, as alterações são renderizadas, mas nunca enviadas nem marcadas como sincronizadas.",
+      "dryRunDescription": "Avalia as regras e salva as pré-visualizações Dry Run renderizadas na aba Synchronize sem enviar imagens nem marcar como sincronizado. Use o Live Preview para ajustar a posição dos selos.",
       "renderOnlyNoPush": "Somente renderização · sem envio ao servidor",
       "serverPushAllowed": "Envio ao servidor permitido",
       "backgroundChecking": "Verificação em segundo plano",
@@ -417,7 +443,7 @@
       "filterReason": "Motivo",
       "filterType": "Tipo de revisão",
       "filterMediaType": "Tipo de mídia",
-      "mediaItem": "Mídia / Item",
+      "mediaItem": "Média / Item",
       "mediaTypes": {
         "all": "Todos os tipos",
         "episode": "Episódios",
@@ -451,7 +477,11 @@
       "fastRunElapsed": "Tempo decorrido: {{time}}",
       "fastRunEtaUnavailable": "ETA indisponível: o modo normal processa as bibliotecas configuradas.",
       "fastRunFinished": "Execução normal concluída: {{succeeded}} recriadas · {{restored}} ficheiros anteriores restaurados e mantidos na revisão. Uma sincronização automática de overlays pode continuar em separado.",
-      "fastRunStages": { "preparing_fast_run": "A guardar originais locais e a remover os ficheiros selecionados ({{count}} ficheiros).", "normal_run": "O modo normal está a processar as bibliotecas configuradas. Se Auto Overlay Sync estiver ativo, o watcher agrupa as novas imagens; podem ocorrer vários lotes de sincronização.", "finalizing_fast_run": "A verificar resultados e a restaurar originais locais não recriados." },
+      "fastRunStages": {
+        "preparing_fast_run": "A guardar originais locais e a remover os ficheiros selecionados ({{count}} ficheiros).",
+        "normal_run": "O modo normal está a processar as bibliotecas configuradas. Se Auto Overlay Sync estiver ativo, o watcher agrupa as novas imagens; podem ocorrer vários lotes de sincronização.",
+        "finalizing_fast_run": "A verificar resultados e a restaurar originais locais não recriados."
+      },
       "rebuildOne": "Recriar esta ilustração",
       "rebuildOne_show": "Recriar este poster de série",
       "rebuildOne_season": "Recriar este poster de temporada",
@@ -471,7 +501,6 @@
       "forceMessage": "O texto anterior da imagem de {{episode}} é desconhecido. Forçar a recriação a partir da fonte sem texto guardada com o título atual \"{{title}}\"? A imagem existente será substituída.",
       "forceAction": "Forçar recriação",
       "preview": "Imagem existente",
-      "mediaItem": "Média / Item",
       "episode": "Episódio",
       "previous": "Título anterior",
       "current": "Título atual",
@@ -506,9 +535,41 @@
       "progressFailed": "Falhadas",
       "progressSkipped": "Ignoradas",
       "partialScan": "Verificação incompleta: {{servers}}",
-      "phases": { "idle": "Pronto", "scanning": "A comparar títulos", "rebuilding": "A recriar imagens dos episódios", "preparing_fast_run": "A preparar ficheiros locais", "normal_run": "Execução normal em curso", "finalizing_fast_run": "A finalizar resultados", "complete": "Concluído", "cancelled": "Cancelado", "failed": "Falhou" },
-      "reasons": { "placeholder": "A aguardar o título definitivo", "missing_source": "Nenhuma fonte descarregável guardada", "source_has_text": "Fonte não confirmada sem texto", "unknown_text": "Texto anterior da imagem incerto", "media_server_source": "O original veio do servidor de mídia e pode conter sobreposições. É necessário um original do fornecedor." },
-      "errors": { "request_failed": "O pedido falhou. Tente novamente.", "busy": "O Posterizarr ou outra tarefa está ativo de momento. Aguarde.", "script_running": "Uma execução de script ou agendada está em curso. Aguarde que termine.", "overlay_sync_running": "Sincronização de sobreposições em execução.", "queue_busy": "A fila está a ser processada.", "cleanup_running": "Limpeza de imagens Plex em execução.", "scan_already_running": "A verificação de títulos já está em execução.", "master_off": "O interruptor principal está desligado.", "rebuild_disabled": "A simulação bloqueia a recriação e os envios.", "nothing_selected": "Nenhuma entrada elegível selecionada.", "unavailable": "A recriação está indisponível neste momento.", "scan_failed": "A verificação falhou. As entradas existentes são mantidas.", "rebuild_failed": "A tarefa falhou. As entradas incompletas são mantidas.", "fast_run_failed": "A execução normal não pôde iniciar ou concluir. Os originais locais foram restaurados.", "not_completed": "Recriação ou envio não concluído" }
+      "phases": {
+        "idle": "Pronto",
+        "scanning": "A comparar títulos",
+        "rebuilding": "A recriar imagens dos episódios",
+        "preparing_fast_run": "A preparar ficheiros locais",
+        "normal_run": "Execução normal em curso",
+        "finalizing_fast_run": "A finalizar resultados",
+        "complete": "Concluído",
+        "cancelled": "Cancelado",
+        "failed": "Falhou"
+      },
+      "reasons": {
+        "placeholder": "A aguardar o título definitivo",
+        "missing_source": "Nenhuma fonte descarregável guardada",
+        "source_has_text": "Fonte não confirmada sem texto",
+        "unknown_text": "Texto anterior da imagem incerto",
+        "media_server_source": "O original veio do servidor de mídia e pode conter sobreposições. É necessário um original do fornecedor."
+      },
+      "errors": {
+        "request_failed": "O pedido falhou. Tente novamente.",
+        "busy": "O Posterizarr ou outra tarefa está ativo de momento. Aguarde.",
+        "script_running": "Uma execução de script ou agendada está em curso. Aguarde que termine.",
+        "overlay_sync_running": "Sincronização de sobreposições em execução.",
+        "queue_busy": "A fila está a ser processada.",
+        "cleanup_running": "Limpeza de imagens Plex em execução.",
+        "scan_already_running": "A verificação de títulos já está em execução.",
+        "master_off": "O interruptor principal está desligado.",
+        "rebuild_disabled": "A simulação bloqueia a recriação e os envios.",
+        "nothing_selected": "Nenhuma entrada elegível selecionada.",
+        "unavailable": "A recriação está indisponível neste momento.",
+        "scan_failed": "A verificação falhou. As entradas existentes são mantidas.",
+        "rebuild_failed": "A tarefa falhou. As entradas incompletas são mantidas.",
+        "fast_run_failed": "A execução normal não pôde iniciar ou concluir. Os originais locais foram restaurados.",
+        "not_completed": "Recriação ou envio não concluído"
+      }
     }
   },
   "runModes": {
@@ -1058,7 +1119,6 @@
     "download": "Baixar",
     "imagePreview": "Pré-visualização da imagem",
     "fontPreview": "Pré-visualização da fonte",
-    "filename": "Nome do arquivo",
     "failedToLoad": "Falha ao carregar imagem",
     "uppercase": "Maiúsculas",
     "lowercase": "Minúsculas",
@@ -2460,9 +2520,9 @@
     "browseLogosTooltip": "Procurar logótipos/ClearArt",
     "title": "Substituir ativo",
     "addedToQueue": "Ativo adicionado à fila.",
-      "queuedUntilIdle": "Adicionado à fila. Começa automaticamente quando a execução atual terminar.",
-      "runningQueueHint": "As seleções são adicionadas à fila e começam automaticamente quando a execução atual terminar.",
-      "queueUntilIdleButton": "Adicionar à fila (após a execução atual)",
+    "queuedUntilIdle": "Adicionado à fila. Começa automaticamente quando a execução atual terminar.",
+    "runningQueueHint": "As seleções são adicionadas à fila e começam automaticamente quando a execução atual terminar.",
+    "queueUntilIdleButton": "Adicionar à fila (após a execução atual)",
     "uploadTab": "Envio",
     "previewsTab": "Pré-visualizações",
     "processWithOverlays": "Processar com sobreposições após substituir",
@@ -2713,7 +2773,15 @@
     "unskipError": "Erro ao restaurar o item: {{error}}",
     "noSkippedItems": "Nenhum item ignorado encontrado.",
     "skippedInfoTitle": "Sobre Itens Ignorados",
-    "skippedInfoDesc": "Esta visualização mostra todos os ativos que têm o rótulo 'skip_posterizarr' aplicado em seu servidor de mídia, bem como os itens ignorados manualmente pela interface do Posterizarr. Os itens listados aqui serão ignorados pelo Posterizarr durante as sincronizações em segundo plano."
+    "skippedInfoDesc": "Esta visualização mostra todos os ativos que têm o rótulo 'skip_posterizarr' aplicado em seu servidor de mídia, bem como os itens ignorados manualmente pela interface do Posterizarr. Os itens listados aqui serão ignorados pelo Posterizarr durante as sincronizações em segundo plano.",
+    "pruneDeleted": "Limpar removidos",
+    "pruneDeletedTooltip": "Verifica as bibliotecas do servidor de mídia ativo e remove entradas órfãs da Central de Ações de mídias excluídas (os arquivos no disco não são alterados)",
+    "pruneDeletedTitle": "Remover entradas órfãs?",
+    "pruneDeletedConfirm": "Isso consulta as bibliotecas configuradas no seu servidor de mídia e remove do banco de dados da Central de Ações os itens que não existem mais no servidor.\n\nNenhum arquivo no disco será excluído.",
+    "pruneDeletedConfirmButton": "Verificar e limpar",
+    "pruneDeletedSuccess": "{{count}} entrada(s) órfã(s) removida(s) em {{libraries}} biblioteca(s).",
+    "pruneDeletedNone": "Nenhuma entrada órfã encontrada na Central de Ações.",
+    "pruneDeletedError": "Falha na limpeza: {{error}}"
   },
   "common": {
     "stop": "Parar",
@@ -4006,8 +4074,19 @@
     "dynamicOverlaysIntro": "Adicione selos de metadados a pôsteres e fundos sem alterar os arquivos de origem limpos.",
     "dynamicOverlaysEnable": "Configurar sobreposições dinâmicas",
     "dynamicOverlaysDescription": "Ative o recurso para abrir a configuração guiada ao concluir este assistente.",
-    "dynamicOverlaysEnabledHint": "A configuração guiada de sobreposições dinâmicas será aberta após a conclusão. O Dry Run continuará ativo; nenhuma arte será enviada até você desativá-lo e iniciar uma sincronização.",
-    "dynamicOverlaysDisabledHint": "Você pode ativar as sobreposições dinâmicas mais tarde em Builders. Novas instalações começam em Dry Run e os arquivos originais permanecem inalterados.",
+    "dynamicOverlaysEnabledHint": "A configuração guiada de sobreposições dinâmicas será aberta após a conclusão. O Dry Run continua ativo para que você confira as pré-visualizações Dry Run antes de publicar — execute primeiro um Normal Run ou Manual Asset para criar os pôsteres base limpos.",
+    "dynamicOverlaysDisabledHint": "Você pode ativar as sobreposições dinâmicas mais tarde em Builders. Novas instalações iniciam em Dry Run e o Dynamic Overlays sempre aplica selos sobre os pôsteres base limpos gerados por um Normal Run ou Manual Asset.",
+    "posterStyle": "Estilo de pôster",
+    "posterStyleTitle": "Escolha o estilo dos pôsteres base",
+    "posterStyleIntro": "Define como o Posterizarr gera seus pôsteres base limpos antes de aplicar as sobreposições dinâmicas opcionais.",
+    "posterStyleClearLogoTitle": "Sem texto + ClearLogos originais",
+    "posterStyleClearLogoBadge": "Recomendado",
+    "posterStyleClearLogoDesc": "Obtém pôsteres limpos sem texto e posiciona o logotipo oficial de cada filme ou série de forma uniforme para que os selos nunca cubram o título (usa pôsteres padrão como alternativa caso não haja logotipo).",
+    "posterStyleStandardTitle": "Pôsteres padrão (estilo Kometa)",
+    "posterStyleStandardDesc": "Mantém pôsteres normais com o título original integrado, sem desenhar texto personalizado, bordas ou sobreposições. Ideal se você pretende usar principalmente os selos do Dynamic Overlays.",
+    "posterStyleUniformTitle": "Sem texto + texto uniforme",
+    "posterStyleUniformDesc": "Visual clássico do Posterizarr: obtém pôsteres sem texto e aplica tipografia uniforme em toda a sua biblioteca.",
+    "posterStyleFooterHint": "Você pode trocar predefinições ou ajustar fontes, cores e bordas a qualquer momento em Blueprints ou Config → Global Visuals.",
     "discord": "Discord",
     "discordWebhookUrl": "URL do Webhook do Discord",
     "discordWebhookUrlExample": "discord://id_do_webhook/token_do_webhook",

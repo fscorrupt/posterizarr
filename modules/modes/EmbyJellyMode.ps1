@@ -632,13 +632,16 @@
             # Add the season object to the array
             $Episodedata.Add($seasonObject)
 
-            # Add to show-level collections
-            if ($SeasonId) { $showSeasonIds.Add($SeasonId) }
+            # Add to show-level collections (keep 1:1 index alignment across all season arrays)
+            $showSeasonIds.Add([string]$SeasonId)
             $showSeasonNumbers.Add($SeasonEpisodes[0].ParentIndexNumber)
             $showSeasonNames.Add($Season.Name)
             if ($SeasonId) {
                 if ($UseSilo -eq 'true') { $showSeasonUrls.Add([string]$SeasonEpisodes[0].SeriesPrimaryImageTag) }
                 else { $showSeasonUrls.Add("$OtherMediaServerUrl/Items/$SeasonId/Images/Primary") }
+            }
+            else {
+                $showSeasonUrls.Add("")
             }
         }
 

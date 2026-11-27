@@ -39,6 +39,16 @@ def extract_plugin_changelog(release_body):
     res = '\n'.join(captured_lines).strip()
     return res if res else None
 
+def normalize_jellyfin_version(version_str: str) -> str:
+    """Pad 2- or 3-part numeric versions to 4-part AssemblyVersion (e.g. 4.0.2 -> 4.0.2.0)."""
+    parts = [p for p in str(version_str or "").strip().split(".") if p != ""]
+    if parts and all(p.isdigit() for p in parts):
+        while len(parts) < 4:
+            parts.append("0")
+        return ".".join(parts[:4])
+    return str(version_str or "").strip()
+
+
 def update_manifest():
     plugins_config = [
         {
@@ -124,7 +134,7 @@ def update_manifest():
                 source_url = f"https://raw.githubusercontent.com/{repo}/builds/{zip_name}"
 
             new_version = {
-                "version": version_str,
+                "version": normalize_jellyfin_version(version_str),
                 "changelog": changelog,
                 "targetAbi": target["target_abi"],
                 "sourceUrl": source_url,

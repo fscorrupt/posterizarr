@@ -322,7 +322,10 @@ export default function GlobalSearchModal() {
         staticItems.filter((item) => item.category === "pages"),
         8
       ),
-      settings: rank(configItems, 12),
+      settings: rank(
+        [...configItems, ...staticItems.filter((item) => item.category === "settings")],
+        12
+      ),
       actions: rank(
         staticItems.filter((item) => item.category === "actions"),
         6

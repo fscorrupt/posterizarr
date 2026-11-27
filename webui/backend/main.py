@@ -634,11 +634,12 @@ except ImportError as e:
 # Import database module
 try:
     logger.debug("Attempting to import database module")
-    from database import init_database, ImageChoicesDB
+    from database import init_database, ImageChoicesDB, extract_season_stem as _db_extract_season_stem
 
     DATABASE_AVAILABLE = True
     logger.info("Database module loaded successfully")
 except ImportError as e:
+    _db_extract_season_stem = None
     DATABASE_AVAILABLE = False
     logger.warning(
         f"Database module not available: {e}. Database features will be disabled."
@@ -2211,27 +2212,31 @@ async def lifespan(app: FastAPI):
             # Initialize database (creates if not exists)
             db = init_database(IMAGECHOICES_DB_PATH)
 
-            # If database was just created (first start), check for existing CSV to import
-            if not db_existed_before:
-                csv_path = LOGS_DIR / "ImageChoices.csv"
-                if csv_path.exists():
-                    logger.info(
-                        "Found existing ImageChoices.csv - importing to new database..."
+            # Always sync existing CSV on startup so missed watcher events catch up idempotently
+            csv_path = LOGS_DIR / "ImageChoices.csv"
+            if csv_path.exists():
+                logger.info(
+                    "Found existing ImageChoices.csv - syncing records to database..."
+                )
+                try:
+                    stats = db.import_from_csv(csv_path)
+                    csv_stat = csv_path.stat()
+                    global _last_recent_assets_csv_sig
+                    _last_recent_assets_csv_sig = (
+                        csv_stat.st_mtime_ns,
+                        csv_stat.st_size,
+                        getattr(csv_stat, "st_ino", 0),
                     )
-                    try:
-                        stats = db.import_from_csv(csv_path)
-                        if stats["added"] > 0:
-                            logger.info(
-                                f"Initialized database with {stats['added']} records from existing CSV"
-                            )
-                        else:
-                            logger.info(
-                                "No records imported from CSV (all empty or invalid)"
-                            )
-                    except Exception as csv_error:
-                        logger.warning(f"Could not import existing CSV: {csv_error}")
-                else:
-                    logger.info("No existing CSV found - database initialized empty")
+                    if stats.get("added", 0) > 0 or stats.get("updated", 0) > 0:
+                        logger.info(
+                            f"Synced database from ImageChoices.csv (added: {stats.get('added', 0)}, updated: {stats.get('updated', 0)})"
+                        )
+                    else:
+                        logger.info("Database already up to date with ImageChoices.csv")
+                except Exception as csv_error:
+                    logger.warning(f"Could not import existing CSV: {csv_error}")
+            else:
+                logger.info("No existing CSV found - database ready")
 
             # Check if database has any records
             try:
@@ -2311,6 +2316,16 @@ async def lifespan(app: FastAPI):
     else:
         logger.info("Scheduler module not available, skipping scheduler initialization")
 
+    # Seed bundled overlay assets non-destructively (e.g. regional flags on Docker upgrades)
+    try:
+        from dynamic_overlays_service import get_overlays_dir
+        from overlay_resolver import seed_bundled_overlay_assets
+        seeded_assets = seed_bundled_overlay_assets(get_overlays_dir() / "assets")
+        if seeded_assets > 0:
+            logger.info(f"Seeded {seeded_assets} bundled overlay asset file(s)")
+    except Exception as e:
+        logger.warning(f"Could not seed bundled overlay assets: {e}")
+
     # Start Dynamic Overlays background change detector
     try:
         from asset_title_changes import configure_title_regenerator, configure_episode_title_queue
@@ -2330,8 +2345,16 @@ async def lifespan(app: FastAPI):
     from ratings_refresh import ratings_refresh_service
 
     def cleanup_deleted_media_item(server_type, item_id):
+        identity = None
+        if MEDIA_EXPORT_DB_AVAILABLE and media_export_db is not None:
+            identity = media_export_db.lookup_item_identity(server_type, item_id)
+            media_export_db.delete_item(server_type, item_id)
         if db is not None:
             db.delete_skipped_items_for_media(server_type, item_id)
+            if identity:
+                lib_name, rootfolder = identity
+                db.delete_choices_by_library_rootfolder(lib_name, rootfolder)
+                db.delete_skipped_items_by_library_rootfolder(lib_name, rootfolder)
         if dynamic_overlay_cache is not None:
             dynamic_overlay_cache.prune_recipe_snapshots()
 
@@ -7209,6 +7232,11 @@ async def import_plex_csvs():
             }
 
         results = media_export_db.import_latest_csvs()
+        if results.get("library_count", 0) > 0 and DATABASE_AVAILABLE and db is not None:
+            from action_center_cleanup import prune_action_center_from_export
+            results["prune_stats"] = prune_action_center_from_export(
+                db, media_export_db, "plex", results.get("run_timestamp")
+            )
 
         return {
             "success": True,
@@ -7349,6 +7377,11 @@ async def import_other_media_csvs():
             }
 
         results = media_export_db.import_other_latest_csvs()
+        if results.get("library_count", 0) > 0 and DATABASE_AVAILABLE and db is not None:
+            from action_center_cleanup import prune_action_center_from_export
+            results["prune_stats"] = prune_action_center_from_export(
+                db, media_export_db, "jellyfin", results.get("run_timestamp")
+            )
 
         return {
             "success": True,
@@ -11083,17 +11116,120 @@ async def get_folder_view_browse(path: Optional[str] = Query(None)):
         logger.exception("Full traceback:")
         return {"success": False, "error": str(e), "items": []}
 
+_last_recent_assets_csv_sig: Optional[tuple] = None
+_RECENT_ASSET_EXTENSIONS = (".jpg", ".png", ".webp", ".jpeg", ".tbn")
+_RECENT_ASSETS_NO_STORE_HEADERS = {
+    "Cache-Control": "no-cache, no-store, must-revalidate",
+    "Pragma": "no-cache",
+}
+
+
+def _extract_season_stem(title: str, fav_provider_link: str = "") -> Optional[str]:
+    """Resolve localized season/special titles or provider URLs to canonical SeasonXX stem."""
+    if _db_extract_season_stem is not None:
+        return _db_extract_season_stem(title, fav_provider_link)
+    return None
+
+
+def _get_recent_asset_candidate_stems(root_part: str, asset_stem: str, asset_type_lower: str) -> tuple:
+    """Build folder-mode stems and flat-mode stems for an asset DB record."""
+    stems = [asset_stem]
+    if asset_stem.lower().startswith("season"):
+        suffix = asset_stem[6:]
+        if suffix.isdigit():
+            unpadded = f"Season{int(suffix)}"
+            if unpadded not in stems:
+                stems.append(unpadded)
+    if "background" in asset_type_lower:
+        flat_stems = [f"{root_part}_background"]
+    elif "season" in asset_type_lower or "titlecard" in asset_type_lower or "episode" in asset_type_lower:
+        flat_stems = [f"{root_part}_{s}" for s in stems]
+    else:
+        flat_stems = [root_part]
+    return stems, flat_stems
+
+
+def _resolve_recent_asset_from_disk(
+    library: str,
+    rootfolder: str,
+    asset_stem: str,
+    asset_type_lower: str = "",
+) -> Optional[Dict[str, Any]]:
+    """Resolve an asset file by stem and supported extensions safely within ASSETS_DIR."""
+    lib_part = str(library or "").strip()
+    root_part = str(rootfolder or "").strip()
+    if (
+        not root_part or not asset_stem
+        or "\x00" in root_part or "/" in root_part or "\\" in root_part or root_part in (".", "..")
+        or (lib_part and ("\x00" in lib_part or "/" in lib_part or "\\" in lib_part or lib_part in (".", "..")))
+    ):
+        return None
+    try:
+        assets_root = ASSETS_DIR.resolve()
+        candidate_stems, flat_stems = _get_recent_asset_candidate_stems(
+            root_part, asset_stem, asset_type_lower
+        )
+        if lib_part:
+            folder_raw = ASSETS_DIR / lib_part / root_part
+            folder = folder_raw.resolve()
+            if folder.is_relative_to(assets_root) and folder.is_dir():
+                for stem in candidate_stems:
+                    for ext in _RECENT_ASSET_EXTENSIONS:
+                        candidate_raw = folder_raw / f"{stem}{ext}"
+                        candidate_resolved = candidate_raw.resolve()
+                        if candidate_resolved.is_relative_to(assets_root) and candidate_resolved.is_file():
+                            return process_image_path(candidate_raw)
+                stem_lowers = {s.lower() for s in candidate_stems}
+                for entry in folder.iterdir():
+                    if (
+                        entry.is_file()
+                        and entry.stem.lower() in stem_lowers
+                        and entry.suffix.lower() in _RECENT_ASSET_EXTENSIONS
+                    ):
+                        resolved_entry = entry.resolve()
+                        if resolved_entry.is_relative_to(assets_root):
+                            return process_image_path(folder_raw / entry.name)
+
+        # Flat layout fallback (LibraryFolders=false directly in ASSETS_DIR)
+        for flat_stem in flat_stems:
+            for ext in _RECENT_ASSET_EXTENSIONS:
+                flat_raw = ASSETS_DIR / f"{flat_stem}{ext}"
+                flat_resolved = flat_raw.resolve()
+                if flat_resolved.is_relative_to(assets_root) and flat_resolved.is_file():
+                    return process_image_path(flat_raw)
+    except Exception as err:
+        logger.debug(f"Disk fallback lookup skipped for {library}/{rootfolder}/{asset_stem}: {err}")
+    return None
+
+
+def _get_live_asset_times(rel_path: str) -> Optional[tuple]:
+    """Return live (created, modified) timestamps for a relative asset path inside ASSETS_DIR."""
+    if not rel_path or not ASSETS_DIR.exists():
+        return None
+    try:
+        assets_root = ASSETS_DIR.resolve()
+        candidate = (ASSETS_DIR / rel_path).resolve()
+        if candidate.is_relative_to(assets_root) and candidate.is_file():
+            st = candidate.stat()
+            return (st.st_ctime, st.st_mtime)
+    except Exception:
+        return None
+    return None
+
+
 @app.get("/api/recent-assets")
 async def get_recent_assets(
     limit: int = Query(100, ge=1, le=100),
     offset: int = Query(0, ge=0),
     tab: str = Query("All", pattern="^(All|Posters|Collections|Backgrounds|Seasons|TitleCards)$"),
+    refresh: bool = Query(False),
 ):
     """
     Get recently created assets from the imagechoices database
     Returns the most recent assets with their poster images from assets folder
     USES FAST CACHE FOR IMAGE LOOKUPS
     """
+    global _last_recent_assets_csv_sig
     tab_names = ("All", "Posters", "Collections", "Backgrounds", "Seasons", "TitleCards")
     empty_result = {
         "success": True,
@@ -11105,191 +11241,271 @@ async def get_recent_assets(
     try:
         if not DATABASE_AVAILABLE or db is None:
             # Return empty list instead of crashing if DB isn't ready
-            return empty_result
+            return JSONResponse(content=empty_result, headers=_RECENT_ASSETS_NO_STORE_HEADERS)
 
-        # CSV import is handled by logs_watcher, no import needed here
+        # Always keep DB caught up with ImageChoices.csv via lightweight signature stat check
+        csv_path = LOGS_DIR / "ImageChoices.csv"
         try:
-            pass # Keep block for safety
+            if csv_path.exists():
+                csv_stat = csv_path.stat()
+                csv_sig = (csv_stat.st_mtime_ns, csv_stat.st_size, getattr(csv_stat, "st_ino", 0))
+                if csv_sig != _last_recent_assets_csv_sig:
+                    await asyncio.to_thread(db.import_from_csv, csv_path)
+                    _last_recent_assets_csv_sig = csv_sig
+            else:
+                _last_recent_assets_csv_sig = None
         except Exception as e:
-            logger.warning(f"Could not import CSV to database: {e}")
+            logger.warning(f"Could not sync ImageChoices.csv to database: {e}")
+
+        if refresh:
+            if not cache_scan_in_progress and time.time() - asset_cache.get("last_scanned", 0) > 15:
+                threading.Thread(target=scan_and_cache_assets, daemon=True).start()
 
         # Get all assets from database (already sorted by id DESC - newest first)
-        db_records = db.get_all_choices()
+        db_records = await asyncio.to_thread(db.get_all_choices)
 
         logger.info(f"Found {len(db_records)} total assets in database")
 
         # If no assets found, return early
         if not db_records:
             logger.warning(" No assets found in database")
-            return empty_result
+            return JSONResponse(content=empty_result, headers=_RECENT_ASSETS_NO_STORE_HEADERS)
 
-        # Create a fast lookup map from the asset cache
-        # This scans the cache (memory) not the disk
+        # Create fast lookup maps from the asset cache (supports standard, nested extraFolder, and flat layouts)
         logger.debug("Creating fast asset lookup map from cache...")
         cache = get_fresh_assets()
-        # Combine all asset types into one lookup
         all_cached_assets = (
-            cache["posters"]
-            + cache["backgrounds"]
-            + cache["seasons"]
-            + cache["titlecards"]
+            cache.get("posters", [])
+            + cache.get("backgrounds", [])
+            + cache.get("seasons", [])
+            + cache.get("titlecards", [])
         )
 
-        # Create a map: { "Library/Folder/poster.jpg": { ... asset data ... } }
-        # Use normalized paths for lookup
-        asset_map = {
-            img["path"].replace("\\", "/"): img for img in all_cached_assets
-        }
+        asset_map = {}
+        asset_map_lower = {}
+        nested_lib_folder_map = {}
+        folder_file_map = {}
+        flat_file_map = {}
+        for img in all_cached_assets:
+            norm_path = str(img.get("path") or "").replace("\\", "/")
+            if not norm_path:
+                continue
+            asset_map[norm_path] = img
+            asset_map_lower.setdefault(norm_path.lower(), img)
+            parts = norm_path.split("/")
+            filename_lower = parts[-1].lower()
+            flat_file_map.setdefault(filename_lower, img)
+            if len(parts) >= 2:
+                folder_file_map.setdefault((parts[-2].lower(), filename_lower), img)
+            if len(parts) >= 3:
+                nested_lib_folder_map.setdefault(
+                    (parts[0].lower(), parts[-2].lower(), filename_lower), img
+                )
         logger.debug(f"Asset map created with {len(asset_map)} items")
 
-        # Convert database records to asset format and find poster files
-        all_assets_with_mtime = []
+        def _build_recent_assets_payload() -> Dict[str, Any]:
+            all_assets_with_mtime = []
+            assets_dir_exists = ASSETS_DIR.exists()
+            disk_fallback_checks = 0
+            live_stat_checks = 0
 
-        # Process records until we have 100 valid assets (not just first 100 records)
-        for record in db_records:
+            # Process records until we have 100 valid assets (not just first 100 records)
+            for record in db_records:
+                asset_dict = dict(record)
 
-            # Convert database record (sqlite3.Row) to dict
-            asset_dict = dict(record)
+                rootfolder = str(asset_dict.get("Rootfolder") or "").strip()
+                asset_type_from_db = str(asset_dict.get("Type") or "Poster")
+                title = str(asset_dict.get("Title") or "")
+                download_source = str(asset_dict.get("DownloadSource") or "")
+                library = str(asset_dict.get("LibraryName") or "").strip()
 
-            rootfolder = asset_dict.get("Rootfolder", "")
-            asset_type_from_db = asset_dict.get("Type", "Poster")
-            title = asset_dict.get("Title", "")
-            download_source = asset_dict.get("DownloadSource", "") # Corrected key
-            library = asset_dict.get("LibraryName", "")
-
-            manual_field = asset_dict.get("Manual", "N/A")
-            if manual_field in ["Yes", "true", True]:
-                is_manually_created = True
-            else:
-                # For "No", "false", False, or N/A - check download_source as fallback
-                is_manually_created = download_source == "N/A" or (
-                    download_source
-                    and (
-                        download_source.startswith("C:")
-                        or download_source.startswith("/")
-                        or download_source.startswith("\\")
+                manual_field = asset_dict.get("Manual", "N/A")
+                if manual_field in ["Yes", "true", True]:
+                    is_manually_created = True
+                else:
+                    # For "No", "false", False, or N/A - check download_source as fallback
+                    is_manually_created = download_source == "N/A" or (
+                        download_source
+                        and (
+                            download_source.startswith("C:")
+                            or download_source.startswith("/")
+                            or download_source.startswith("\\")
+                        )
                     )
-                )
 
-            if rootfolder:
-                # Find the asset file path in our fast cache map
-                # This is the new, fast part.
+                if (
+                    not rootfolder
+                    or "\x00" in rootfolder
+                    or "/" in rootfolder
+                    or "\\" in rootfolder
+                    or rootfolder in (".", "..")
+                    or (library and ("\x00" in library or "/" in library or "\\" in library or library in (".", "..")))
+                ):
+                    continue
 
-                # Determine asset filename (poster.jpg, background.jpg, Season01.jpg, S01E01.jpg)
-                asset_filename = "poster.jpg" # Default
-                asset_type_lower = (asset_type_from_db or "").lower()
-
+                asset_type_lower = asset_type_from_db.lower()
                 if "background" in asset_type_lower:
-                    asset_filename = "background.jpg"
+                    asset_stem = "background"
                 elif "season" in asset_type_lower:
-                    season_match = re.search(r"season\s*(\d+)", title, re.IGNORECASE)
-                    if season_match:
-                        season_num = season_match.group(1).zfill(2)
-                        asset_filename = f"Season{season_num}.jpg"
-                    else:
-                        asset_filename = "Season_unknown.jpg" # Will not match
+                    fav_link_for_season = str(asset_dict.get("FavProviderLink") or "")
+                    asset_stem = _extract_season_stem(title, fav_link_for_season)
                 elif "titlecard" in asset_type_lower or "episode" in asset_type_lower:
                     episode_match = re.search(r"(S\d+E\d+)", title, re.IGNORECASE)
-                    if episode_match:
-                        episode_code = episode_match.group(1).upper()
-                        asset_filename = f"{episode_code}.jpg"
-                    else:
-                        asset_filename = "Episode_unknown.jpg" # Will not match
+                    asset_stem = episode_match.group(1).upper() if episode_match else None
+                else:
+                    asset_stem = "poster"
 
-                # Construct the relative path we expect to find in the cache
-                # Use forward slashes for normalized lookup
-                relative_path_key = f"{library}/{rootfolder}/{asset_filename}"
+                if not asset_stem:
+                    continue
 
-                poster_data = asset_map.get(relative_path_key)
+                candidate_stems, flat_stems = _get_recent_asset_candidate_stems(
+                    rootfolder, asset_stem, asset_type_lower
+                )
+
+                poster_data = None
+                from_disk_fallback = False
+                for stem in candidate_stems:
+                    for ext in _RECENT_ASSET_EXTENSIONS:
+                        filename = f"{stem}{ext}"
+                        filename_lower = filename.lower()
+                        if library:
+                            relative_path_key = f"{library}/{rootfolder}/{filename}"
+                            poster_data = (
+                                asset_map.get(relative_path_key)
+                                or asset_map_lower.get(relative_path_key.lower())
+                                or nested_lib_folder_map.get((library.lower(), rootfolder.lower(), filename_lower))
+                            )
+                        if poster_data is None:
+                            poster_data = folder_file_map.get((rootfolder.lower(), filename_lower))
+                        if poster_data is not None:
+                            break
+                    if poster_data is not None:
+                        break
+
+                if poster_data is None:
+                    for flat_stem in flat_stems:
+                        for ext in _RECENT_ASSET_EXTENSIONS:
+                            poster_data = flat_file_map.get(f"{flat_stem}{ext}".lower())
+                            if poster_data is not None:
+                                break
+                        if poster_data is not None:
+                            break
+
+                if poster_data is None and disk_fallback_checks < 100 and assets_dir_exists:
+                    disk_fallback_checks += 1
+                    poster_data = _resolve_recent_asset_from_disk(
+                        library, rootfolder, asset_stem, asset_type_lower
+                    )
+                    if poster_data is not None:
+                        from_disk_fallback = True
+                        norm_found = str(poster_data.get("path") or "").replace("\\", "/")
+                        if norm_found:
+                            asset_map[norm_found] = poster_data
+                            asset_map_lower.setdefault(norm_found.lower(), poster_data)
 
                 if poster_data:
-                    # Format asset for frontend (match old CSV format)
+                    created_ts = poster_data["created"]
+                    modified_ts = poster_data["modified"]
+                    rel_path = poster_data.get("path", f"{library}/{rootfolder}/{poster_data.get('name', asset_stem)}")
+                    if refresh and not from_disk_fallback and live_stat_checks < 100 and assets_dir_exists:
+                        live_stat_checks += 1
+                        live_times = _get_live_asset_times(rel_path)
+                        if live_times is None:
+                            logger.debug(f"[SKIP] Asset removed from disk: {rel_path}")
+                            continue
+                        created_ts, modified_ts = live_times
+
+                    fav_link = str(asset_dict.get("FavProviderLink") or "")
                     asset = {
-                        "title": asset_dict.get("Title", ""),
+                        "title": title,
                         "type": asset_type_from_db,
                         "rootfolder": rootfolder,
                         "library": library,
-                        "language": asset_dict.get("Language", ""),
+                        "language": str(asset_dict.get("Language") or ""),
                         "fallback": False,
-                        "text_truncated": asset_dict.get("TextTruncated", "").lower()
-                        == "true",
+                        "text_truncated": str(asset_dict.get("TextTruncated") or "").lower() == "true",
                         "download_source": download_source,
-                        "provider_link": (
-                            asset_dict.get("FavProviderLink", "")
-                            if asset_dict.get("FavProviderLink", "") != "N/A"
-                            else ""
-                        ),
+                        "provider_link": fav_link if fav_link != "N/A" else "",
                         "is_manually_created": is_manually_created,
-                        "LogoSource": asset_dict.get("LogoSource", ""),
-                        "LogoLanguage": asset_dict.get("LogoLanguage", ""),
-                        "LogoTextFallback": asset_dict.get("LogoTextFallback", ""),
-                        # Use data directly from the cache
+                        "LogoSource": str(asset_dict.get("LogoSource") or ""),
+                        "LogoLanguage": str(asset_dict.get("LogoLanguage") or ""),
+                        "LogoTextFallback": str(asset_dict.get("LogoTextFallback") or ""),
                         "poster_url": poster_data["url"],
-                        "path": poster_data.get("path", relative_path_key),
+                        "path": rel_path,
                         "has_poster": True,
-                        "created": poster_data["created"],
-                        "modified": poster_data["modified"],
+                        "created": created_ts,
+                        "modified": modified_ts,
                     }
                     all_assets_with_mtime.append(asset)
                 else:
-                    logger.debug(f"[SKIP] Skipping asset (poster not found in cache): {title} at {relative_path_key}")
+                    logger.debug(f"[SKIP] Skipping asset (poster not found in cache): {title} at {library}/{rootfolder}/{asset_stem}")
 
-        # Add sorting and limiting *after* the loop
-        logger.info(f"Sorting {len(all_assets_with_mtime)} assets by modification time...")
+            logger.info(f"Sorting {len(all_assets_with_mtime)} assets by modification time...")
+            all_assets_with_mtime.sort(key=lambda x: x.get("modified", 0), reverse=True)
 
-        # Sort the list by the 'modified' timestamp (newest first)
-        # Use a default value of 0 for any assets that somehow lack a modified time
-        all_assets_with_mtime.sort(key=lambda x: x.get("modified", 0), reverse=True)
+            recent_assets = all_assets_with_mtime[:100]
+            logger.info(
+                f"Returning {len(recent_assets)} most recent assets with existing images from database"
+            )
 
-        # Now, take the top 100
-        max_assets = 100
-        recent_assets = all_assets_with_mtime[:max_assets]
+            unique_assets = {}
+            for asset in recent_assets:
+                key = str(
+                    asset.get("path")
+                    or f"{asset['library']}/{asset['rootfolder']}/{asset['type']}/{asset['title']}"
+                ).replace("\\", "/").lower()
+                existing = unique_assets.get(key)
+                if existing is None or (
+                    existing["title"].startswith("http") and not asset["title"].startswith("http")
+                ):
+                    unique_assets[key] = asset
 
-        logger.info(
-            f"Returning {len(recent_assets)} most recent assets with existing images from database"
-        )
+            categories = {name: [] for name in tab_names}
+            for asset in unique_assets.values():
+                categories["All"].append(asset)
+                asset_type = (asset["type"] or "").lower()
+                if asset_type in ("movie", "poster", "show", "collection"):
+                    categories["Posters"].append(asset)
+                if asset_type == "collection":
+                    categories["Collections"].append(asset)
+                if "background" in asset_type:
+                    categories["Backgrounds"].append(asset)
+                if asset_type == "season":
+                    categories["Seasons"].append(asset)
+                if asset_type in ("episode", "titlecard", "title_card"):
+                    categories["TitleCards"].append(asset)
 
-        unique_assets = {}
-        for asset in recent_assets:
-            key = (asset["rootfolder"], asset["type"], asset["created"])
-            existing = unique_assets.get(key)
-            if existing is None or (
-                existing["title"].startswith("http") and not asset["title"].startswith("http")
-            ):
-                unique_assets[key] = asset
+            filtered_assets = categories[tab]
+            total_count = len(filtered_assets)
+            page_offset = min(offset, max(0, ((total_count - 1) // limit) * limit))
+            page_items = filtered_assets[page_offset:page_offset + limit]
 
-        categories = {name: [] for name in tab_names}
-        for asset in unique_assets.values():
-            categories["All"].append(asset)
-            asset_type = (asset["type"] or "").lower()
-            if asset_type in ("movie", "poster", "show", "collection"):
-                categories["Posters"].append(asset)
-            if asset_type == "collection":
-                categories["Collections"].append(asset)
-            if "background" in asset_type:
-                categories["Backgrounds"].append(asset)
-            if asset_type == "season":
-                categories["Seasons"].append(asset)
-            if asset_type in ("episode", "titlecard", "title_card"):
-                categories["TitleCards"].append(asset)
+            if not refresh and assets_dir_exists:
+                for item in page_items:
+                    live_times = _get_live_asset_times(item.get("path", ""))
+                    if live_times is not None:
+                        item["created"], item["modified"] = live_times
 
-        filtered_assets = categories[tab]
-        total_count = len(filtered_assets)
-        page_offset = min(offset, max(0, ((total_count - 1) // limit) * limit))
-        return {
-            "success": True,
-            "assets": filtered_assets[page_offset:page_offset + limit],
-            "total_count": total_count,
-            "offset": page_offset,
-            "counts": {name: len(items) for name, items in categories.items()},
-        }
+            return {
+                "success": True,
+                "assets": page_items,
+                "total_count": total_count,
+                "offset": page_offset,
+                "counts": {name: len(items) for name, items in categories.items()},
+            }
+
+        payload = await asyncio.to_thread(_build_recent_assets_payload)
+        return JSONResponse(content=payload, headers=_RECENT_ASSETS_NO_STORE_HEADERS)
 
     except Exception as e:
         logger.error(f"[ERROR] Error getting recent assets from database: {e}")
         import traceback
 
         logger.error(traceback.format_exc())
-        return {"success": False, "error": str(e), "assets": [], "total_count": 0}
+        return JSONResponse(
+            content={"success": False, "error": "An internal error occurred while loading recent assets.", "assets": [], "total_count": 0},
+            headers=_RECENT_ASSETS_NO_STORE_HEADERS,
+        )
 
 @app.get("/api/asset-type-lookup")
 async def get_asset_type_lookup(
@@ -15928,6 +16144,28 @@ async def bulk_delete_assets_and_records(request: BulkDeleteAssetsRequest):
         "message": f"Deleted {deleted_count} assets. {len(failed_items)} failed."
     }
 
+
+@app.post("/api/assets/prune-deleted")
+async def prune_deleted_action_center_items():
+    """
+    Query active media servers and remove Action Center / export DB entries
+    for media items that no longer exist on the server.
+    """
+    if not DATABASE_AVAILABLE or db is None:
+        raise HTTPException(status_code=503, detail="Database not available")
+
+    from action_center_cleanup import prune_stale_action_center_entries
+
+    export_db = media_export_db if (MEDIA_EXPORT_DB_AVAILABLE and media_export_db is not None) else None
+    result = await prune_stale_action_center_entries(db, export_db, CONFIG_PATH)
+    if not result.get("success"):
+        raise HTTPException(
+            status_code=400,
+            detail=result.get("error") or "No active media server libraries available for cleanup",
+        )
+    return result
+
+
 class SkipAssetRequest(BaseModel):
     asset_id: int
 
@@ -16985,12 +17223,8 @@ def _build_assets_overview(counts_only=False):
             if "background" in asset_type_lower:
                 asset_filename = "background.jpg"
             elif "season" in asset_type_lower:
-                season_match = re.search(r"season\s*(\d+)", title, re.IGNORECASE)
-                if season_match:
-                    season_num = season_match.group(1).zfill(2)
-                    asset_filename = f"Season{season_num}.jpg"
-                else:
-                    asset_filename = "Season_unknown.jpg"
+                season_stem = _extract_season_stem(title, str(record_dict.get("FavProviderLink") or ""))
+                asset_filename = f"{season_stem}.jpg" if season_stem else "Season_unknown.jpg"
             elif "titlecard" in asset_type_lower or "episode" in asset_type_lower:
                 episode_match = re.search(r"(S\d+E\d+)", title, re.IGNORECASE)
                 if episode_match:
@@ -20345,13 +20579,19 @@ def preview_dynamic_overlay(
     status_color: Optional[str] = Query("#FFA500"),
     resolution: Optional[str] = Query("4K"),
     languages: Optional[str] = Query("de,en"),
-    language_limit: int = Query(5, ge=1, le=5),
+    language_limit: int = Query(5, ge=1),
     subtitle_languages: Optional[str] = Query(None),
     aspect_ratio: Optional[float] = Query(None, gt=0, lt=10),
     studio: Optional[str] = Query(None),
     supplemental_layout: Optional[str] = Query(None),
     streaming: Optional[str] = Query(None),
     streaming_options: Optional[str] = Query(None),
+    ribbon: Optional[str] = Query(None),
+    ribbon_style: Optional[str] = Query(None, pattern="^(yellow|red|black|gray)$"),
+    mediastinger: Optional[str] = Query(None),
+    mediastinger_back_color: Optional[str] = Query(None),
+    mediastinger_back_width: Optional[int] = Query(None),
+    mediastinger_back_height: Optional[int] = Query(None),
     anime_tag: Optional[str] = Query(None),
     network: Optional[str] = Query(None),
     multi_ratings: Optional[str] = Query(None),
@@ -20450,6 +20690,25 @@ def preview_dynamic_overlay(
                 return None
             return s[:max_len]
 
+        def _clean_font_name(v):
+            """Extract and sanitize a font filename while rejecting traversal segments."""
+            if v is None or not isinstance(v, (str, int, float)):
+                return None
+            s = str(v).strip()
+            if s.lower() in ("none", "off", "false", "", "null"):
+                return None
+            for _ in range(3):
+                dec = urllib.parse.unquote(s)
+                if dec == s:
+                    break
+                s = dec
+            if "\x00" in s:
+                return None
+            parts = [part for part in re.split(r"[/\\]+", s) if part]
+            if not parts or any(part == ".." for part in parts):
+                return None
+            return _clean_str(parts[-1], max_len=128)
+
         def _clean_int(v):
             if v is None:
                 return None
@@ -20471,6 +20730,14 @@ def preview_dynamic_overlay(
         subtitle_languages = _clean_str(subtitle_languages)
         studio = _clean_str(studio)
         streaming = _clean_str(streaming)
+        ribbon_explicit = ribbon is not None
+        mediastinger_explicit = mediastinger is not None
+        ribbon = _clean_str(ribbon)
+        ribbon_style = _clean_str(ribbon_style)
+        mediastinger = _clean_str(mediastinger)
+        mediastinger_back_color = _clean_str(mediastinger_back_color)
+        mediastinger_back_width = _clean_int(mediastinger_back_width)
+        mediastinger_back_height = _clean_int(mediastinger_back_height)
         anime_tag = _clean_str(anime_tag)
         network = _clean_str(network)
         multi_ratings = _clean_str(multi_ratings)
@@ -20486,15 +20753,15 @@ def preview_dynamic_overlay(
         resolution_back_width = _clean_int(resolution_back_width)
         resolution_back_height = _clean_int(resolution_back_height)
 
-        runtime_font = _clean_str(runtime_font)
+        runtime_font = _clean_font_name(runtime_font)
         runtime_font_size = _clean_int(runtime_font_size)
-        rating_font = _clean_str(rating_font)
+        rating_font = _clean_font_name(rating_font)
         rating_font_size = _clean_int(rating_font_size)
-        age_rating_font = _clean_str(age_rating_font)
+        age_rating_font = _clean_font_name(age_rating_font)
         age_rating_font_size = _clean_int(age_rating_font_size)
-        status_font = _clean_str(status_font)
+        status_font = _clean_font_name(status_font)
         status_font_size = _clean_int(status_font_size)
-        languages_font = _clean_str(languages_font)
+        languages_font = _clean_font_name(languages_font)
         languages_font_size = _clean_int(languages_font_size)
 
         rating_x = _clean_int(rating_x)
@@ -20544,14 +20811,23 @@ def preview_dynamic_overlay(
                 placements[key] = {"x": offset_x or 0, "y": offset_y or 0,
                                    "align": align or "left", "valign": valign or "top", "font_size": font_size}
         extra_layout = json.loads(supplemental_layout or "{}")
-        for key, value in (("subtitle_languages", subtitle_languages), ("aspect", aspect_ratio), ("studio", studio), ("streaming", streaming)):
+        for key, value, def_x, def_y, def_align, def_valign in (
+            ("subtitle_languages", subtitle_languages, 0, 0, "center", "bottom"),
+            ("aspect", aspect_ratio, 0, 0, "center", "bottom"),
+            ("studio", studio, 0, 0, "center", "bottom"),
+            ("streaming", streaming, 0, 0, "center", "bottom"),
+            ("ribbon", ribbon, 0, 0, "right", "bottom"),
+            ("mediastinger", mediastinger, 15, 15, "right", "top"),
+        ):
             if value:
                 position = extra_layout.get(key) or {}
+                px = _clean_int(position.get("x"))
+                py = _clean_int(position.get("y"))
                 placements[key] = {
-                    "x": _clean_int(position.get("x")) or 0,
-                    "y": _clean_int(position.get("y")) or 0,
-                    "align": position.get("align") if position.get("align") in ("left", "center", "right") else "center",
-                    "valign": position.get("valign") if position.get("valign") in ("top", "center", "bottom") else "bottom",
+                    "x": px if px is not None else def_x,
+                    "y": py if py is not None else def_y,
+                    "align": position.get("align") if position.get("align") in ("left", "center", "right") else def_align,
+                    "valign": position.get("valign") if position.get("valign") in ("top", "center", "bottom") else def_valign,
                 }
         for key, font_name in (("rating", rating_font), ("status", status_font), ("runtime", runtime_font),
                                ("languages", languages_font), ("age_rating", age_rating_font)):
@@ -20587,6 +20863,12 @@ def preview_dynamic_overlay(
             "resolution_back_width": resolution_back_width, "resolution_back_height": resolution_back_height,
             "audio_codec_style": audio_codec_style,
             "streaming": streaming, "streaming_options": json.loads(streaming_options or "{}"),
+            "ribbon_style": ribbon_style,
+            "mediastinger_back_color": mediastinger_back_color,
+            "mediastinger_back_width": mediastinger_back_width,
+            "mediastinger_back_height": mediastinger_back_height,
+            **({"ribbon": ribbon or ""} if ribbon_explicit else {}),
+            **({"mediastinger": mediastinger or ""} if mediastinger_explicit else {}),
         }, placements, library_rules, get_overlays_dir(), build_overlay_layers_for_item,
             animetafill_config=get_animetafill_config())
 
@@ -20827,6 +21109,54 @@ async def delete_custom_preview_image(image_id: str):
     return {"success": True}
 
 
+@app.get("/api/dynamic-overlays/dry-run-previews")
+async def get_dynamic_overlay_dry_run_previews():
+    """Return metadata for recently rendered Dry-Run preview JPEGs."""
+    try:
+        from overlay_sync_service import list_dry_run_previews
+        previews = await asyncio.to_thread(list_dry_run_previews, BASE_DIR)
+        return {"success": True, "previews": previews}
+    except Exception as e:
+        logger.error(f"Error listing dry-run previews: {e}", exc_info=True)
+        return {"success": False, "error": "Failed to list dry-run previews.", "previews": []}
+
+
+@app.get("/api/dynamic-overlays/dry-run-preview/{preview_id}")
+async def get_dynamic_overlay_dry_run_preview_image(preview_id: str):
+    """Serve a specific rendered Dry-Run preview JPEG safely within the cache root."""
+    safe_id = str(preview_id or "").strip()
+    if not re.fullmatch(r"[0-9a-f]{8,32}", safe_id):
+        raise HTTPException(status_code=400, detail="Invalid preview id")
+    from overlay_sync_service import get_dry_run_previews_dir
+    previews_dir = get_dry_run_previews_dir(BASE_DIR)
+    root = previews_dir.resolve()
+    if root.is_dir():
+        for candidate in root.glob("*.jpg"):
+            if (
+                candidate.stem == safe_id
+                and _is_within_root(candidate.resolve(), root)
+                and candidate.is_file()
+            ):
+                return FileResponse(
+                    candidate,
+                    media_type="image/jpeg",
+                    headers={"Cache-Control": "no-store"},
+                )
+    raise HTTPException(status_code=404, detail="Dry-run preview image not found")
+
+
+@app.delete("/api/dynamic-overlays/dry-run-previews")
+async def clear_dynamic_overlay_dry_run_previews():
+    """Delete all stored Dry-Run preview JPEGs and their manifest."""
+    try:
+        from overlay_sync_service import clear_dry_run_previews
+        cleared = await asyncio.to_thread(clear_dry_run_previews, BASE_DIR)
+        return {"success": True, "cleared": cleared}
+    except Exception as e:
+        logger.error(f"Error clearing dry-run previews: {e}", exc_info=True)
+        return {"success": False, "error": "Failed to clear dry-run previews.", "cleared": 0}
+
+
 class QuarantineDeletionRequest(BaseModel):
     confirmation: str
 
@@ -21007,6 +21337,16 @@ async def get_dynamic_overlays_config_content(filename: str = Query("config.yml"
     return kometa_resolver.get_config_content(filename)
 
 
+def _sync_visual_config_safe() -> Dict[str, Any]:
+    """Re-parse config.yml into visual JSON after rule/library edits without failing the request."""
+    try:
+        from dynamic_overlays_service import sync_visual_config_from_yaml
+        return sync_visual_config_from_yaml()
+    except Exception as vis_err:
+        logger.warning(f"Failed syncing visual config from config.yml: {vis_err}")
+        return {}
+
+
 @app.post("/api/dynamic-overlays/config-content")
 async def save_dynamic_overlays_config_content(req: SaveConfigContentRequest):
     """Save raw YAML content with syntax validation and automatic backup."""
@@ -21015,7 +21355,8 @@ async def save_dynamic_overlays_config_content(req: SaveConfigContentRequest):
     res = kometa_resolver.save_config_content(req.filename, req.content)
     if res.get("success"):
         fresh_scan = kometa_resolver.scan_and_analyze_rules()
-        return {**res, "scan": fresh_scan}
+        fresh_vis = _sync_visual_config_safe()
+        return {**res, "scan": fresh_scan, "config": fresh_vis}
     return res
 
 
@@ -21027,7 +21368,8 @@ async def remove_dynamic_overlay_rule(req: RemoveOverlayRuleRequest):
     res = kometa_resolver.remove_library_overlay(req.library_name, req.overlay_index, req.filename)
     if res.get("success"):
         fresh_scan = kometa_resolver.scan_and_analyze_rules()
-        return {**res, "scan": fresh_scan}
+        fresh_vis = _sync_visual_config_safe()
+        return {**res, "scan": fresh_scan, "config": fresh_vis}
     return res
 
 
@@ -21040,8 +21382,14 @@ async def add_dynamic_overlay_rule(req: AddOverlayRuleRequest):
         req.library_name, req.overlay_type, req.overlay_name, req.template_variables, req.filename
     )
     if res.get("success"):
+        if req.overlay_type == "default" and req.overlay_name:
+            try:
+                await kometa_resolver.ensure_default_templates([req.overlay_name])
+            except Exception as ensure_err:
+                logger.warning(f"Failed ensuring default template '{req.overlay_name}': {ensure_err}")
         fresh_scan = kometa_resolver.scan_and_analyze_rules()
-        return {**res, "scan": fresh_scan}
+        fresh_vis = _sync_visual_config_safe()
+        return {**res, "scan": fresh_scan, "config": fresh_vis}
     return res
 
 
@@ -21221,7 +21569,8 @@ async def update_dynamic_overlay_variables(req: UpdateOverlayVariablesRequest):
     )
     if res.get("success"):
         fresh_scan = kometa_resolver.scan_and_analyze_rules()
-        return {**res, "scan": fresh_scan}
+        fresh_vis = _sync_visual_config_safe()
+        return {**res, "scan": fresh_scan, "config": fresh_vis}
     return res
 
 
@@ -21244,7 +21593,8 @@ async def add_dynamic_overlay_library(req: AddLibraryRequest):
     res = kometa_resolver.add_library(req.library_name, req.filename)
     if res.get("success"):
         fresh_scan = kometa_resolver.scan_and_analyze_rules()
-        return {**res, "scan": fresh_scan}
+        fresh_vis = _sync_visual_config_safe()
+        return {**res, "scan": fresh_scan, "config": fresh_vis}
     return res
 
 
@@ -21266,7 +21616,8 @@ async def remove_dynamic_overlay_library(req: RemoveLibraryRequest):
     res = kometa_resolver.remove_libraries(target_names, req.filename)
     if res.get("success"):
         fresh_scan = kometa_resolver.scan_and_analyze_rules()
-        return {**res, "scan": fresh_scan}
+        fresh_vis = _sync_visual_config_safe()
+        return {**res, "scan": fresh_scan, "config": fresh_vis}
     return res
 
 
@@ -21347,13 +21698,16 @@ async def get_dynamic_overlays_sync_status():
     try:
         from overlay_sync_service import (
             is_overlay_sync_running,
-            get_last_sync_result
+            get_last_sync_result,
+            list_dry_run_previews,
         )
         running = is_overlay_sync_running()
         last_res = get_last_sync_result()
+        dry_run_previews = await asyncio.to_thread(list_dry_run_previews, BASE_DIR)
     except Exception:
         running = False
         last_res = None
+        dry_run_previews = []
 
     log_path = UI_LOGS_DIR / "DynamicOverlaysSync.log"
     recent_logs = []
@@ -21370,6 +21724,7 @@ async def get_dynamic_overlays_sync_status():
         "is_running": running,
         "last_result": last_res,
         "recent_logs": recent_logs,
+        "dry_run_previews": dry_run_previews,
         "log_file": "DynamicOverlaysSync.log"
     }
 
@@ -21990,8 +22345,8 @@ async def _build_overlay_bundle_preview_response(payload: bytes) -> dict:
     summary = await asyncio.to_thread(inspect_profile, payload, context["overlays"], context["libraries"])
     warnings = []
     warning_codes = []
-    if summary.get("official_dependency_count"):
-        warnings.append("Official Kometa dependencies are not bundled. Download missing defaults, images, and fonts before syncing.")
+    if summary.get("missing_official_dependency_count"):
+        warnings.append("Missing official Kometa dependencies are not included in the bundle and can be downloaded automatically during import.")
         warning_codes.append("officialDependencies")
     if summary["features"]["animetafill"] and not context["anime"].get("simkl_client_id"):
         warnings.append("AniMetaFill needs a SIMKL Client ID configured on this installation.")
@@ -22012,8 +22367,10 @@ async def _execute_overlay_bundle_import(
     season_targets: list,
     import_settings: bool,
     replace_files: bool,
+    fetch_dependencies: bool = True,
 ) -> dict:
-    from overlay_bundle import IMPORT_LOCK, commit_import, prepare_import
+    from overlay_bundle import IMPORT_LOCK, commit_import, fetch_official_dependencies, prepare_import
+    from overlay_resolver import OverlayResolver, clear_yaml_cache
     from overlay_sync_service import is_overlay_sync_running, stop_overlay_change_detector_background, start_overlay_change_detector_background
     from animetafill_service import is_animetafill_running, _write_to_config_db
     if not IMPORT_LOCK.acquire(blocking=False):
@@ -22037,11 +22394,79 @@ async def _execute_overlay_bundle_import(
         if plan["imdb_dataset"] is not None:
             from ratings_service import imdb_dataset
             await asyncio.to_thread(imdb_dataset.configure, plan["imdb_dataset"])
+
+        await asyncio.to_thread(clear_yaml_cache)
+
+        official_deps = plan.get("official_dependencies") or {}
+        if fetch_dependencies:
+            manifest_deps = await fetch_official_dependencies(official_deps, context["overlays"])
+            await asyncio.to_thread(clear_yaml_cache)
+            resolver_res = {}
+            stage2_errors = []
+            try:
+                resolver = OverlayResolver(context["root"], overlays_dir=context["overlays"])
+                resolver_res = await resolver.fetch_all_missing()
+            except Exception as dep_err:
+                logger.warning("Secondary dependency fetch after bundle import failed: %s", dep_err)
+                stage2_errors.append({"path": "resolver", "error": str(dep_err)})
+
+            overlays_root = Path(context["overlays"]).resolve()
+            downloaded = list(manifest_deps["downloaded"])
+            seen_downloaded = set(downloaded)
+            failed = list(manifest_deps["failed"]) + stage2_errors
+            for detail in resolver_res.get("details") or []:
+                res = detail.get("result") or {}
+                raw_name = str(detail.get("name") or "")
+                rel_name = raw_name
+                dest_path_str = res.get("path")
+                if isinstance(dest_path_str, str) and dest_path_str:
+                    try:
+                        rel_name = Path(dest_path_str).resolve().relative_to(overlays_root).as_posix()
+                    except ValueError:
+                        rel_name = raw_name
+                if res.get("success"):
+                    if rel_name and rel_name not in seen_downloaded:
+                        seen_downloaded.add(rel_name)
+                        downloaded.append(rel_name)
+                else:
+                    failed.append({
+                        "path": rel_name or raw_name or "unknown",
+                        "error": str(res.get("error") or "Download failed"),
+                    })
+
+            dependencies_summary = {
+                "enabled": True,
+                "requested": manifest_deps["requested"],
+                "downloaded_count": len(downloaded),
+                "already_present_count": len(manifest_deps["already_present"]),
+                "failed_count": len(failed),
+                "downloaded": downloaded,
+                "failed": failed,
+                "sha_changed_count": manifest_deps["sha_changed"],
+                "readiness": resolver_res.get("readiness"),
+            }
+        else:
+            dependencies_summary = {
+                "enabled": False,
+                "requested": len(official_deps),
+                "downloaded_count": 0,
+                "already_present_count": 0,
+                "failed_count": 0,
+                "downloaded": [],
+                "failed": [],
+                "sha_changed_count": 0,
+            }
+
         from dynamic_overlays_service import get_dynamic_overlays_settings
         saved = await asyncio.to_thread(get_dynamic_overlays_settings)
         if (saved.get("enabled", False) and saved.get("change_detection_enabled", True)) or saved.get("regenerate_assets_on_title_change", False):
             start_overlay_change_detector_background(base_dir=BASE_DIR, config_path=CONFIG_PATH, logs_dir=UI_LOGS_DIR)
-        return {"success": True, **result, "message": "Overlay bundle imported in Dry Run. No artwork was uploaded."}
+        return {
+            "success": True,
+            **result,
+            "dependencies": dependencies_summary,
+            "message": "Overlay bundle imported in Dry Run. No artwork was uploaded.",
+        }
     finally:
         IMPORT_LOCK.release()
 
@@ -22064,6 +22489,7 @@ async def import_dynamic_overlay_bundle(
     file: UploadFile = File(...), mapping: str = Form(...),
     anime_libraries: str = Form("[]"), season_libraries: str = Form("[]"),
     import_settings: bool = Form(True), replace_files: bool = Form(False),
+    fetch_dependencies: bool = Form(True),
 ):
     from overlay_bundle import BundleError, MAX_BUNDLE_BYTES
     try:
@@ -22075,7 +22501,13 @@ async def import_dynamic_overlay_bundle(
             raise BundleError("Invalid library mapping JSON.")
         payload = await file.read(MAX_BUNDLE_BYTES + 1)
         return await _execute_overlay_bundle_import(
-            payload, library_mapping, anime_targets, season_targets, import_settings, replace_files
+            payload,
+            library_mapping,
+            anime_targets,
+            season_targets,
+            import_settings,
+            replace_files,
+            fetch_dependencies,
         )
     except BundleError as error:
         raise HTTPException(status_code=400, detail={"code": error.code, "message": str(error)})
@@ -22110,6 +22542,7 @@ class CommunityBundleImportRequest(BaseModel):
     season_libraries: List[str] = []
     import_settings: bool = True
     replace_files: bool = False
+    fetch_dependencies: bool = True
 
 
 def _community_error_http_status(code: str) -> int:
@@ -22293,7 +22726,13 @@ async def import_community_overlay_bundle(body: CommunityBundleImportRequest):
     try:
         _, payload = await asyncio.to_thread(resolve_community_bundle_payload, body.id, body.bundle_token)
         return await _execute_overlay_bundle_import(
-            payload, body.mapping, body.anime_libraries, body.season_libraries, body.import_settings, body.replace_files
+            payload,
+            body.mapping,
+            body.anime_libraries,
+            body.season_libraries,
+            body.import_settings,
+            body.replace_files,
+            body.fetch_dependencies,
         )
     except CommunityGalleryError as error:
         raise HTTPException(
@@ -22720,8 +23159,30 @@ async def get_dynamic_overlays_visual_config_endpoint():
         from dynamic_overlays_service import parse_config_yml_to_visual
         vis = parse_config_yml_to_visual(auto_seed=False)
         return {"success": True, "config": vis}
-    except Exception as e:
-        return {"success": False, "error": str(e)}
+    except Exception:
+        logger.exception("Failed to load dynamic overlays visual configuration")
+        return {"success": False, "error": "Failed to load visual configuration."}
+
+def _extract_default_names_from_config_yml() -> List[str]:
+    """Read default overlay template names currently referenced in config.yml."""
+    try:
+        from dynamic_overlays_service import get_config_yml_path
+        cfg_path = get_config_yml_path()
+        if not cfg_path.exists():
+            return []
+        with open(cfg_path, "r", encoding="utf-8") as cf:
+            doc = yaml.safe_load(cf) or {}
+        names: List[str] = []
+        for lib_entry in (doc.get("libraries") or {}).values():
+            if not isinstance(lib_entry, dict):
+                continue
+            for rule in lib_entry.get("overlay_files") or lib_entry.get("overlays") or []:
+                if isinstance(rule, dict) and rule.get("default"):
+                    names.append(str(rule["default"]))
+        return names
+    except Exception:
+        return []
+
 
 @app.post("/api/dynamic-overlays/visual-config")
 async def save_dynamic_overlays_visual_config_endpoint(req: DynamicOverlaysVisualConfigRequest):
@@ -22729,13 +23190,28 @@ async def save_dynamic_overlays_visual_config_endpoint(req: DynamicOverlaysVisua
     Saves visual UI configuration, automatically translating and compiling it into config.yml.
     """
     try:
-        from dynamic_overlays_service import compile_visual_to_config_yml
+        from dynamic_overlays_service import compile_visual_to_config_yml, sync_visual_config_from_yaml
         ok = compile_visual_to_config_yml(req.config)
         if ok:
-            return {"success": True, "message": "Visual configuration saved and compiled into overlay templates."}
+            if kometa_resolver:
+                try:
+                    default_names = _extract_default_names_from_config_yml()
+                    if default_names:
+                        await kometa_resolver.ensure_default_templates(default_names)
+                except Exception as ensure_err:
+                    logger.warning(f"Failed ensuring default templates after visual-config save: {ensure_err}")
+            fresh_scan = kometa_resolver.scan_and_analyze_rules() if kometa_resolver else None
+            fresh_vis = sync_visual_config_from_yaml()
+            return {
+                "success": True,
+                "message": "Visual configuration saved and compiled into overlay templates.",
+                **({"scan": fresh_scan} if fresh_scan is not None else {}),
+                "config": fresh_vis,
+            }
         return {"success": False, "error": "Failed to compile visual configuration."}
-    except Exception as e:
-        return {"success": False, "error": str(e)}
+    except Exception:
+        logger.exception("Failed to save dynamic overlays visual configuration")
+        return {"success": False, "error": "Failed to save visual configuration."}
 
 @app.post("/api/dynamic-overlays/import-yaml")
 async def import_dynamic_overlays_yaml_endpoint(req: DynamicOverlaysImportYamlRequest):
@@ -22755,8 +23231,12 @@ async def import_dynamic_overlays_yaml_endpoint(req: DynamicOverlaysImportYamlRe
             "extracted_keys": extracted_keys,
             "message": "YAML successfully translated into visual configuration."
         }
-    except Exception as e:
-        return {"success": False, "error": str(e)}
+    except yaml.YAMLError:
+        logger.warning("Invalid YAML provided to import-yaml endpoint", exc_info=True)
+        return {"success": False, "error": "Invalid YAML syntax. Check backend logs for details."}
+    except Exception:
+        logger.exception("Failed to import dynamic overlays YAML")
+        return {"success": False, "error": "Failed to import YAML configuration."}
 
 @app.post("/api/dynamic-overlays/quick-start")
 async def quick_start_dynamic_overlays_endpoint():
@@ -22770,9 +23250,18 @@ async def quick_start_dynamic_overlays_endpoint():
         starter = generate_starter_visual_config()
         save_visual_config(starter)
         compile_visual_to_config_yml(starter)
+        if kometa_resolver:
+            try:
+                default_names = _extract_default_names_from_config_yml()
+                if default_names:
+                    await kometa_resolver.ensure_default_templates(default_names)
+            except Exception as ensure_err:
+                logger.warning(f"Failed ensuring default templates during quick-start: {ensure_err}")
+        fresh_scan = kometa_resolver.scan_and_analyze_rules() if kometa_resolver else None
         return {
             "success": True,
             "config": starter,
+            **({"scan": fresh_scan} if fresh_scan is not None else {}),
             "message": f"Successfully initialized starter configuration for {len(starter.get('libraries', {}))} libraries with standard presets enabled."
         }
     except Exception as e:

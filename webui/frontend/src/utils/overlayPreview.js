@@ -8,7 +8,7 @@ export function getConfiguredPreviewBadges(library, template) {
   const isTv = library.media_type === "show";
   const backdrop = ["backdrop", "background"].includes(template);
   const level = { movie_poster: "movie", show_poster: "show", season_poster: "season", episode_card: "episode", titlecard: "episode" }[template] || (isTv ? "show" : "movie");
-  const defaultLevels = { audio_languages: isTv ? "episode" : "movie", subtitle_languages: isTv ? "episode" : "movie", runtime: isTv ? "episode" : "movie", network: "season", anime: "episode", audio_codec: "all", video_format: "all", resolution: "all" };
+  const defaultLevels = { audio_languages: isTv ? "episode" : "movie", subtitle_languages: isTv ? "episode" : "movie", runtime: isTv ? "episode" : "movie", network: "season", anime: "episode", audio_codec: "all", video_format: "all", resolution: "all", ribbon: isTv ? "show" : "movie", mediastinger: "movie" };
   return Object.fromEntries(Object.entries(library.badges || {}).map(([key, badge]) => {
     const variables = badge.template_variables || {};
     const rawLevel = badge.level ?? variables.builder_level ?? defaultLevels[key] ?? (isTv ? "show" : "movie");
@@ -16,7 +16,8 @@ export function getConfiguredPreviewBadges(library, template) {
     const artwork = String(variables.artwork_type || "both").toLowerCase();
     const matchesArtwork = artwork === "both" || artwork === (backdrop ? "backdrop" : "poster");
     const matchesLevel = levels.includes("all") || levels.includes(level) || (backdrop && levels.includes("backdrop"));
-    return [key, { ...badge, enabled: Boolean(badge.enabled && matchesArtwork && matchesLevel), preview_scope_matches: matchesArtwork && matchesLevel }];
+    const scopeMatches = key === "mediastinger" && isTv ? false : Boolean(matchesArtwork && matchesLevel);
+    return [key, { ...badge, enabled: Boolean(badge.enabled && scopeMatches), preview_scope_matches: scopeMatches }];
   }));
 }
 

@@ -53,6 +53,9 @@ The backend handles the following core responsibilities:
 - **`migrate_runtime_data.py`**: A migration script used to upgrade database schemas or runtime data formats between versions.
 - **`release_notes.py`**: TTL-cached GitHub Releases fetcher, strict stable SemVer parser, and post-update "What's New" evaluator backing `/api/releases`, `/api/whats-new`, and `/api/whats-new/dismiss`.
 - **`support_bundle.py`**: Builds the diagnostic ZIP requested by `POST /api/admin/support-zip`, independently of application startup tasks.
+- **`overlay_external_lists.py`**: Resolves and caches external Dynamic Overlays builders (`imdb_chart`, `imdb_award`, `mdblist_list`, `tmdb_keyword`) for award/chart ribbons and MediaStinger overlays.
+- **`action_center_cleanup.py`**: Prunes orphaned Action Center (`imagechoices`, `skipped_items`) and `media_export.db` entries on export import, media-server 404, or via `POST /api/assets/prune-deleted` without touching files on disk.
+- **`bundled_assets/`**: Ships fallback overlay assets (such as regional language flags under `flag/{round,square}/`) that are non-destructively seeded into `Overlayfiles/dynamic_overlays/assets/` on startup.
 - **`animetafill_service.py`**: Integration service bridging AniMetaFill into Posterizarr's backend. Coordinates anime canon/filler classification tasks, library scans, and triggers overlay generation.
 - **`animetafill_core/`**: Core engine for anime episode classification:
   - **`classifier.py`**: Evaluates episode data against SIMKL and AnimeFillerList providers.

@@ -3465,12 +3465,22 @@ function Invoke-ShowPosterCreation {
                     $global:PosterWithText = $null
                     $global:ImageMagickError = $null
                     $global:TextlessPoster = $null
-                    $global:seasonNames = $entry.SeasonNames -split ';'
-                    $global:SeasonRatingKeys = $entry.SeasonRatingKeys -split ','
-                    $global:seasonNumbers = $entry.seasonNumbers -split ','
-                    $global:PlexSeasonUrls = $entry.PlexSeasonUrls -split ','
-                    if ($null -ne $entry.OtherMediaServerSeasonUrls) { $global:OtherMediaServerSeasonUrls = $entry.OtherMediaServerSeasonUrls.Split(",") } else { $global:OtherMediaServerSeasonUrls = @() }
-                    for ($i = 0; $i -lt $global:seasonNames.Count; $i++) {
+                    $global:seasonNames = @(if (-not [string]::IsNullOrWhiteSpace([string]$entry.SeasonNames)) { [string]$entry.SeasonNames -split ';' })
+                    $global:SeasonRatingKeys = @(if (-not [string]::IsNullOrWhiteSpace([string]$entry.SeasonRatingKeys)) { [string]$entry.SeasonRatingKeys -split ',' })
+                    $global:seasonNumbers = @(if (-not [string]::IsNullOrWhiteSpace([string]$entry.seasonNumbers)) { [string]$entry.seasonNumbers -split ',' })
+                    $global:PlexSeasonUrls = @(if (-not [string]::IsNullOrWhiteSpace([string]$entry.PlexSeasonUrls)) { [string]$entry.PlexSeasonUrls -split ',' })
+                    $global:OtherMediaServerSeasonUrls = @(if (-not [string]::IsNullOrWhiteSpace([string]$entry.OtherMediaServerSeasonUrls)) { [string]$entry.OtherMediaServerSeasonUrls -split ',' })
+                    if ($global:seasonNumbers.Count -eq 0) {
+                        Write-Entry -Subtext "No seasons found for '$Titletext' - skipping Season Poster creation." -Path $global:configLogging -Color Cyan -log Debug
+                    }
+                    for ($i = 0; $i -lt $global:seasonNumbers.Count; $i++) {
+                        $currentSeasonNumber = [string]$global:seasonNumbers[$i]
+                        if ([string]::IsNullOrWhiteSpace($currentSeasonNumber)) {
+                            Write-Entry -Subtext "Skipping empty season number at index $i for '$Titletext'." -Path $global:configLogging -Color Cyan -log Debug
+                            continue
+                        }
+                        $currentSeasonNumber = $currentSeasonNumber.Trim()
+                        $currentSeasonName = if ($i -lt $global:seasonNames.Count) { [string]$global:seasonNames[$i] } else { "" }
                         $SkippingText = 'false'
                         $Seasonpostersearchtext = $null
                         $global:seasontmp = $null
@@ -3498,36 +3508,34 @@ function Invoke-ShowPosterCreation {
                         $LocalAddBorder = $AddSeasonBorder
                         if ($SeasonfontAllCaps -eq 'true') {
                             if ($OverrideSeasonName -eq 'true') {
-                                if ($global:seasonNumbers[$i] -eq '0') {
+                                if ($currentSeasonNumber -eq '0') {
                                     $global:seasonTitle = $SpecialSeasonOverrideText.ToUpper()
                                 }
                                 Else {
-                                    $global:seasonTitle = $SeasonOverrideText.ToUpper() + " " + $global:seasonNumbers[$i]
+                                    $global:seasonTitle = $SeasonOverrideText.ToUpper() + " " + $currentSeasonNumber
                                 }
                             }
                             Else {
-                                $global:seasonTitle = $global:seasonNames[$i].ToUpper()
+                                $global:seasonTitle = $currentSeasonName.ToUpper()
                             }
                         }
                         Else {
                             if ($OverrideSeasonName -eq 'true') {
-                                if ($global:seasonNumbers[$i] -eq '0') {
+                                if ($currentSeasonNumber -eq '0') {
                                     $global:seasonTitle = $SpecialSeasonOverrideText
                                 }
                                 Else {
-                                    $global:seasonTitle = $SeasonOverrideText + " " + $global:seasonNumbers[$i]
+                                    $global:seasonTitle = $SeasonOverrideText + " " + $currentSeasonNumber
                                 }
                             }
                             Else {
-                                $global:seasonTitle = $global:seasonNames[$i]
+                                $global:seasonTitle = $currentSeasonName
                             }
                         }
-                        $global:SeasonNumber = $global:seasonNumbers[$i]
-                        $global:SeasonRatingKey = $global:SeasonRatingKeys[$i]
-                        $global:PlexSeasonUrl = $global:PlexSeasonUrls[$i]
-                        if ($null -ne $global:SeasonNumber) {
-                            $global:seasontmp = "Season" + $global:SeasonNumber.PadLeft(2, '0')
-                        }
+                        $global:SeasonNumber = $currentSeasonNumber
+                        $global:SeasonRatingKey = if ($i -lt $global:SeasonRatingKeys.Count) { $global:SeasonRatingKeys[$i] } else { $null }
+                        $global:PlexSeasonUrl = if ($i -lt $global:PlexSeasonUrls.Count) { $global:PlexSeasonUrls[$i] } else { $null }
+                        $global:seasontmp = "Season" + $global:SeasonNumber.PadLeft(2, '0')
                         if ($LibraryFolders -eq 'true') {
                             $SeasonImageoriginal = "$EntryDir\$global:seasontmp.jpg"
                             $TestPath = $EntryDir
@@ -4517,10 +4525,10 @@ function Invoke-ShowPosterCreation {
                                         Write-Entry -Subtext "[ERROR-HERE] See above. ^^^ errorCount: $errorCount" -Path $global:configLogging -Color Red -log Error
                                     }
                                 }
-                                elseif ($global:seasonId) {
+                                elseif ($UseOtherMediaServer -eq 'true' -and $global:SeasonRatingKey) {
                                     Write-Entry -Message "Starting Existing Asset Upload..." -Path $global:configLogging -Color Green -log Info
                                     Write-Entry -Subtext "Searching for $Titletext Artwork on Media Server." -Path $global:configLogging -Color Cyan -log Info
-                                    UploadOtherMediaServerArtwork -itemId $global:seasonId -imageType "Primary" -imagePath $SeasonImageoriginal
+                                    UploadOtherMediaServerArtwork -itemId $global:SeasonRatingKey -imageType "Primary" -imagePath $SeasonImageoriginal
                                 }
                                 if (Test-Path $SeasonImage -ErrorAction SilentlyContinue) {
                                     Remove-Item -LiteralPath $SeasonImage | Out-Null
@@ -4741,11 +4749,11 @@ function Invoke-TitleCardCreation {
 
                 if ($SkipTBA -eq 'true' -and $matchedWord) {
                     Write-Entry -Subtext "Skipping $global:FileNaming of $global:show_name because Title matches '$matchedText'" -Path $global:configLogging -Color Yellow -log Warning
-                    $SkipTBACount++
+                    $global:SkipTBACount = Increment-GlobalStat 'SkipTBACount'
                 }
                 Elseif ($SkipJapTitle -eq 'true' -and $global:EPTitle -match $cjkTitlePattern) {
                     Write-Entry -Subtext "Skipping $global:FileNaming of $global:show_name because Title contains Jap/Chinese Chars" -Path $global:configLogging -Color Yellow -log Warning
-                    $SkipJapTitleCount++
+                    $global:SkipJapTitleCount = Increment-GlobalStat 'SkipJapTitleCount'
                 }
                 Else {
                     $checkedItems.Add($hashtestpath)
@@ -5523,11 +5531,11 @@ function Invoke-TitleCardCreation {
 
                 if ($SkipTBA -eq 'true' -and $matchedWord) {
                     Write-Entry -Subtext "Skipping $global:FileNaming of $global:show_name because Title matches '$matchedText'" -Path $global:configLogging -Color Yellow -log Warning
-                    $SkipTBACount++
+                    $global:SkipTBACount = Increment-GlobalStat 'SkipTBACount'
                 }
                 Elseif ($SkipJapTitle -eq 'true' -and $global:EPTitle -match $cjkTitlePattern) {
                     Write-Entry -Subtext "Skipping $global:FileNaming of $global:show_name because Title contains Jap/Chinese Chars" -Path $global:configLogging -Color Yellow -log Warning
-                    $SkipJapTitleCount++
+                    $global:SkipJapTitleCount = Increment-GlobalStat 'SkipJapTitleCount'
                 }
                 Else {
                     $checkedItems.Add($hashtestpath)
@@ -6240,11 +6248,11 @@ function Invoke-TitleCardCreation {
 
                                     if ($SkipTBA -eq 'true' -and $matchedWord) {
                                         Write-Entry -Subtext "Skipping $global:FileNaming of $global:show_name because Title matches '$matchedText'" -Path $global:configLogging -Color Yellow -log Warning
-                                        $SkipTBACount++
+                                        $global:SkipTBACount = Increment-GlobalStat 'SkipTBACount'
                                     }
                                     Elseif ($SkipJapTitle -eq 'true' -and $global:EPTitle -match $cjkTitlePattern) {
                                         Write-Entry -Subtext "Skipping $global:FileNaming of $global:show_name because Title contains Jap/Chinese Chars" -Path $global:configLogging -Color Yellow -log Warning
-                                        $SkipJapTitleCount++
+                                        $global:SkipJapTitleCount = Increment-GlobalStat 'SkipJapTitleCount'
                                     }
                                     Else {
                                         $checkedItems.Add($hashtestpath)

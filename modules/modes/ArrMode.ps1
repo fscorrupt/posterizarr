@@ -1,6 +1,10 @@
 #region Arr Mode
     $global:posterCount = 0
+    $global:SkipTBACount = 0
+    $global:SkipJapTitleCount = 0
     if ($global:runspaceStats) { $global:runspaceStats['posterCount'] = 0 }
+    if ($global:runspaceStats) { $global:runspaceStats['SkipTBACount'] = 0 }
+    if ($global:runspaceStats) { $global:runspaceStats['SkipJapTitleCount'] = 0 }
     if ($global:runspaceStats) { $global:runspaceStats['PlexRootPosterUploads'] = 0 }
     if ($global:runspaceStats) { $global:runspaceStats['PlexChildArtworkUploads'] = 0 }
     $arrplatform = $arrTriggers['arr_platform']
@@ -619,13 +623,19 @@
         Write-Entry -Message "Starting episode data query now - This can take a while..." -Path $global:configLogging -Color Cyan -Log Info
 
         $Episodedata = [System.Collections.Generic.List[object]]::new()
+        $matchedSeason = if ($seasonItem) { @($seasonItem)[0] } else { $null }
         $TempShowLibs = $Libraries | Where-Object { $_."Library Type" -eq 'Series' }
         foreach ($show in $TempShowLibs) {
+            $showSeasonIds = [System.Collections.Generic.List[string]]::new()
+            $showSeasonNumbers = [System.Collections.Generic.List[string]]::new()
+            $showSeasonNames = [System.Collections.Generic.List[string]]::new()
+            $showSeasonUrls = [System.Collections.Generic.List[string]]::new()
+
             # Iterate through all shows
             $seasons = $AllEpisodes.Items | Where-Object { $_.SeriesId -eq $show.id } | Group-Object -Property SeasonName | Sort-Object -Property Name
             foreach ($Season in $Seasons) {
                 # Sort episodes within the season by IndexNumber
-                $SeasonEpisodes = $Season.Group | Sort-Object -Property indexnumber
+                $SeasonEpisodes = @($Season.Group | Sort-Object -Property indexnumber)
 
                 # Collect episode IDs, Titles, and PrimaryImageTags
                 $EpisodeIds = ($SeasonEpisodes.Id -join ',')
@@ -659,8 +669,48 @@
                 $EpisodeVideoRanges = ($VideoRangesArray -join ',')
 
                 # Calculate the ShowID and SeasonId
-                $ShowID = if ($SeasonEpisodes.SeriesId) { $SeasonEpisodes.SeriesId } else { $null }
-                $SeasonId = if ($SeasonEpisodes.SeasonId) { $SeasonEpisodes.SeasonId } else { $null }
+                if ($null -ne $SeasonEpisodes.SeriesId) {
+                    $ShowID = if ($SeasonEpisodes.SeriesId -is [System.Array]) { $SeasonEpisodes.SeriesId[0] } else { $SeasonEpisodes.SeriesId }
+                }
+                else {
+                    $ShowID = $null
+                }
+                if ($null -ne $SeasonEpisodes.SeasonId) {
+                    $SeasonId = if ($SeasonEpisodes.SeasonId -is [System.Array]) { $SeasonEpisodes.SeasonId[0] } else { $SeasonEpisodes.SeasonId }
+                }
+                else {
+                    $SeasonId = $null
+                }
+
+                $resolvedSeasonNumber = $SeasonEpisodes[0].ParentIndexNumber
+                if ([string]::IsNullOrWhiteSpace([string]$resolvedSeasonNumber)) {
+                    if ($matchedSeason -and -not [string]::IsNullOrWhiteSpace([string]$matchedSeason.IndexNumber)) {
+                        $resolvedSeasonNumber = $matchedSeason.IndexNumber
+                    }
+                    elseif (-not [string]::IsNullOrWhiteSpace([string]$seasonIndex)) {
+                        $resolvedSeasonNumber = $seasonIndex
+                    }
+                }
+                $resolvedSeasonName = $Season.Name
+                if ([string]::IsNullOrWhiteSpace([string]$resolvedSeasonName)) {
+                    if ($matchedSeason -and -not [string]::IsNullOrWhiteSpace([string]$matchedSeason.Name)) {
+                        $resolvedSeasonName = $matchedSeason.Name
+                    }
+                    elseif (-not [string]::IsNullOrWhiteSpace([string]$resolvedSeasonNumber)) {
+                        $resolvedSeasonName = if ([string]$resolvedSeasonNumber -eq '0') { 'Specials' } else { "Season $resolvedSeasonNumber" }
+                    }
+                }
+                if (-not $SeasonId -and $matchedSeason -and $matchedSeason.Id) {
+                    $SeasonId = $matchedSeason.Id
+                }
+
+                $OtherMediaServerTitleCardUrlsList = [System.Collections.Generic.List[string]]::new()
+                foreach ($epId in ($EpisodeIds -split ',')) {
+                    if ($epId) {
+                        $OtherMediaServerTitleCardUrlsList.Add("$OtherMediaServerUrl/Items/$epId/Images/Primary")
+                    }
+                }
+                $OtherMediaServerTitleCardUrls = $OtherMediaServerTitleCardUrlsList -join ','
 
                 # Create an object for the current season
                 $seasonObject = [PSCustomObject]@{
@@ -678,21 +728,55 @@
                     "imdbid"                       = $show.imdbid
                     "tmdbid"                       = $show.tmdbid
                     "type"                         = "Episode"
-                    "Season Number"                = $SeasonEpisodes[0].ParentIndexNumber
-                    "SeasonName"                   = $Season.Name
+                    "Season Number"                = $resolvedSeasonNumber
+                    "SeasonName"                   = $resolvedSeasonName
                     "Episodes"                     = $Episodes
                     "Title"                        = $EpisodeTitles
                     "RootFoldername"               = $show.RootFoldername
                     "extraFolder"                  = $show.extraFolder
                     "Path"                         = $show.Path
                     "OtherMediaServerBackgroundUrl"= $show.OtherMediaServerBackgroundUrl
+                    "OtherMediaServerTitleCardUrls"= $OtherMediaServerTitleCardUrls
                     "OtherMediaServerTitleCardTag" = $Thumbs
                     "OtherMediaServerSeasonTag"    = $SeasonEpisodes[0].SeriesPrimaryImageTag
                 }
 
                 # Add the season object to the array
                 $Episodedata.Add($seasonObject)
+
+                if (-not [string]::IsNullOrWhiteSpace([string]$resolvedSeasonNumber)) {
+                    $showSeasonIds.Add([string]$SeasonId)
+                    $showSeasonNumbers.Add([string]$resolvedSeasonNumber)
+                    $showSeasonNames.Add([string]$resolvedSeasonName)
+                    if ($SeasonId) {
+                        $showSeasonUrls.Add("$OtherMediaServerUrl/Items/$SeasonId/Images/Primary")
+                    }
+                    else {
+                        $showSeasonUrls.Add("")
+                    }
+                }
             }
+
+            if ($showSeasonNumbers.Count -eq 0 -and $matchedSeason -and (-not $matchedSeason.SeriesId -or $matchedSeason.SeriesId -eq $show.id)) {
+                $fallbackSeasonNum = if (-not [string]::IsNullOrWhiteSpace([string]$matchedSeason.IndexNumber)) { [string]$matchedSeason.IndexNumber } else { [string]$seasonIndex }
+                if (-not [string]::IsNullOrWhiteSpace($fallbackSeasonNum)) {
+                    $fallbackSeasonName = if (-not [string]::IsNullOrWhiteSpace([string]$matchedSeason.Name)) { [string]$matchedSeason.Name } elseif ($fallbackSeasonNum -eq '0') { 'Specials' } else { "Season $fallbackSeasonNum" }
+                    $showSeasonIds.Add([string]$matchedSeason.Id)
+                    $showSeasonNumbers.Add($fallbackSeasonNum)
+                    $showSeasonNames.Add($fallbackSeasonName)
+                    if ($matchedSeason.Id) {
+                        $showSeasonUrls.Add("$OtherMediaServerUrl/Items/$($matchedSeason.Id)/Images/Primary")
+                    }
+                    else {
+                        $showSeasonUrls.Add("")
+                    }
+                }
+            }
+
+            $show | Add-Member -MemberType NoteProperty -Name "SeasonNames" -Value ($showSeasonNames -join ';') -Force
+            $show | Add-Member -MemberType NoteProperty -Name "SeasonRatingKeys" -Value ($showSeasonIds -join ',') -Force
+            $show | Add-Member -MemberType NoteProperty -Name "seasonNumbers" -Value ($showSeasonNumbers -join ',') -Force
+            $show | Add-Member -MemberType NoteProperty -Name "OtherMediaServerSeasonUrls" -Value ($showSeasonUrls -join ',') -Force
         }
         # Create an empty array to hold the custom objects
         $FormattedData = [System.Collections.Generic.List[object]]::new()
@@ -759,6 +843,7 @@
                     'extraFolder'                  = $data.'extraFolder'
                     'Path'                         = $data.'Path'
                     'OtherMediaServerBackgroundUrl'= $data.'OtherMediaServerBackgroundUrl'
+                    'OtherMediaServerTitleCardUrls'= $data.'OtherMediaServerTitleCardUrls'
                     'OtherMediaServerTitleCardTag' = $data.'OtherMediaServerTitleCardTag'
                     'OtherMediaServerSeasonTag'    = $data.'OtherMediaServerSeasonTag'
                 })

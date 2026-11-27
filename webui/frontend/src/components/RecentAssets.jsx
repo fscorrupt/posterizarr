@@ -23,6 +23,13 @@ const API_URL = "/api";
 
 let cachedAssets = null;
 
+const buildAssetImageUrl = (asset, cacheBuster) => {
+  if (!asset?.poster_url) return "";
+  const sep = asset.poster_url.includes("?") ? "&" : "?";
+  const version = `${Math.floor(asset.modified || 0)}-${cacheBuster}`;
+  return `${asset.poster_url}${sep}t=${version}`;
+};
+
 function RecentAssets({ refreshTrigger = 0, onHasAssetsChange }) {
   const { t } = useTranslation();
   const { showSuccess, showError, showInfo } = useToast();
@@ -42,6 +49,7 @@ function RecentAssets({ refreshTrigger = 0, onHasAssetsChange }) {
   const [replacerOpen, setReplacerOpen] = useState(false);
   const [assetToReplace, setAssetToReplace] = useState(null);
   const [cacheBuster, setCacheBuster] = useState(Date.now());
+  const [failedImageUrls, setFailedImageUrls] = useState(() => new Set());
 
   // Tab filter state
   const [activeTab, setActiveTab] = useState(() => {
@@ -66,18 +74,25 @@ function RecentAssets({ refreshTrigger = 0, onHasAssetsChange }) {
   const queryRef = useRef(query);
   queryRef.current = query;
 
-  const fetchRecentAssets = async (silent = false) => {
+  const fetchRecentAssets = async (silent = false, { forceRefresh = false } = {}) => {
     requestController.current?.abort();
     const controller = new AbortController();
     requestController.current = controller;
     const requestedQuery = queryRef.current;
+    const refreshParam = forceRefresh ? "&refresh=true" : "";
+    if (forceRefresh) {
+      cachedAssets = null;
+    }
     if (!silent) {
       setRefreshing(true);
     }
     setError(null);
 
     try {
-      const response = await fetch(`${API_URL}/recent-assets?${requestedQuery}`, { signal: controller.signal });
+      const response = await fetch(`${API_URL}/recent-assets?${requestedQuery}${refreshParam}`, {
+        signal: controller.signal,
+        cache: "no-store",
+      });
       if (!response.ok) throw new Error(t("recentAssets.loadError"));
       const data = await response.json();
       if (controller.signal.aborted || requestedQuery !== queryRef.current) return;
@@ -87,6 +102,10 @@ function RecentAssets({ refreshTrigger = 0, onHasAssetsChange }) {
         setAssets(data.assets);
         setTotalCount(data.total_count);
         setTabCounts(data.counts || {});
+        setFailedImageUrls(new Set());
+        if (forceRefresh) {
+          setCacheBuster(Date.now());
+        }
         onHasAssetsChange?.((data.total_count || 0) > 0 || Boolean(data.counts?.All));
         const requestedParams = new URLSearchParams(requestedQuery);
         if (Number.isInteger(data.offset) && data.offset !== Number(requestedParams.get("offset"))) {
@@ -128,6 +147,8 @@ function RecentAssets({ refreshTrigger = 0, onHasAssetsChange }) {
       setLoading(false);
       hasInitiallyLoaded.current = true;
       finishLoading("recent-assets");
+      // Background revalidate on return to Dashboard so stale list never sticks
+      fetchRecentAssets(true);
     } else {
       setAssets([]);
       setLoading(true);
@@ -135,6 +156,7 @@ function RecentAssets({ refreshTrigger = 0, onHasAssetsChange }) {
     }
 
     const interval = setInterval(() => {
+      if (typeof document !== "undefined" && document.hidden) return;
       fetchRecentAssets(true);
     }, 2 * 60 * 1000);
 
@@ -147,19 +169,22 @@ function RecentAssets({ refreshTrigger = 0, onHasAssetsChange }) {
 
   useEffect(() => {
     if (refreshTrigger > 0) {
-      fetchRecentAssets(true);
+      fetchRecentAssets(true, { forceRefresh: true });
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refreshTrigger]);
 
   useEffect(() => {
     const handleAssetReplaced = () => {
       cachedAssets = null;
-      fetchRecentAssets(true);
+      setCacheBuster(Date.now());
+      fetchRecentAssets(true, { forceRefresh: true });
     };
     window.addEventListener("assetReplaced", handleAssetReplaced);
     return () => {
       window.removeEventListener("assetReplaced", handleAssetReplaced);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleAssetCountChange = (newCount) => {
@@ -324,7 +349,7 @@ function RecentAssets({ refreshTrigger = 0, onHasAssetsChange }) {
           </div>
 
           <button
-            onClick={() => fetchRecentAssets()}
+            onClick={() => fetchRecentAssets(false, { forceRefresh: true })}
             disabled={refreshing}
             className="flex items-center gap-2 px-3 py-1.5 bg-theme-hover border border-theme rounded-lg text-xs font-medium transition-all hover:bg-theme-hover/80"
             title={t("recentAssets.refreshTooltip")}
@@ -377,7 +402,7 @@ function RecentAssets({ refreshTrigger = 0, onHasAssetsChange }) {
         <div className="text-center py-8 text-red-400 bg-red-500/5 rounded-xl border border-red-500/10">
           <p className="text-sm font-medium">Error: {error}</p>
           <button
-            onClick={() => fetchRecentAssets()}
+            onClick={() => fetchRecentAssets(false, { forceRefresh: true })}
             className="mt-3 px-4 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-lg text-xs transition-colors"
           >
             Retry
@@ -398,9 +423,13 @@ function RecentAssets({ refreshTrigger = 0, onHasAssetsChange }) {
                 "--poster-count": assetCount,
               }}
             >
-              {displayedAssets.map((asset, index) => (
+              {displayedAssets.map((asset, index) => {
+                const imgSrc = buildAssetImageUrl(asset, cacheBuster);
+                const hasImageError = !imgSrc || failedImageUrls.has(imgSrc);
+                const assetKey = asset.path || `${asset.library || ""}-${asset.rootfolder || ""}-${asset.type || ""}-${index}`;
+                return (
                 <div
-                  key={index}
+                  key={assetKey}
                   onClick={() => setSelectedAsset(asset)}
                   // REMOVED "h-full" from className to allow bottom alignment to work naturally
                   className="bg-theme-card rounded-xl overflow-hidden border border-theme hover:border-theme-primary/50 hover:shadow-lg hover:-translate-y-1 transition-all duration-300 group flex flex-col cursor-pointer"
@@ -413,23 +442,22 @@ function RecentAssets({ refreshTrigger = 0, onHasAssetsChange }) {
                         : "aspect-[2/3]"
                     }`}
                   >
-                    {asset.has_poster ? (
+                    {asset.has_poster && !hasImageError ? (
                       <img
-                        src={asset.poster_url}
+                        src={imgSrc}
                         alt={asset.title}
                         className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                        onError={(e) => {
-                          e.target.parentElement.innerHTML = `
-                            <div class="w-full h-full flex items-center justify-center bg-theme-hover">
-                              <svg class="w-8 h-8 text-theme-muted opacity-30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                              </svg>
-                            </div>
-                          `;
+                        onError={() => {
+                          setFailedImageUrls((prev) => {
+                            if (prev.has(imgSrc)) return prev;
+                            const next = new Set(prev);
+                            next.add(imgSrc);
+                            return next;
+                          });
                         }}
                       />
                     ) : (
-                      <div className="w-full h-full flex items-center justify-center">
+                      <div className="w-full h-full flex items-center justify-center bg-theme-hover">
                         <ImageOff className="w-8 h-8 text-theme-muted opacity-30" />
                       </div>
                     )}
@@ -503,7 +531,8 @@ function RecentAssets({ refreshTrigger = 0, onHasAssetsChange }) {
                     </div>
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           </div>
 
@@ -576,7 +605,7 @@ function RecentAssets({ refreshTrigger = 0, onHasAssetsChange }) {
             setAssetToReplace(image);
             setReplacerOpen(true);
           }}
-          cacheBuster={cacheBuster}
+          cacheBuster={Math.max(cacheBuster, Math.floor((selectedAsset.modified || 0) * 1000))}
           formatDisplayPath={(path) => selectedAsset.rootfolder}
           formatTimestamp={() => "Unknown"}
           getTypeColor={getTypeColor}
@@ -592,8 +621,9 @@ function RecentAssets({ refreshTrigger = 0, onHasAssetsChange }) {
             setAssetToReplace(null);
           }}
           onSuccess={() => {
+            cachedAssets = null;
             setCacheBuster(Date.now());
-            fetchRecentAssets(true);
+            fetchRecentAssets(true, { forceRefresh: true });
             showSuccess(t("gallery.assetReplaced"));
           }}
         />

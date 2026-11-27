@@ -1,7 +1,9 @@
+import asyncio
 import io
 import fnmatch
 import hashlib
 import json
+import logging
 import os
 import re
 import stat
@@ -16,9 +18,13 @@ from urllib.parse import parse_qsl, quote, quote_plus, urlencode, urlsplit, urlu
 import yaml
 import httpx
 
+logger = logging.getLogger(__name__)
+
 SCHEMA_VERSION = 1
 MAX_BUNDLE_BYTES = 128 * 1024 * 1024
 MAX_EXPANDED_BYTES = 256 * 1024 * 1024
+MAX_OFFICIAL_DEPENDENCY_BYTES = 15 * 1024 * 1024
+OFFICIAL_FETCH_CONCURRENCY = 8
 MAX_FILES = 2048
 ASSET_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".ttf", ".otf"}
 SETTINGS_FIELDS = {
@@ -69,6 +75,38 @@ def official_local_path(source):
     if source.startswith(prefix) and path.suffix.lower() in {".yml", ".yaml"}:
         return "defaults/" + source[len(prefix):]
     return None
+
+
+def _official_dependency_category(local_rel):
+    if local_rel.startswith("defaults/"):
+        return "defaults"
+    if local_rel.startswith("fonts/"):
+        return "fonts"
+    return "images"
+
+
+def _validate_official_dependency_payload(local_rel, payload):
+    if not isinstance(payload, (bytes, bytearray)) or not payload or len(payload) > MAX_OFFICIAL_DEPENDENCY_BYTES:
+        return False
+    data = bytes(payload)
+    suffix = PurePosixPath(local_rel).suffix.lower()
+    if suffix in {".yml", ".yaml"}:
+        try:
+            parsed = yaml.safe_load(data.decode("utf-8-sig"))
+        except (UnicodeError, yaml.YAMLError):
+            return False
+        return isinstance(parsed, dict)
+    if suffix == ".png":
+        return data.startswith(b"\x89PNG\r\n\x1a\n")
+    if suffix in {".jpg", ".jpeg"}:
+        return data.startswith(b"\xff\xd8\xff")
+    if suffix == ".webp":
+        return len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WEBP"
+    if suffix == ".ttf":
+        return len(data) >= 4 and data[:4] in (b"\x00\x01\x00\x00", b"true", b"typ1", b"ttcf")
+    if suffix == ".otf":
+        return data.startswith(b"OTTO")
+    return False
 
 
 def load_official_catalog():
@@ -494,6 +532,21 @@ def inspect_profile(payload, overlays_dir, local_libraries):
         raise BundleError("Bundle library profiles are invalid.")
     if len({profile["name"] for profile in profiles}) != len(profiles):
         raise BundleError("Bundle has duplicate library profiles.")
+    root = Path(overlays_dir).resolve()
+    missing_counts = {"defaults": 0, "images": 0, "fonts": 0}
+    present_count = 0
+    for local in sorted(dependencies):
+        relative = bundle_path(local)
+        dest_candidate = root / relative
+        dest_resolved = dest_candidate.resolve()
+        if not dest_resolved.is_relative_to(root):
+            raise BundleError("Official dependency path escapes overlay directory.")
+        if not dest_candidate.is_symlink() and dest_resolved.is_file() and dest_resolved.stat().st_size > 0:
+            present_count += 1
+        else:
+            missing_counts[_official_dependency_category(local)] += 1
+    missing_total = sum(missing_counts.values())
+
     conflicts = []
     for name, data in files.items():
         relative = bundle_path(name).relative_to("files")
@@ -504,6 +557,9 @@ def inspect_profile(payload, overlays_dir, local_libraries):
         "libraries": profiles, "local_libraries": local_libraries,
         "file_count": len(files), "asset_count": sum(PurePosixPath(name).suffix.lower() in ASSET_EXTENSIONS for name in files),
         "official_dependency_count": len(dependencies),
+        "official_dependencies_present_count": present_count,
+        "missing_official_dependency_count": missing_total,
+        "missing_official_dependencies": missing_counts,
         "conflicts": conflicts,
         "features": {
             "dynamic_overlays": bool((manifest.get("settings") or {}).get("enabled")),
@@ -635,7 +691,129 @@ def prepare_import(payload, overlays_dir, local_libraries, mapping, anime_librar
     settings["change_detection_dry_run"] = True
     return {"writes": writes, "settings": settings, "visual": visual,
             "animetafill": anime if import_settings else {}, "imdb_dataset": bool(manifest.get("imdb_dataset")) if import_settings else None,
+            "official_dependencies": dict(manifest.get("official_dependencies") or {}),
             "libraries": list(selected.values()), "summary": summary}
+
+
+async def fetch_official_dependencies(
+    dependencies,
+    overlays_dir,
+    overwrite=False,
+    concurrency=OFFICIAL_FETCH_CONCURRENCY,
+    fetcher=None,
+):
+    if not dependencies:
+        return {
+            "requested": 0,
+            "downloaded": [],
+            "already_present": [],
+            "failed": [],
+            "sha_changed": 0,
+        }
+
+    root = Path(overlays_dir).resolve()
+    root.mkdir(parents=True, exist_ok=True)
+
+    already_present = []
+    downloaded = []
+    failed = []
+    sha_changed = 0
+    to_fetch = []
+
+    for local, dep in sorted(dependencies.items()):
+        if not isinstance(dep, dict) or official_local_path(dep.get("source", "")) != local:
+            failed.append({"path": str(local), "source": "", "error": "Invalid official dependency metadata."})
+            continue
+        try:
+            relative = bundle_path(local)
+        except BundleError as exc:
+            failed.append({"path": str(local), "source": str(dep.get("source", "")), "error": str(exc)})
+            continue
+
+        dest_link = root / relative
+        dest_resolved = dest_link.resolve()
+        if not dest_resolved.is_relative_to(root):
+            failed.append({"path": local, "source": dep["source"], "error": "Destination escapes overlay directory."})
+            continue
+        if dest_link.is_symlink() or dest_resolved.is_symlink():
+            failed.append({"path": local, "source": dep["source"], "error": "Refusing to overwrite symlink."})
+            continue
+        if not overwrite and dest_resolved.is_file() and dest_resolved.stat().st_size > 0:
+            already_present.append(local)
+            continue
+
+        to_fetch.append((local, dep["source"], str(dep.get("sha") or ""), dest_link))
+
+    if not to_fetch:
+        return {
+            "requested": len(dependencies),
+            "downloaded": [],
+            "already_present": sorted(already_present),
+            "failed": sorted(failed, key=lambda item: item["path"]),
+            "sha_changed": 0,
+        }
+
+    sem = asyncio.Semaphore(max(1, int(concurrency)))
+
+    async def _download_one(client, local, source, expected_sha, dest_link):
+        nonlocal sha_changed
+        url = KOMETA_RAW + quote(source, safe="/-_.~")
+        try:
+            async with sem:
+                if fetcher is not None:
+                    data = await fetcher(source, url)
+                    if not isinstance(data, (bytes, bytearray)):
+                        raise ValueError("Invalid payload returned by dependency fetcher.")
+                    data = bytes(data)
+                else:
+                    async with client.stream("GET", url) as response:
+                        if response.status_code != 200:
+                            raise RuntimeError(f"HTTP {response.status_code}")
+                        chunks = []
+                        total = 0
+                        async for chunk in response.aiter_bytes():
+                            total += len(chunk)
+                            if total > MAX_OFFICIAL_DEPENDENCY_BYTES:
+                                raise ValueError("Official dependency exceeds 15 MiB size limit.")
+                            chunks.append(chunk)
+                        data = b"".join(chunks)
+
+            if not _validate_official_dependency_payload(local, data):
+                raise ValueError("Downloaded dependency failed format validation.")
+
+            if expected_sha and git_blob_hash(data) != expected_sha:
+                sha_changed += 1
+                logger.info("Upstream Kometa dependency '%s' changed since bundle export; accepted validated file.", local)
+
+            dest_link.parent.mkdir(parents=True, exist_ok=True)
+            temp_path = dest_link.with_name(dest_link.name + ".dep-" + uuid.uuid4().hex)
+            try:
+                temp_path.write_bytes(data)
+                os.replace(temp_path, dest_link)
+            finally:
+                temp_path.unlink(missing_ok=True)
+            downloaded.append(local)
+        except Exception as exc:
+            logger.warning("Failed fetching official Kometa dependency '%s' (%s): %s", local, source, exc)
+            failed.append({"path": local, "source": source, "error": str(exc)})
+
+    if fetcher is not None:
+        await asyncio.gather(*(_download_one(None, *item) for item in to_fetch))
+    else:
+        async with httpx.AsyncClient(
+            timeout=25.0,
+            follow_redirects=False,
+            headers={"User-Agent": "Posterizarr-overlay-bundle"},
+        ) as client:
+            await asyncio.gather(*(_download_one(client, *item) for item in to_fetch))
+
+    return {
+        "requested": len(dependencies),
+        "downloaded": sorted(downloaded),
+        "already_present": sorted(already_present),
+        "failed": sorted(failed, key=lambda item: item["path"]),
+        "sha_changed": sha_changed,
+    }
 
 
 def commit_import(plan, config_root):

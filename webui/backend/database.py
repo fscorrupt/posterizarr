@@ -4,13 +4,103 @@ Database module for ImageChoices tracking
 
 import sqlite3
 from pathlib import Path
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional, Tuple, Set
 import logging
 import csv
+import re
 import threading
 from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
+
+_SEASON_SPECIALS_RE = re.compile(
+    r"\b(?:specials?|sonderfolgen|sp[eé]ciaux|especiales)\b",
+    re.IGNORECASE,
+)
+_SEASON_LABEL_RE = re.compile(
+    r"(?:season|staffel|saison|temporada|stagione|sezon|seizoen|s[äa]song|sesong|s[æa]son|kausi|сезон|シーズン|季)[\s#:.-]*0*(\d+)",
+    re.IGNORECASE,
+)
+_SEASON_WORD_ORDINALS: Dict[str, int] = {
+    "one": 1,
+    "two": 2,
+    "three": 3,
+    "four": 4,
+    "five": 5,
+    "six": 6,
+    "seven": 7,
+    "eight": 8,
+    "nine": 9,
+    "ten": 10,
+    "eins": 1,
+    "zwei": 2,
+    "drei": 3,
+    "vier": 4,
+    "fünf": 5,
+    "fuenf": 5,
+    "sechs": 6,
+    "sieben": 7,
+    "acht": 8,
+    "neun": 9,
+    "zehn": 10,
+}
+_SEASON_WORD_RE = re.compile(
+    r"\b(?:season|staffel|saison)\s+(" + "|".join(_SEASON_WORD_ORDINALS.keys()) + r")\b",
+    re.IGNORECASE,
+)
+_SEASON_URL_RE = re.compile(
+    r"/seasons?/(?:(?:official|aired|dvd|absolute)/)?0*(\d{1,4})(?:/|$|\?)",
+    re.IGNORECASE,
+)
+# Exclude single-letter Roman numerals (I, V, X) to avoid false positives on titles like "Gen V".
+_SEASON_ROMAN_NUMERALS: Dict[str, int] = {
+    "II": 2,
+    "III": 3,
+    "IV": 4,
+    "VI": 6,
+    "VII": 7,
+    "VIII": 8,
+    "IX": 9,
+}
+_SEASON_TRAILING_ROMAN_RE = re.compile(r"(?:^|\s)(II|III|IV|VI|VII|VIII|IX)\s*$")
+
+
+def extract_season_number(title: str, fav_provider_link: str = "") -> Optional[int]:
+    """Extract an integer season number from a localized title or provider URL."""
+    raw = str(title or "").strip()
+    tail = raw.split("|")[-1].strip() if "|" in raw else raw
+
+    if raw:
+        match = _SEASON_LABEL_RE.search(tail) or _SEASON_LABEL_RE.search(raw)
+        if match:
+            return int(match.group(1))
+        word_match = _SEASON_WORD_RE.search(tail)
+        if word_match:
+            return _SEASON_WORD_ORDINALS[word_match.group(1).lower()]
+        if _SEASON_SPECIALS_RE.search(tail):
+            return 0
+
+    url_match = _SEASON_URL_RE.search(str(fav_provider_link or ""))
+    if url_match:
+        return int(url_match.group(1))
+
+    if "|" in raw and tail:
+        num_match = re.search(r"\b0*(\d{1,4})\s*$", tail)
+        if num_match:
+            return int(num_match.group(1))
+        roman_match = _SEASON_TRAILING_ROMAN_RE.search(tail)
+        if roman_match:
+            return _SEASON_ROMAN_NUMERALS[roman_match.group(1)]
+
+    return None
+
+
+def extract_season_stem(title: str, fav_provider_link: str = "") -> Optional[str]:
+    """Resolve localized season/special titles or provider URLs to canonical SeasonXX stem."""
+    num = extract_season_number(title, fav_provider_link)
+    if num is None:
+        return None
+    return f"Season{str(num).zfill(2)}"
 
 
 class ImageChoicesDB:
@@ -481,6 +571,162 @@ class ImageChoicesDB:
                     conn.close()
                 raise
 
+    def delete_choices_by_library_rootfolder(self, library_name: str, rootfolder: str) -> int:
+        """Delete non-collection imagechoices rows for a deleted media item's library + rootfolder."""
+        lib_norm = str(library_name or "").strip().lower()
+        root_norm = str(rootfolder or "").strip().lower()
+        if not lib_norm or not root_norm:
+            return 0
+        with self.lock:
+            conn = None
+            try:
+                conn = self._get_connection()
+                cursor = conn.execute(
+                    """
+                    DELETE FROM imagechoices
+                    WHERE LOWER(TRIM(LibraryName)) = ?
+                      AND LOWER(TRIM(Rootfolder)) = ?
+                      AND LOWER(COALESCE(Type, '')) NOT LIKE '%collection%'
+                    """,
+                    (lib_norm, root_norm),
+                )
+                deleted = cursor.rowcount
+                conn.commit()
+                return deleted
+            except sqlite3.Error as e:
+                logger.error(
+                    "Error deleting imagechoices for %s / %s: %s",
+                    library_name,
+                    rootfolder,
+                    e,
+                )
+                if conn is not None:
+                    conn.rollback()
+                return 0
+            finally:
+                if conn is not None:
+                    conn.close()
+
+    def delete_skipped_items_by_library_rootfolder(self, library_name: str, rootfolder: str) -> int:
+        """Delete skipped_items rows matching a deleted media item's library + rootfolder."""
+        lib_norm = str(library_name or "").strip().lower()
+        root_norm = str(rootfolder or "").strip().lower()
+        if not lib_norm or not root_norm:
+            return 0
+        with self.lock:
+            conn = None
+            try:
+                conn = self._get_connection()
+                cursor = conn.execute(
+                    """
+                    DELETE FROM skipped_items
+                    WHERE LOWER(TRIM(LibraryName)) = ?
+                      AND LOWER(TRIM(Rootfolder)) = ?
+                    """,
+                    (lib_norm, root_norm),
+                )
+                deleted = cursor.rowcount
+                conn.commit()
+                return deleted
+            except sqlite3.Error as e:
+                logger.error(
+                    "Error deleting skipped_items for %s / %s: %s",
+                    library_name,
+                    rootfolder,
+                    e,
+                )
+                if conn is not None:
+                    conn.rollback()
+                return 0
+            finally:
+                if conn is not None:
+                    conn.close()
+
+    def prune_missing_from_libraries(
+        self,
+        active_by_library: Dict[str, Set[str]],
+        prune_skipped: bool = False,
+    ) -> Dict[str, int]:
+        """Remove stale Action Center rows whose rootfolder no longer exists in the inspected libraries."""
+        normalized: Dict[str, Set[str]] = {}
+        for lib_name, roots in (active_by_library or {}).items():
+            lib_norm = str(lib_name or "").strip().lower()
+            if not lib_norm:
+                continue
+            root_set = {str(r).strip().lower() for r in (roots or ()) if r is not None and str(r).strip()}
+            if root_set:
+                normalized.setdefault(lib_norm, set()).update(root_set)
+
+        if not normalized:
+            return {"imagechoices_deleted": 0, "skipped_deleted": 0, "libraries_checked": 0}
+
+        imagechoices_deleted = 0
+        skipped_deleted = 0
+        chunk_size = 500
+
+        with self.lock:
+            conn = None
+            try:
+                conn = self._get_connection()
+                cursor = conn.cursor()
+                for lib_norm, active_roots in normalized.items():
+                    cursor.execute(
+                        """
+                        SELECT id, Rootfolder FROM imagechoices
+                        WHERE LOWER(TRIM(LibraryName)) = ?
+                          AND Rootfolder IS NOT NULL
+                          AND TRIM(Rootfolder) != ''
+                          AND LOWER(COALESCE(Type, '')) NOT LIKE '%collection%'
+                        """,
+                        (lib_norm,),
+                    )
+                    stale_ids = [
+                        row["id"]
+                        for row in cursor.fetchall()
+                        if str(row["Rootfolder"]).strip().lower() not in active_roots
+                    ]
+                    for start in range(0, len(stale_ids), chunk_size):
+                        batch = stale_ids[start:start + chunk_size]
+                        placeholders = ",".join("?" for _ in batch)
+                        cursor.execute(f"DELETE FROM imagechoices WHERE id IN ({placeholders})", batch)
+                        imagechoices_deleted += cursor.rowcount
+
+                    if prune_skipped:
+                        cursor.execute(
+                            """
+                            SELECT id, Rootfolder FROM skipped_items
+                            WHERE LOWER(TRIM(LibraryName)) = ?
+                              AND Rootfolder IS NOT NULL
+                              AND TRIM(Rootfolder) != ''
+                            """,
+                            (lib_norm,),
+                        )
+                        stale_skipped_ids = [
+                            row["id"]
+                            for row in cursor.fetchall()
+                            if str(row["Rootfolder"]).strip().lower() not in active_roots
+                        ]
+                        for start in range(0, len(stale_skipped_ids), chunk_size):
+                            batch = stale_skipped_ids[start:start + chunk_size]
+                            placeholders = ",".join("?" for _ in batch)
+                            cursor.execute(f"DELETE FROM skipped_items WHERE id IN ({placeholders})", batch)
+                            skipped_deleted += cursor.rowcount
+
+                conn.commit()
+                return {
+                    "imagechoices_deleted": imagechoices_deleted,
+                    "skipped_deleted": skipped_deleted,
+                    "libraries_checked": len(normalized),
+                }
+            except sqlite3.Error as e:
+                logger.error("Error pruning stale Action Center entries: %s", e)
+                if conn is not None:
+                    conn.rollback()
+                return {"imagechoices_deleted": 0, "skipped_deleted": 0, "libraries_checked": 0}
+            finally:
+                if conn is not None:
+                    conn.close()
+
     def import_from_csv(self, csv_path: Path) -> dict:
         """
         Import data from ImageChoices.csv, inserting new records
@@ -499,13 +745,19 @@ class ImageChoicesDB:
                 errors = 0
                 error_details = []
 
-                with open(csv_path, "r", encoding="utf-8", errors="ignore") as f:
+                with open(csv_path, "r", encoding="utf-8-sig", errors="ignore") as f:
                     reader = csv.DictReader(f, delimiter=";")
 
                     for i, row in enumerate(reader):
                         try:
-                            # Clean up quotes from values
-                            clean_row = {k.strip('"'): v.strip('"') for k, v in row.items()}
+                            # Clean up quotes from values and ignore None keys from trailing semicolons
+                            clean_row = {
+                                str(k).strip('"').strip(): (
+                                    v.strip('"').strip() if isinstance(v, str) else ""
+                                )
+                                for k, v in row.items()
+                                if k is not None
+                            }
 
                             if not clean_row.get("Title") and not clean_row.get("Rootfolder"):
                                 continue

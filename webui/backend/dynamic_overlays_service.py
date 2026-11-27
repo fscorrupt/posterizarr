@@ -30,11 +30,54 @@ ASSET_OVERRIDE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
 VISUAL_MANAGED_OVERLAY_DEFAULTS = {
     "aspect", "audio_codec", "audiocodec", "commonsense", "content_rating", "content_rating_au",
     "content_rating_de", "content_rating_nz", "content_rating_uk", "content_rating_us_movie",
-    "content_rating_us_show", "languages", "network", "ratings", "rating", "resolution",
-    "runtimes", "runtime", "single_rating", "status", "streaming", "studio", "video_format",
-    "videoformat", "format"
+    "content_rating_us_show", "languages", "mediastinger", "network", "ratings", "rating",
+    "resolution", "ribbon", "runtimes", "runtime", "single_rating", "status", "streaming",
+    "studio", "video_format", "videoformat", "format"
 }
 VISUAL_MANAGED_OVERLAY_FILES = ("overlays_movies.yml", "overlays_tv.yml", "anime_overlays.yml")
+
+STATUS_STATE_KEYS = ("airing", "returning", "ended", "canceled")
+STATUS_DEFAULT_COLORS = {
+    "airing": "#27C24C",
+    "returning": "#FFA500",
+    "canceled": "#ED1F1F",
+    "ended": "#FF0000",
+}
+
+
+def _parse_status_bool(value: Any) -> Optional[bool]:
+    """Parse boolean-like status template variables strictly, returning None when unset."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int) and not isinstance(value, bool):
+        if value == 1:
+            return True
+        if value == 0:
+            return False
+        return None
+    if isinstance(value, str):
+        norm = value.strip().lower()
+        if norm in ("true", "1", "yes"):
+            return True
+        if norm in ("false", "0", "no"):
+            return False
+    return None
+
+
+def extract_status_states_enabled(vars_dict: Dict[str, Any]) -> Dict[str, bool]:
+    """Resolve enabled/disabled state flags for Airing, Returning, Ended, and Canceled."""
+    vars_lower = {str(k).strip().lower(): v for k, v in (vars_dict or {}).items()}
+    use_all = _parse_status_bool(vars_lower.get("use_all"))
+    result: Dict[str, bool] = {}
+    for st in STATUS_STATE_KEYS:
+        explicit = _parse_status_bool(vars_lower.get(f"use_{st}"))
+        if explicit is not None:
+            result[st] = explicit
+        elif use_all is not None:
+            result[st] = use_all
+        else:
+            result[st] = True
+    return result
 
 
 def _normalize_asset_overrides(value: Any) -> Dict[str, Dict[str, str]]:
@@ -662,7 +705,7 @@ def generate_starter_visual_config(detected_libraries: Optional[List[Dict[str, s
                 "resolution": {
                     "enabled": True,
                     "mode": "corner_badge",
-                    "banner_4k": True,
+                    "banner_4k": False,
                     "banner_1080p": False,
                     "banner_720p": False,
                     "tiers": ["4k", "1080p", "720p", "576p", "480p"],
@@ -711,12 +754,9 @@ def generate_starter_visual_config(detected_libraries: Optional[List[Dict[str, s
                     "offset_x": 0,
                     "offset_y": 23,
                     "font_size": 80,
-                    "colors": {
-                        "airing": "#27C24C",
-                        "returning": "#FFA500",
-                        "canceled": "#ED1F1F",
-                        "ended": "#FF0000"
-                    }
+                    "colors": dict(STATUS_DEFAULT_COLORS),
+                    "states": {st: True for st in STATUS_STATE_KEYS},
+                    "texts": {st: "" for st in STATUS_STATE_KEYS}
                 },
                 "network": {
                     "enabled": False,
@@ -772,6 +812,42 @@ def generate_starter_visual_config(detected_libraries: Optional[List[Dict[str, s
     return {"libraries": visual_libs}
 
 
+def _resolve_visual_badge_slot(default_name: str, file_name: str, vars_dict: Dict[str, Any]) -> Optional[str]:
+    """Map a config.yml overlay rule to its single-instance Visual Badges slot key, or None if unmanaged."""
+    if default_name == "languages":
+        return "subtitle_languages" if str(vars_dict.get("use_subtitles", False)).lower() in ("true", "1") else "audio_languages"
+    if default_name == "single_rating":
+        return "rating"
+    if default_name in ("runtimes", "runtime"):
+        return "runtime"
+    if default_name == "status":
+        return "status"
+    if default_name == "network":
+        return "network"
+    if default_name in (
+        "commonsense", "content_rating", "content_rating_de", "content_rating_uk",
+        "content_rating_au", "content_rating_nz", "content_rating_us_movie", "content_rating_us_show",
+    ):
+        return "age_rating"
+    if default_name in ("ratings", "rating"):
+        return "critic_rating"
+    if "overlays_movies.yml" in file_name or "overlays_tv.yml" in file_name or default_name == "resolution":
+        return "resolution"
+    if default_name in ("audio_codec", "audiocodec"):
+        return "audio_codec"
+    if default_name in ("video_format", "videoformat", "format"):
+        return "video_format"
+    if default_name in ("aspect", "studio", "streaming"):
+        return default_name
+    if default_name == "ribbon":
+        return "ribbon"
+    if default_name == "mediastinger":
+        return "mediastinger"
+    if "anime_overlays.yml" in file_name or default_name == "anime":
+        return "anime"
+    return None
+
+
 def parse_config_yml_to_visual(config_path: Optional[Path] = None, auto_seed: bool = False) -> Dict[str, Any]:
     """
     Parses config.yml into a high-level, human-friendly JSON structure.
@@ -798,8 +874,8 @@ def parse_config_yml_to_visual(config_path: Optional[Path] = None, auto_seed: bo
         with open(path, "r", encoding="utf-8") as f:
             raw = yaml.safe_load(f) or {}
     except Exception as e:
-        logger.error(f"Failed parsing {path}: {e}")
-        return {"libraries": {}, "error": str(e)}
+        logger.error(f"Failed parsing {path}: {e}", exc_info=True)
+        return {"libraries": {}, "error": "Failed to parse configuration file. Check backend logs for details."}
 
     # Extract API keys if present on import / read
     if isinstance(raw, dict):
@@ -954,12 +1030,9 @@ def parse_config_yml_to_visual(config_path: Optional[Path] = None, auto_seed: bo
                 "offset_x": 0,
                 "offset_y": 23,
                 "font_size": 80,
-                "colors": {
-                    "airing": "#27C24C",
-                    "returning": "#FFA500",
-                    "canceled": "#ED1F1F",
-                    "ended": "#FF0000"
-                }
+                "colors": dict(STATUS_DEFAULT_COLORS),
+                "states": {st: True for st in STATUS_STATE_KEYS},
+                "texts": {st: "" for st in STATUS_STATE_KEYS}
             },
             "network": {
                 "enabled": False,
@@ -991,8 +1064,28 @@ def parse_config_yml_to_visual(config_path: Optional[Path] = None, auto_seed: bo
             "anime": {
                 "enabled": False,
                 "level": "episode"
+            },
+            "ribbon": {
+                "enabled": False,
+                "level": "movie" if media_type == "movie" else "show",
+                "style": "yellow",
+                "position": "bottom-right",
+                "offset_x": 0,
+                "offset_y": 0
+            },
+            "mediastinger": {
+                "enabled": False,
+                "level": "movie",
+                "position": "top-right",
+                "offset_x": 15,
+                "offset_y": 15,
+                "back_color": "#00000099",
+                "back_width": 105,
+                "back_height": 105
             }
         }
+
+        seen_badge_slots: set = set()
 
         # Inspect overlay_files rules
         for entry in overlay_files:
@@ -1001,17 +1094,27 @@ def parse_config_yml_to_visual(config_path: Optional[Path] = None, auto_seed: bo
 
             default_name = str(entry.get("default", "")).lower()
             file_name = str(entry.get("file", "")).lower()
+            vars_dict = entry.get("template_variables") or {}
             is_managed_rule = default_name in VISUAL_MANAGED_OVERLAY_DEFAULTS or any(
                 managed_file in file_name for managed_file in VISUAL_MANAGED_OVERLAY_FILES
             )
-            if is_managed_rule:
-                managed_overlay_count += 1
-            else:
+            slot_key = _resolve_visual_badge_slot(default_name, file_name, vars_dict) if is_managed_rule else None
+            if not is_managed_rule:
                 preserved_overlay_files.append({
                     "position": managed_overlay_count,
                     "rule": copy.deepcopy(entry)
                 })
-            vars_dict = entry.get("template_variables") or {}
+            elif slot_key and slot_key in seen_badge_slots:
+                preserved_overlay_files.append({
+                    "position": managed_overlay_count,
+                    "rule": copy.deepcopy(entry),
+                    "multi_instance": True
+                })
+                continue
+            else:
+                managed_overlay_count += 1
+                if slot_key:
+                    seen_badge_slots.add(slot_key)
             asset_family = default_name or (
                 "resolution" if any(name in file_name for name in ("overlays_movies.yml", "overlays_tv.yml")) else ""
             )
@@ -1086,6 +1189,7 @@ def parse_config_yml_to_visual(config_path: Optional[Path] = None, auto_seed: bo
             elif default_name == "status":
                 h_pos = vars_dict.get("horizontal_align") or vars_dict.get("horizontal_position", "center")
                 v_pos = vars_dict.get("vertical_align") or vars_dict.get("vertical_position", "bottom")
+                fallback_font_color = str(vars_dict.get("font_color") or "").strip()
                 badges["status"] = {
                     "enabled": True,
                     "level": vars_dict.get("builder_level", "show"),
@@ -1093,15 +1197,21 @@ def parse_config_yml_to_visual(config_path: Optional[Path] = None, auto_seed: bo
                     "offset_x": vars_dict.get("horizontal_offset", 0),
                     "offset_y": vars_dict.get("vertical_offset", 23),
                     "font_size": vars_dict.get("font_size", 80),
+                    "font": vars_dict.get("font", ""),
                     "back_color": vars_dict.get("back_color", "#00000000"),
                     "back_radius": int(vars_dict.get("back_radius", 15)),
                     "back_width": int(vars_dict.get("back_width", 965)),
                     "back_height": int(vars_dict.get("back_height", 149)),
                     "colors": {
-                        "airing": vars_dict.get("font_color_airing", "#27C24C"),
-                        "returning": vars_dict.get("font_color_returning", "#FFA500"),
-                        "canceled": vars_dict.get("font_color_canceled", "#ED1F1F"),
-                        "ended": vars_dict.get("font_color_ended", "#FF0000")
+                        st: str(vars_dict.get(f"font_color_{st}") or "").strip()
+                        or fallback_font_color
+                        or STATUS_DEFAULT_COLORS[st]
+                        for st in STATUS_STATE_KEYS
+                    },
+                    "states": extract_status_states_enabled(vars_dict),
+                    "texts": {
+                        st: str(vars_dict.get(f"text_{st}") or "")
+                        for st in STATUS_STATE_KEYS
                     },
                     "template_variables": dict(vars_dict)
                 }
@@ -1169,16 +1279,19 @@ def parse_config_yml_to_visual(config_path: Optional[Path] = None, auto_seed: bo
 
             # 6. Resolution Banner & Movie/TV overlay files
             elif "overlays_movies.yml" in file_name or "overlays_tv.yml" in file_name or default_name == "resolution":
+                from overlay_sync_service import RESOLUTION_TIERS, extract_enabled_resolution_tiers
+
                 h_pos = vars_dict.get("horizontal_align") or vars_dict.get("horizontal_position", "left")
                 v_pos = vars_dict.get("vertical_align") or vars_dict.get("vertical_position", "top")
                 has_banner_4k = bool(vars_dict.get("4K_banner"))
                 has_4k_badge = bool(vars_dict.get("4K"))
+                is_legacy_file = "overlays_movies.yml" in file_name or "overlays_tv.yml" in file_name
 
                 # In TV show libraries:
                 # - 4K_banner is a top ribbon banner specifically for show posters.
                 # - 4K is a corner badge specifically for episode titlecards (defaulting to top-left, 15px offset).
                 # Neither one cancels or displaces the other.
-                is_banner = bool(has_banner_4k or vars_dict.get("mode") == "banner" or (vars_dict.get("4K_banner") is not False and ("overlays_movies.yml" in file_name or "overlays_tv.yml" in file_name) and not has_4k_badge))
+                is_banner = bool(has_banner_4k or vars_dict.get("mode") == "banner" or (vars_dict.get("4K_banner") is not False and is_legacy_file and not has_4k_badge))
 
                 badge_pos = _to_unified_position(h_pos, v_pos)
                 if badge_pos == "top-center" and (media_type == "show" or "tv" in file_name) and not vars_dict.get("horizontal_align"):
@@ -1190,14 +1303,33 @@ def parse_config_yml_to_visual(config_path: Optional[Path] = None, auto_seed: bo
                 off_x = int(raw_x) if raw_x is not None else 15
                 off_y = int(raw_y) if raw_y is not None else 15
 
+                has_explicit_tier_vars = any(
+                    str(k).strip().lower() in ("tiers", "use_all", "use_4k", "use_1080p", "use_720p", "use_576p", "use_480p", "use_resolution")
+                    for k in vars_dict
+                )
+                if is_legacy_file and not has_explicit_tier_vars:
+                    legacy_tiers = [
+                        t for t, active in (
+                            ("4k", has_banner_4k or has_4k_badge),
+                            ("1080p", bool(vars_dict.get("1080p_banner", vars_dict.get("1080p", False)))),
+                            ("720p", bool(vars_dict.get("720p_banner", False))),
+                        ) if active
+                    ]
+                    enabled_tiers = legacy_tiers or list(RESOLUTION_TIERS)
+                    resolved_mode = "banner" if (is_banner and media_type != "show") else ("both" if (has_banner_4k and has_4k_badge) else ("banner" if has_banner_4k else "corner_badge"))
+                else:
+                    enabled_tiers = extract_enabled_resolution_tiers(vars_dict)
+                    resolved_mode = "banner" if is_banner else "corner_badge"
+
                 badges["resolution"] = {
                     "enabled": True if default_name == "resolution" else bool(has_4k_badge or has_banner_4k or vars_dict.get("1080p")),
+                    "source": "legacy_file" if is_legacy_file else "default",
                     "level": vars_dict.get("builder_level", "movie" if media_type == "movie" else "show"),
-                    "mode": "banner" if (is_banner and media_type != "show") else ("both" if (has_banner_4k and has_4k_badge) else ("banner" if has_banner_4k else "corner_badge")),
-                    "banner_4k": has_banner_4k,
-                    "banner_1080p": bool(vars_dict.get("1080p_banner", vars_dict.get("1080p", False))),
-                    "banner_720p": bool(vars_dict.get("720p_banner", False)),
-                    "tiers": vars_dict.get("tiers", ["4k", "1080p", "720p", "576p", "480p"]),
+                    "mode": resolved_mode,
+                    "banner_4k": has_banner_4k if is_legacy_file else (is_banner and "4k" in enabled_tiers),
+                    "banner_1080p": bool(vars_dict.get("1080p_banner", vars_dict.get("1080p", False))) if is_legacy_file else (is_banner and "1080p" in enabled_tiers),
+                    "banner_720p": bool(vars_dict.get("720p_banner", False)) if is_legacy_file else (is_banner and "720p" in enabled_tiers),
+                    "tiers": enabled_tiers,
                     "position": badge_pos,
                     "offset_x": off_x,
                     "offset_y": off_y,
@@ -1276,6 +1408,41 @@ def parse_config_yml_to_visual(config_path: Optional[Path] = None, auto_seed: bo
                         "spacing": vars_dict.get("spacing", 115),
                         "orientation": vars_dict.get("orientation", "vertical")
                     } if default_name == "streaming" else {})
+                }
+
+            elif default_name == "ribbon":
+                h_pos = vars_dict.get("horizontal_align") or vars_dict.get("horizontal_position", "right")
+                v_pos = vars_dict.get("vertical_align") or vars_dict.get("vertical_position", "bottom")
+                raw_x = vars_dict.get("horizontal_offset")
+                raw_y = vars_dict.get("vertical_offset")
+                style_val = str(vars_dict.get("style") or "yellow").strip().lower()
+                if style_val not in ("yellow", "red", "black", "gray"):
+                    style_val = "yellow"
+                badges["ribbon"] = {
+                    "enabled": True,
+                    "level": vars_dict.get("builder_level", "movie" if media_type == "movie" else "show"),
+                    "style": style_val,
+                    "position": _to_unified_position(h_pos, v_pos),
+                    "offset_x": int(raw_x) if raw_x is not None else 0,
+                    "offset_y": int(raw_y) if raw_y is not None else 0,
+                    "template_variables": dict(vars_dict)
+                }
+
+            elif default_name == "mediastinger":
+                h_pos = vars_dict.get("horizontal_align") or vars_dict.get("horizontal_position", "right")
+                v_pos = vars_dict.get("vertical_align") or vars_dict.get("vertical_position", "top")
+                raw_x = vars_dict.get("horizontal_offset")
+                raw_y = vars_dict.get("vertical_offset")
+                badges["mediastinger"] = {
+                    "enabled": True,
+                    "level": vars_dict.get("builder_level", "movie"),
+                    "position": _to_unified_position(h_pos, v_pos),
+                    "offset_x": int(raw_x) if raw_x is not None else 15,
+                    "offset_y": int(raw_y) if raw_y is not None else 15,
+                    "back_color": vars_dict.get("back_color", "#00000099"),
+                    "back_width": int(vars_dict.get("back_width", 105)),
+                    "back_height": int(vars_dict.get("back_height", 105)),
+                    "template_variables": dict(vars_dict)
                 }
 
             # 9. Anime Overlays
@@ -1424,6 +1591,12 @@ def compile_visual_to_config_yml(visual_data: Dict[str, Any], output_path: Optio
             b_lang = badges.get(language_key, {})
             if not b_lang.get("enabled"):
                 continue
+            try:
+                lang_limit = int(b_lang.get("limit", 5))
+            except (TypeError, ValueError):
+                lang_limit = 5
+            if lang_limit < 1:
+                lang_limit = 5
             h, v = _split_unified_position(b_lang.get("position", "bottom-left"))
             overlay_files.append({
                 "default": "languages",
@@ -1432,7 +1605,7 @@ def compile_visual_to_config_yml(visual_data: Dict[str, Any], output_path: Optio
                     "use_subtitles": language_key == "subtitle_languages",
                     "languages": b_lang.get("languages", ["de", "en"]),
                     "builder_level": b_lang.get("level", "episode" if media_type == "show" else "movie"),
-                    "overlay_limit": int(b_lang.get("limit", 5)),
+                    "overlay_limit": lang_limit,
                     "horizontal_position": h,
                     "vertical_position": v,
                     "style": b_lang.get("style", "round"),
@@ -1470,28 +1643,92 @@ def compile_visual_to_config_yml(visual_data: Dict[str, Any], output_path: Optio
                 }
             })
 
+        # 3b. Award / Chart Ribbon (Movies & TV Shows)
+        b_ribbon = badges.get("ribbon", {})
+        if b_ribbon.get("enabled"):
+            h, v = _split_unified_position(b_ribbon.get("position", "bottom-right"))
+            style_val = str(b_ribbon.get("style") or "yellow").strip().lower()
+            if style_val not in ("yellow", "red", "black", "gray"):
+                style_val = "yellow"
+            ribbon_vars: Dict[str, Any] = {
+                **b_ribbon.get("template_variables", {}),
+                "builder_level": b_ribbon.get("level", "movie" if media_type == "movie" else "show"),
+                "style": style_val,
+                "horizontal_align": h,
+                "vertical_align": v,
+                "horizontal_offset": int(b_ribbon.get("offset_x", 0)),
+                "vertical_offset": int(b_ribbon.get("offset_y", 0))
+            }
+            ribbon_vars.pop("horizontal_position", None)
+            ribbon_vars.pop("vertical_position", None)
+            overlay_files.append({
+                "default": "ribbon",
+                "template_variables": ribbon_vars
+            })
+
+        # 3c. Media Stinger (Movies only)
+        b_stinger = badges.get("mediastinger", {})
+        if media_type == "movie" and b_stinger.get("enabled"):
+            h, v = _split_unified_position(b_stinger.get("position", "top-right"))
+            stinger_vars: Dict[str, Any] = {
+                **b_stinger.get("template_variables", {}),
+                "builder_level": b_stinger.get("level", "movie"),
+                "horizontal_align": h,
+                "vertical_align": v,
+                "horizontal_offset": int(b_stinger.get("offset_x", 15)),
+                "vertical_offset": int(b_stinger.get("offset_y", 15)),
+                "back_color": b_stinger.get("back_color", "#00000099"),
+                "back_width": int(b_stinger.get("back_width", 105)),
+                "back_height": int(b_stinger.get("back_height", 105))
+            }
+            stinger_vars.pop("horizontal_position", None)
+            stinger_vars.pop("vertical_position", None)
+            overlay_files.append({
+                "default": "mediastinger",
+                "template_variables": stinger_vars
+            })
+
         # 4. Show Status (TV only)
         b_stat = badges.get("status", {})
         if media_type == "show" and b_stat.get("enabled"):
             h, v = _split_unified_position(b_stat.get("position", "bottom-center"))
             colors = b_stat.get("colors", {})
+            raw_tpl_vars = b_stat.get("template_variables", {})
+            stale_status_keys = {"font_color", "text", "use_all"} | {f"use_{st}" for st in STATUS_STATE_KEYS}
             stat_vars: Dict[str, Any] = {
-                **b_stat.get("template_variables", {}),
+                k: val for k, val in raw_tpl_vars.items()
+                if str(k).strip().lower() not in stale_status_keys
+            }
+            prev_font = str(raw_tpl_vars.get("font") or "").strip()
+            stat_vars.update({
                 "horizontal_align": h,
                 "vertical_align": v,
                 "horizontal_offset": int(b_stat.get("offset_x", 0)),
                 "vertical_offset": int(b_stat.get("offset_y", 23)),
                 "font_size": int(b_stat.get("font_size", 80)),
-                "font": "config/fonts/Colus-Regular.ttf",
+                "font": str(b_stat.get("font") or prev_font or "config/fonts/Colus-Regular.ttf"),
                 "back_height": int(b_stat.get("back_height", 149)),
                 "back_width": int(b_stat.get("back_width", 965)),
                 "back_color": b_stat.get("back_color", "#00000000"),
                 "back_radius": int(b_stat.get("back_radius", 15)),
-                "font_color_airing": colors.get("airing", "#27C24C"),
-                "font_color_returning": colors.get("returning", "#FFA500"),
-                "font_color_canceled": colors.get("canceled", "#ED1F1F"),
-                "font_color_ended": colors.get("ended", "#FF0000")
-            }
+            })
+            for st in STATUS_STATE_KEYS:
+                stat_vars[f"font_color_{st}"] = (
+                    str(colors.get(st) or "").strip() or STATUS_DEFAULT_COLORS[st]
+                )
+            states = b_stat.get("states")
+            if isinstance(states, dict):
+                for st in STATUS_STATE_KEYS:
+                    if states.get(st) is False:
+                        stat_vars[f"use_{st}"] = False
+            texts = b_stat.get("texts")
+            if isinstance(texts, dict):
+                for st in STATUS_STATE_KEYS:
+                    txt = str(texts.get(st) or "").strip()
+                    if txt:
+                        stat_vars[f"text_{st}"] = txt
+                    else:
+                        stat_vars.pop(f"text_{st}", None)
             if b_stat.get("level"):
                 stat_vars["builder_level"] = b_stat["level"]
             overlay_files.append({
@@ -1532,28 +1769,26 @@ def compile_visual_to_config_yml(visual_data: Dict[str, Any], output_path: Optio
         # 6. Resolution Overlays (Corner Badges or Top Ribbon Banner)
         b_res = badges.get("resolution", {})
         if b_res.get("enabled"):
-            res_mode = b_res.get("mode", "ribbon" if b_res.get("banner_4k") else "corner_badge")
+            from overlay_sync_service import RESOLUTION_TIERS
+
+            raw_mode = str(b_res.get("mode") or ("banner" if b_res.get("banner_4k") else "corner_badge")).strip().lower()
+            is_banner_mode = raw_mode in ("banner", "ribbon", "both")
             h, v = _split_unified_position(b_res.get("position", "top-left"))
             res_custom_vars = dict(b_res.get("template_variables", {}))
-            if res_mode == "corner_badge" or (not b_res.get("banner_4k") and not b_res.get("banner_1080p")):
-                corner_vars = {
-                    **res_custom_vars,
-                    "horizontal_align": h,
-                    "vertical_align": v,
-                    "horizontal_offset": int(b_res.get("offset_x", 15)),
-                    "vertical_offset": int(b_res.get("offset_y", 15)),
-                    "back_color": b_res.get("back_color", "#00000099"),
-                    "back_radius": int(b_res.get("back_radius", 15)),
-                    "back_width": int(b_res.get("back_width", 260 if media_type == "show" else 245)),
-                    "back_height": int(b_res.get("back_height", 85 if media_type == "show" else 95))
-                }
-                if b_res.get("level"):
-                    corner_vars["builder_level"] = b_res["level"]
-                overlay_files.append({
-                    "default": "resolution",
-                    "template_variables": corner_vars
-                })
+
+            raw_tiers = b_res.get("tiers")
+            if isinstance(raw_tiers, list):
+                requested_tiers = {str(t).strip().lower() for t in raw_tiers if str(t).strip()}
+                enabled_tiers = [t for t in RESOLUTION_TIERS if t in requested_tiers]
             else:
+                enabled_tiers = list(RESOLUTION_TIERS)
+
+            use_legacy_file = (
+                b_res.get("source") == "legacy_file"
+                and is_banner_mode
+                and bool(b_res.get("banner_4k") or b_res.get("banner_1080p") or b_res.get("banner_720p"))
+            )
+            if use_legacy_file:
                 target_cfg = "config/overlays_movies.yml" if media_type == "movie" else "config/overlays_tv.yml"
                 is_banner = bool(b_res.get("banner_4k", False))
                 has_corner = bool(b_res.get("titlecard_enabled", True if media_type == "show" else (not is_banner)))
@@ -1579,6 +1814,51 @@ def compile_visual_to_config_yml(visual_data: Dict[str, Any], output_path: Optio
                 overlay_files[:] = [r for r in overlay_files if not (isinstance(r, dict) and r.get("default") == "resolution")]
                 overlay_files.append({
                     "file": target_cfg,
+                    "template_variables": res_vars
+                })
+            else:
+                stale_tier_keys = {
+                    "tiers", "use_all", "use_4k", "use_1080p", "use_720p", "use_576p", "use_480p",
+                    "1080p_banner", "720p_banner", "576p_banner", "480p_banner"
+                }
+                res_vars = {
+                    k: val for k, val in res_custom_vars.items()
+                    if str(k).strip().lower() not in stale_tier_keys
+                }
+                if len(enabled_tiers) < len(RESOLUTION_TIERS):
+                    res_vars["use_all"] = False
+                    for tier in enabled_tiers:
+                        res_vars[f"use_{tier}"] = True
+
+                res_vars["mode"] = "banner" if is_banner_mode else "corner_badge"
+                res_vars["4K_banner"] = bool(is_banner_mode and "4k" in enabled_tiers)
+
+                if is_banner_mode:
+                    res_vars["horizontal_align"] = "center"
+                    res_vars["vertical_align"] = "top"
+                    res_vars["horizontal_offset"] = 0
+                    res_vars["vertical_offset"] = 0
+                    if media_type == "show":
+                        res_vars.setdefault("back_color", b_res.get("back_color", "#00000099"))
+                        res_vars.setdefault("back_radius", int(b_res.get("back_radius", 15)))
+                        res_vars.setdefault("back_width", int(b_res.get("back_width", 260)))
+                        res_vars.setdefault("back_height", int(b_res.get("back_height", 85)))
+                else:
+                    res_vars.update({
+                        "horizontal_align": h,
+                        "vertical_align": v,
+                        "horizontal_offset": int(b_res.get("offset_x", 15)),
+                        "vertical_offset": int(b_res.get("offset_y", 15)),
+                        "back_color": b_res.get("back_color", "#00000099"),
+                        "back_radius": int(b_res.get("back_radius", 15)),
+                        "back_width": int(b_res.get("back_width", 260 if media_type == "show" else 245)),
+                        "back_height": int(b_res.get("back_height", 85 if media_type == "show" else 95))
+                    })
+
+                if b_res.get("level"):
+                    res_vars["builder_level"] = b_res["level"]
+                overlay_files.append({
+                    "default": "resolution",
                     "template_variables": res_vars
                 })
 
@@ -1652,6 +1932,10 @@ def compile_visual_to_config_yml(visual_data: Dict[str, Any], output_path: Optio
                     position = max(0, min(int(position), len(overlay_files)))
                 except (TypeError, ValueError):
                     position = len(overlay_files)
+                # Drop legacy preserved copies for rules that are now managed directly via badges,
+                # while keeping intentional multi-instance rules (e.g. show + season language rules).
+                if not record.get("multi_instance") and str(rule.get("default") or "").strip().lower() in VISUAL_MANAGED_OVERLAY_DEFAULTS:
+                    continue
                 anchored_rules.append((position, rule))
 
             if anchored_rules:
@@ -1768,3 +2052,10 @@ def import_yaml_to_visual(raw_yaml_text: str) -> Dict[str, Any]:
         res["extracted_keys"] = list(extracted_keys.keys())
 
     return res
+
+
+def sync_visual_config_from_yaml(config_path: Optional[Path] = None) -> Dict[str, Any]:
+    """Re-parse authoritative config.yml into visual JSON and persist it to disk."""
+    vis = parse_config_yml_to_visual(config_path=config_path, auto_seed=False)
+    save_visual_config(vis)
+    return vis

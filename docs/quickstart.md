@@ -42,9 +42,10 @@ first-run wizard launches automatically:
    yet).
 2. **API Keys:** Enter a **TMDb Read Access Token** or **TheTVDB Project API
    key** (at least one is required) and test the connection.
-3. **Dynamic Overlays step:** Turn on **Dynamic Overlays** here. It starts safely
+3. **Poster Style:** Pick how your clean base posters should look — **Textless + Original ClearLogos** (recommended), **Standard Posters (Kometa-style)**, or **Textless + Uniform Text**. You can adjust or change styles anytime under **Blueprints** or **Config → Global Visuals**.
+4. **Dynamic Overlays step:** Turn on **Dynamic Overlays** here. It starts safely
    in **Dry Run**, so nothing is uploaded while you preview and test.
-4. Click **Finish Setup**.
+5. Click **Finish Setup**.
 
 ![Optional Dynamic Overlays step in the first-run wizard](images/43-first-run-dynamic-overlays.png)
 
@@ -91,9 +92,10 @@ to **Builders > Dynamic Overlays** and click **Setup Wizard**:
 2. Open **Sync & Maintenance > Synchronize**, click **Targeted Reapply** (or
    **Select Movie / Show**), and pick the **single item** you generated in
    Step 2.
-3. Run the sync while **Dry Run** is still **ON**, and confirm in
-   `DynamicOverlaysSync.log` that Posterizarr matched the asset and rendered its
-   overlays without errors.
+3. Run the sync while **Dry Run** is still **ON**. Rendered items appear right
+   away under **Sync & Maintenance > Synchronize > Dry-Run Previews** (with
+   zero uploads to your media server), and detailed logs are written to
+   `DynamicOverlaysSync.log`.
 
 ---
 

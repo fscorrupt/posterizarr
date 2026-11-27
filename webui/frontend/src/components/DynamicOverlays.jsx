@@ -85,6 +85,47 @@ import { useToast } from "../context/ToastContext";
 import { getAssetPreviewFormats, getAssetPreviewGuides } from "../utils/assetPreviewGuides";
 import { getAniMetaFillPreview, getConfiguredPreviewBadges, getPreviewSpriteBounds, getPreviewSpriteOffset } from "../utils/overlayPreview";
 
+const DEFAULT_STATUS_COLORS = {
+  airing: "#27C24C",
+  returning: "#FFA500",
+  ended: "#FF0000",
+  canceled: "#ED1F1F",
+};
+const DEFAULT_STATUS_STATES = {
+  airing: true,
+  returning: true,
+  ended: true,
+  canceled: true,
+};
+const DEFAULT_STATUS_TEXTS = {
+  airing: "",
+  returning: "",
+  ended: "",
+  canceled: "",
+};
+const STATUS_STATE_META = [
+  { key: "airing", label: "Airing", previewValue: "AIRING", defaultText: "AIRING", defaultColor: "#27C24C" },
+  { key: "returning", label: "Returning", previewValue: "RETURNING SERIES", defaultText: "RETURNING", defaultColor: "#FFA500" },
+  { key: "ended", label: "Ended", previewValue: "ENDED", defaultText: "ENDED", defaultColor: "#FF0000" },
+  { key: "canceled", label: "Canceled", previewValue: "CANCELED", defaultText: "CANCELED", defaultColor: "#ED1F1F" },
+];
+
+function normalizeStatusStateKey(raw) {
+  const s = String(raw || "").trim().toLowerCase();
+  if (s === "airing") return "airing";
+  if (s === "returning" || s === "returning series" || s === "continuing") return "returning";
+  if (s === "ended") return "ended";
+  if (s === "canceled" || s === "cancelled") return "canceled";
+  return null;
+}
+
+function toSafeColorPickerHex(value, fallback = "#FFFFFF") {
+  const raw = String(value || "").trim();
+  if (/^#[0-9a-fA-F]{6}$/.test(raw)) return raw;
+  if (/^#[0-9a-fA-F]{8}$/.test(raw)) return raw.slice(0, 7);
+  return fallback;
+}
+
 function templateVisualValues(name, fields) {
   const values = {
     builder_level: fields.level || undefined,
@@ -102,8 +143,16 @@ function templateVisualValues(name, fields) {
     values.style = fields.flagStyle;
   }
   if (name.toLowerCase().includes("status")) {
-    values.text = fields.statusText || undefined;
-    values.font_color = fields.statusColor || undefined;
+    delete values.font_color;
+    delete values.text;
+    for (const meta of STATUS_STATE_META) {
+      const stColor = fields.statusColors?.[meta.key];
+      const stText = String(fields.statusTexts?.[meta.key] || "").trim();
+      const stEnabled = fields.statusStates?.[meta.key];
+      values[`font_color_${meta.key}`] = stColor || undefined;
+      values[`text_${meta.key}`] = stText || undefined;
+      values[`use_${meta.key}`] = stEnabled === false ? false : undefined;
+    }
   }
   return values;
 }
@@ -266,32 +315,41 @@ const AssetPreviewLegend = ({ config, template, showAssetGuides, guideMode, snap
 
 const DEFAULT_OVERLAY_PRESETS = [
   // User's core favorites
-  { id: "runtimes", label: "Media Runtime", desc: "Duration badge (e.g. 124 min) - Recommended for Titlecards / Movies", level: "episode", category: "Core Overlays" },
-  { id: "languages", label: "Audio Languages", desc: "Flags/badges for available audio tracks (DE, EN, JA, etc.) - Recommended for Titlecards / Movies", level: "episode", category: "Core Overlays" },
-  { id: "aspect", label: "Aspect Ratio", desc: "Video display ratio (1.33, 1.78, 2.35, etc.)", level: "movie", category: "Quality & Codecs" },
-  { id: "ratings", label: "Audience / Critic Rating", desc: "IMDb / Rotten Tomatoes / TMDB / Metacritic score badges", level: "movie", category: "Core Overlays" },
+  { id: "runtimes", label: "Media Runtime", desc: "Duration badge (e.g. 124 min) - Recommended for Titlecards / Movies", level: "library_media", category: "Core Overlays" },
+  { id: "languages", label: "Audio Languages", desc: "Flags/badges for available audio tracks (DE, EN, JA, etc.) - Recommended for Titlecards / Movies", level: "library_media", category: "Core Overlays" },
+  { id: "aspect", label: "Aspect Ratio", desc: "Video display ratio (1.33, 1.78, 2.35, etc.)", level: "library", category: "Quality & Codecs" },
+  { id: "ratings", label: "Audience / Critic Rating", desc: "IMDb / Rotten Tomatoes / TMDB / Metacritic score badges", level: "library", category: "Core Overlays" },
   { id: "network", label: "Network Logo", desc: "TV network logos on season posters (HBO, Netflix, Apple TV+, etc.)", level: "season", category: "Core Overlays" },
   { id: "status", label: "Series Status", desc: "Airing, Returning, Ended, Canceled banner for TV series", level: "show", category: "Core Overlays" },
-  { id: "commonsense", label: "Common Sense Media", desc: "Age rating badge (e.g. 10+, 14+, 18+)", level: "movie", category: "Core Overlays" },
-  { id: "resolution", label: "Quality / Resolution Ribbon", desc: "4K, 1080p, HDR badges (used in overlays_movies.yml / overlays_tv.yml)", level: "movie", category: "Quality & Codecs" },
-  { id: "ribbon", label: "Corner Ribbon", desc: "Corner ribbons for 4K UHD, Remux, HDR10+", level: "movie", category: "Quality & Codecs" },
-  { id: "audio_codec", label: "Audio Codec", desc: "Dolby Atmos, TrueHD, DTS:X, DTS-HD MA, EAC3 badges", level: "movie", category: "Quality & Codecs" },
-  { id: "video_format", label: "Video Source", desc: "WEB, Blu-ray, Remux, HDTV, DVD from the media filename", level: "movie", category: "Quality & Codecs" },
-  { id: "streaming", label: "Streaming Service", desc: "Platform badges (Netflix, Prime, Disney+, Apple TV+, Paramount+)", level: "show", category: "Branding" },
-  { id: "studio", label: "Movie Studio", desc: "Studio logo overlays (Universal, Warner Bros, 20th Century, etc.)", level: "movie", category: "Branding" },
+  { id: "commonsense", label: "Common Sense Media", desc: "Age rating badge (e.g. 10+, 14+, 18+)", level: "library", category: "Core Overlays" },
+  { id: "resolution", label: "Quality / Resolution Ribbon", desc: "4K, 1080p, HDR badges (used in overlays_movies.yml / overlays_tv.yml)", level: "library", category: "Quality & Codecs" },
+  { id: "ribbon", label: "Award / Chart Ribbon", desc: "Corner ribbons for awards & charts (Oscars, Emmys, Golden Globes, IMDb Top 250, Rotten Tomatoes, Metacritic)", level: "library", category: "Core Overlays" },
+  { id: "audio_codec", label: "Audio Codec", desc: "Dolby Atmos, TrueHD, DTS:X, DTS-HD MA, EAC3 badges", level: "library", category: "Quality & Codecs" },
+  { id: "video_format", label: "Video Source", desc: "WEB, Blu-ray, Remux, HDTV, DVD from the media filename", level: "library", category: "Quality & Codecs" },
+  { id: "streaming", label: "Streaming Service", desc: "Platform badges (Netflix, Prime, Disney+, Apple TV+, Paramount+)", level: "library", category: "Branding" },
+  { id: "studio", label: "Movie Studio", desc: "Studio logo overlays (Universal, Warner Bros, 20th Century, etc.)", level: "library", category: "Branding" },
   { id: "content_rating_us_movie", label: "US Content Rating (Movie)", desc: "MPAA age rating (G, PG, PG-13, R, NC-17)", level: "movie", category: "Content Ratings" },
   { id: "content_rating_us_show", label: "US Content Rating (TV)", desc: "TV Parental Guidelines (TV-MA, TV-14, TV-PG)", level: "show", category: "Content Ratings" },
-  { id: "content_rating_de", label: "German FSK Rating", desc: "FSK 0, 6, 12, 16, 18 badges", level: "movie", category: "Content Ratings" },
-  { id: "content_rating_au", label: "Australian Content Rating", desc: "Australian classification badges", level: "movie", category: "Content Ratings" },
-  { id: "content_rating_nz", label: "New Zealand Content Rating", desc: "New Zealand classification badges", level: "movie", category: "Content Ratings" },
-  { id: "content_rating_uk", label: "UK Content Rating", desc: "BBFC classification badges", level: "movie", category: "Content Ratings" },
+  { id: "content_rating_de", label: "German FSK Rating", desc: "FSK 0, 6, 12, 16, 18 badges", level: "library", category: "Content Ratings" },
+  { id: "content_rating_au", label: "Australian Content Rating", desc: "Australian classification badges", level: "library", category: "Content Ratings" },
+  { id: "content_rating_nz", label: "New Zealand Content Rating", desc: "New Zealand classification badges", level: "library", category: "Content Ratings" },
+  { id: "content_rating_uk", label: "UK Content Rating", desc: "BBFC classification badges", level: "library", category: "Content Ratings" },
   { id: "direct_play", label: "Direct Play", desc: "Direct-play compatibility overlay", level: "all", category: "Core Overlays" },
   { id: "episode_info", label: "Episode Info", desc: "Episode information overlay", level: "episode", category: "Core Overlays" },
   { id: "language_count", label: "Language Count", desc: "Count of available audio languages", level: "all", category: "Core Overlays" },
-  { id: "mediastinger", label: "Media Stinger", desc: "Media stinger indicator", level: "all", category: "Core Overlays" },
+  { id: "mediastinger", label: "Media Stinger", desc: "Post-credits scene indicator via TMDb keywords (Movies only)", level: "movie", category: "Core Overlays" },
   { id: "templates", label: "Templates", desc: "Kometa overlay template definitions", level: "all", category: "Core Overlays" },
-  { id: "versions", label: "Versions", desc: "Media version badges", level: "movie", category: "Core Overlays" },
+  { id: "versions", label: "Versions", desc: "Media version badges", level: "library", category: "Core Overlays" },
 ];
+
+function resolvePresetBuilderLevel(presetId, libraryMediaType = "movie") {
+  const preset = DEFAULT_OVERLAY_PRESETS.find((p) => p.id === presetId);
+  const isShow = libraryMediaType === "show";
+  if (!preset?.level) return isShow ? "show" : "movie";
+  if (preset.level === "library_media") return isShow ? "episode" : "movie";
+  if (preset.level === "library") return isShow ? "show" : "movie";
+  return preset.level;
+}
 
 const ASSET_OVERRIDE_DEFAULTS = [
   { value: "resolution", label: "Resolution" },
@@ -378,6 +436,13 @@ const PositionPicker = ({ value, onChange, label = "Position" }) => {
   );
 };
 
+const normalizeFontFilename = (raw) => {
+  const s = String(raw || "").trim();
+  if (!s) return "";
+  const parts = s.split(/[\\/]+/).filter(Boolean);
+  return parts.length > 0 ? parts[parts.length - 1] : "";
+};
+
 const BadgeOffsetControls = ({ itemKey, offset = {}, onChange, fonts = [] }) => {
   const [isOpen, setIsOpen] = useState(false);
   const align = offset.align || "right";
@@ -385,7 +450,7 @@ const BadgeOffsetControls = ({ itemKey, offset = {}, onChange, fonts = [] }) => 
   const x = offset.x ?? 0;
   const y = offset.y ?? 0;
   const fontSize = offset.font_size ?? "";
-  const font = offset.font || "";
+  const font = normalizeFontFilename(offset.font);
   const isTextBadge = ["resolution", "rating", "age_rating", "runtime", "status"].includes(itemKey);
 
   return (
@@ -480,6 +545,11 @@ const BadgeOffsetControls = ({ itemKey, offset = {}, onChange, fonts = [] }) => 
                   className="w-full bg-theme-card border border-theme rounded-lg px-2 py-1 text-xs text-theme-text font-medium focus:ring-1 focus:ring-theme-primary focus:outline-none truncate"
                 >
                   <option value="">Default Font</option>
+                  {font && !(fonts || []).includes(font) && (
+                    <option value={font}>
+                      {font.replace(/\.(ttf|otf|woff2?)$/i, "")}
+                    </option>
+                  )}
                   {(fonts || []).map((f) => (
                     <option key={f} value={f}>
                       {f.replace(/\.(ttf|otf|woff2?)$/i, "")}
@@ -574,14 +644,20 @@ export default function DynamicOverlays() {
     try {
       localStorage.setItem("posterizarr_active_overlay_tab", tabId);
     } catch {}
+    if ((tabId === "config" || tabId === "visual" || tabId === "preview") && !isVisualDirty) {
+      fetchVisualConfig();
+    } else if (tabId === "rules") {
+      refreshScanData();
+    }
     if (MAINTENANCE_TAB_IDS.includes(tabId)) {
       fetchOverlaySyncStatus();
+      fetchCleanAssetsCount();
     } else if (tabId === "anime") {
       fetchAnimetafillStatus();
     }
   };
 
-  const [activeAssetTarget, setActiveAssetTarget] = useState("all"); // "all", "poster", "backdrop", "season", "titlecard"
+  const [activeAssetTarget, setActiveAssetTarget] = useState("poster"); // "poster", "backdrop", "season", "titlecard"
   const [multiRatingsParam, setMultiRatingsParam] = useState("");
   const [deleteConfirmModal, setDeleteConfirmModal] = useState({
     open: false,
@@ -675,6 +751,7 @@ export default function DynamicOverlays() {
   });
   const isChangeDetectionDryRun = featureSettings?.change_detection_dry_run !== false;
   const [isUpdatingFeatureSettings, setIsUpdatingFeatureSettings] = useState(false);
+  const [featureSettingsLoaded, setFeatureSettingsLoaded] = useState(false);
   const [ratingsCacheStats, setRatingsCacheStats] = useState(null);
   const [isClearingRatingsCache, setIsClearingRatingsCache] = useState(false);
   const [isBackdropPanelOpen, setIsBackdropPanelOpen] = useState(true);
@@ -686,6 +763,7 @@ export default function DynamicOverlays() {
 
   // Visual Studio / YAML Translator state
   const [visualConfig, setVisualConfig] = useState({ libraries: {} });
+  const [isVisualDirty, setIsVisualDirty] = useState(false);
   const [selectedVisualLib, setSelectedVisualLib] = useState(() => {
     try {
       return localStorage.getItem("posterizarr_selected_visual_lib") || "";
@@ -724,6 +802,60 @@ export default function DynamicOverlays() {
       clearTimeout(clearTimer);
     };
   }, [location.state, visualConfig]);
+  const [highlightedOverlaySetting, setHighlightedOverlaySetting] = useState(null);
+  const lastOverlaySettingJumpTsRef = useRef(null);
+  useEffect(() => {
+    const targetSetting = location.state?.overlaySettingKey;
+    if (!targetSetting || !featureSettingsLoaded) return undefined;
+    const jumpTs = location.state?.ts || targetSetting;
+    if (lastOverlaySettingJumpTsRef.current === jumpTs) return undefined;
+
+    if (!featureSettings?.enabled) {
+      lastOverlaySettingJumpTsRef.current = jumpTs;
+      setHighlightedOverlaySetting("master_switch");
+      const scrollTimer = setTimeout(() => {
+        const masterEl = document.getElementById("overlay-master-switch");
+        masterEl?.scrollIntoView({ behavior: "smooth", block: "center" });
+      }, 100);
+      showToast("Enable Dynamic Overlays first to configure this setting.", "info");
+      const clearTimer = setTimeout(() => {
+        setHighlightedOverlaySetting((prev) => (prev === "master_switch" ? null : prev));
+      }, 3500);
+      return () => {
+        clearTimeout(scrollTimer);
+        clearTimeout(clearTimer);
+      };
+    }
+
+    if (location.state?.targetTab && activeTab !== location.state.targetTab) {
+      setActiveTab(location.state.targetTab);
+      return undefined;
+    }
+
+    lastOverlaySettingJumpTsRef.current = jumpTs;
+    if (location.state?.openEngineSettings) {
+      setIsGlobalSettingsOpen(true);
+    }
+    setHighlightedOverlaySetting(targetSetting);
+
+    const scrollTimer = setTimeout(() => {
+      const el = document.getElementById(`overlay-setting-${targetSetting}`);
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+        if (["mdblist_api_key", "omdb_api_key", "simkl_client_id", "animetafill_simkl_client_id"].includes(targetSetting)) {
+          const input = el.querySelector("input");
+          input?.focus({ preventScroll: true });
+        }
+      }
+    }, 180);
+    const clearTimer = setTimeout(() => {
+      setHighlightedOverlaySetting((prev) => (prev === targetSetting ? null : prev));
+    }, 3500);
+    return () => {
+      clearTimeout(scrollTimer);
+      clearTimeout(clearTimer);
+    };
+  }, [location.state, featureSettingsLoaded, featureSettings?.enabled, activeTab]);
   const [isVisualLoading, setIsVisualLoading] = useState(false);
   const [isVisualSaving, setIsVisualSaving] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
@@ -901,6 +1033,15 @@ export default function DynamicOverlays() {
   const [previewResolution, setPreviewResolution] = useState("4K");
   const [previewStatus, setPreviewStatus] = useState("");
   const [previewStatusColor, setPreviewStatusColor] = useState("#FFA500");
+  const [previewStatusColors, setPreviewStatusColors] = useState({ ...DEFAULT_STATUS_COLORS });
+  const handlePreviewStatusColorChange = (nextColor) => {
+    setPreviewStatusColor(nextColor);
+    const stateKey = normalizeStatusStateKey(previewStatus);
+    if (stateKey) {
+      setPreviewStatusColors(prev => ({ ...prev, [stateKey]: nextColor }));
+    }
+    setPreviewTimestamp(Date.now());
+  };
   const [previewRuntime, setPreviewRuntime] = useState("1h 58m");
   const [previewRuntimePrefix, setPreviewRuntimePrefix] = useState("");
   const [previewRuntimeFormat, setPreviewRuntimeFormat] = useState("<<runtimeH>>h <<runtimeM>>m");
@@ -910,10 +1051,17 @@ export default function DynamicOverlays() {
   const [previewSubtitleStyle, setPreviewSubtitleStyle] = useState("round");
   const [previewLanguages, setPreviewLanguages] = useState("de,en");
   const [previewLanguageLimit, setPreviewLanguageLimit] = useState(5);
+  const effectivePreviewLanguageLimit = (() => {
+    const parsed = parseInt(previewLanguageLimit, 10);
+    return Number.isFinite(parsed) && parsed >= 1 ? parsed : 5;
+  })();
   const [previewSubtitles, setPreviewSubtitles] = useState("");
   const [previewAspect, setPreviewAspect] = useState("");
   const [previewStudio, setPreviewStudio] = useState("");
   const [previewStreaming, setPreviewStreaming] = useState("");
+  const [previewRibbon, setPreviewRibbon] = useState("");
+  const [previewRibbonStyle, setPreviewRibbonStyle] = useState("yellow");
+  const [previewMediastinger, setPreviewMediastinger] = useState(false);
   const [previewNetwork, setPreviewNetwork] = useState("");
   const [previewAnimeTag, setPreviewAnimeTag] = useState("");
   const [previewAgeRating, setPreviewAgeRating] = useState("15+");
@@ -984,6 +1132,8 @@ export default function DynamicOverlays() {
     aspect: { x: 0, y: 150, align: "center", valign: "bottom" },
     studio: { x: 30, y: 150, align: "right", valign: "top" },
     streaming: { x: 30, y: 250, align: "left", valign: "bottom" },
+    ribbon: { x: 0, y: 0, align: "right", valign: "bottom" },
+    mediastinger: { x: 15, y: 15, align: "right", valign: "top" },
     network: { x: 25, y: 25, align: "right", valign: "top" },
     anime: { x: 20, y: 20, align: "left", valign: "top", font_size: "", font: "" },
     age_rating: { x: 255, y: 37, align: "left", valign: "bottom", font_size: "", font: "" },
@@ -1000,6 +1150,8 @@ export default function DynamicOverlays() {
     aspect: { x: 0, y: 100, align: "center", valign: "bottom" },
     studio: { x: 30, y: 100, align: "right", valign: "top" },
     streaming: { x: 30, y: 150, align: "left", valign: "bottom" },
+    ribbon: { x: 0, y: 0, align: "right", valign: "bottom" },
+    mediastinger: { x: 15, y: 15, align: "right", valign: "top" },
     network: { x: 25, y: 25, align: "right", valign: "top" },
     anime: { x: 20, y: 20, align: "left", valign: "top" },
     age_rating: { x: 110, y: 30, align: "left", valign: "bottom" },
@@ -1056,6 +1208,10 @@ export default function DynamicOverlays() {
   const [isSyncLogExpanded, setIsSyncLogExpanded] = useState(false);
   const [isAutoScrollLogs, setIsAutoScrollLogs] = useState(true);
   const syncLogsRef = useRef(null);
+  const [cleanAssetsCount, setCleanAssetsCount] = useState(null);
+  const [dryRunPreviews, setDryRunPreviews] = useState([]);
+  const [selectedDryRunPreview, setSelectedDryRunPreview] = useState(null);
+  const [isClearingDryRunPreviews, setIsClearingDryRunPreviews] = useState(false);
 
   // Dynamically compute enabled media servers from Posterizarr server configuration
   const enabledServers = useMemo(() => {
@@ -1094,6 +1250,12 @@ export default function DynamicOverlays() {
 
     return list;
   }, [serverConfig, t]);
+
+  const getLibraryMediaType = (libName) => {
+    const explicit = visualConfig?.libraries?.[libName]?.media_type || scanData?.libraries?.[libName]?.media_type;
+    if (explicit === "show" || explicit === "movie") return explicit;
+    return /tv|show|serie/i.test(libName || "") ? "show" : "movie";
+  };
 
   // Dynamically compute user-configured libraries from visual studio and scanned rules
   const configuredLibraries = useMemo(() => {
@@ -1172,6 +1334,23 @@ export default function DynamicOverlays() {
     }
   };
 
+  const fetchCleanAssetsCount = async () => {
+    try {
+      const res = await fetch("/api/assets/stats");
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.stats) {
+          const total =
+            (data.stats.posters || 0) +
+            (data.stats.backgrounds || 0) +
+            (data.stats.seasons || 0) +
+            (data.stats.titlecards || 0);
+          setCleanAssetsCount(total);
+        }
+      }
+    } catch (_) {}
+  };
+
   const fetchOverlaySyncStatus = async () => {
     try {
       const res = await fetch("/api/dynamic-overlays/sync/status");
@@ -1179,6 +1358,7 @@ export default function DynamicOverlays() {
         const data = await res.json();
         setIsOverlaySyncRunning(Boolean(data.is_running));
         if (data.last_result) setOverlaySyncStatus(data.last_result);
+        if (Array.isArray(data.dry_run_previews)) setDryRunPreviews(data.dry_run_previews);
         if (fullSyncLogModeRef.current) {
           await fetchFullOverlaySyncLog();
         } else if (Array.isArray(data.recent_logs)) {
@@ -1187,6 +1367,37 @@ export default function DynamicOverlays() {
       }
     } catch (_) {}
   };
+
+  const handleClearDryRunPreviews = async () => {
+    if (isClearingDryRunPreviews) return;
+    try {
+      setIsClearingDryRunPreviews(true);
+      const res = await fetch("/api/dynamic-overlays/dry-run-previews", { method: "DELETE" });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.success) {
+        setDryRunPreviews([]);
+        setSelectedDryRunPreview(null);
+        showSuccess("Cleared Dry-Run previews.");
+      } else {
+        showError(data.error || "Could not clear Dry-Run previews.");
+      }
+    } catch (err) {
+      showError("Error clearing Dry-Run previews: " + err.message);
+    } finally {
+      setIsClearingDryRunPreviews(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!selectedDryRunPreview) return undefined;
+    const onKeyDown = (event) => {
+      if (event.key === "Escape") {
+        setSelectedDryRunPreview(null);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [selectedDryRunPreview]);
 
   const handleToggleFullSyncLog = async () => {
     if (fullSyncLogLoadingRef.current) return;
@@ -1754,7 +1965,9 @@ export default function DynamicOverlays() {
       anime: { w: 240, h: 80 },
       age_rating: { w: 120, h: 48 },
       audio_codec: { w: 140, h: 42 },
-      video_format: { w: 120, h: 36 }
+      video_format: { w: 120, h: 36 },
+      ribbon: { w: 300, h: 300 },
+      mediastinger: { w: 105, h: 105 }
     },
     landscape: {
       resolution: { w: 240, h: 80 },
@@ -1766,7 +1979,9 @@ export default function DynamicOverlays() {
       anime: { w: 280, h: 90 },
       age_rating: { w: 140, h: 55 },
       audio_codec: { w: 160, h: 48 },
-      video_format: { w: 140, h: 40 }
+      video_format: { w: 140, h: 40 },
+      ribbon: { w: 220, h: 220 },
+      mediastinger: { w: 105, h: 105 }
     }
   };
 
@@ -1864,6 +2079,8 @@ export default function DynamicOverlays() {
     aspect: "Aspect Ratio",
     studio: "Studio Logo",
     streaming: "Streaming Services",
+    ribbon: "Award / Chart Ribbon",
+    mediastinger: "Media Stinger",
     network: "Network Logo",
     anime: "Anime Tag",
     status: "Show Status",
@@ -1889,6 +2106,8 @@ export default function DynamicOverlays() {
     if (previewAspect) list.push("aspect");
     if (previewStudio) list.push("studio");
     if (previewStreaming) list.push("streaming");
+    if (previewRibbon) list.push("ribbon");
+    if (previewMediastinger && !["show_poster", "season_poster", "episode_card", "titlecard"].includes(previewTemplate)) list.push("mediastinger");
     if (previewNetwork && previewNetwork !== "Off") list.push("network");
     if (previewAnimeTag && previewAnimeTag !== "Off" && isLandscapeFormat(previewTemplate)) list.push("anime");
     if (previewStatus) list.push("status");
@@ -2061,8 +2280,9 @@ export default function DynamicOverlays() {
   const [visualFlagStyle, setVisualFlagStyle] = useState("round");
   const visualVariableBaseline = useRef({});
   const [templateVariableErrors, setTemplateVariableErrors] = useState({});
-  const [visualStatusText, setVisualStatusText] = useState("");
-  const [visualStatusColor, setVisualStatusColor] = useState("#FFA500");
+  const [visualStatusStates, setVisualStatusStates] = useState({ ...DEFAULT_STATUS_STATES });
+  const [visualStatusColors, setVisualStatusColors] = useState({ ...DEFAULT_STATUS_COLORS });
+  const [visualStatusTexts, setVisualStatusTexts] = useState({ ...DEFAULT_STATUS_TEXTS });
   const [visualFont, setVisualFont] = useState("");
   const [visualFontSize, setVisualFontSize] = useState("");
   const [visualFontColor, setVisualFontColor] = useState("");
@@ -2085,6 +2305,8 @@ export default function DynamicOverlays() {
       }
     } catch (err) {
       console.error("Failed fetching dynamic overlays settings:", err);
+    } finally {
+      setFeatureSettingsLoaded(true);
     }
   };
 
@@ -2225,6 +2447,29 @@ export default function DynamicOverlays() {
   };
 
   // 1b. Visual Studio / YAML Translator Handlers
+  const applySyncedVisualConfig = (cfg) => {
+    if (!cfg || !cfg.libraries) return;
+    setVisualConfig(cfg);
+    setIsVisualDirty(false);
+    setPreviewRecipeRevision(previous => previous + 1);
+    const libKeys = Object.keys(cfg.libraries);
+    if (libKeys.length === 0) {
+      setSelectedVisualLib("");
+      setSelectedSaveLibrary("");
+      try { localStorage.removeItem("posterizarr_selected_visual_lib"); } catch {}
+      return;
+    }
+    if (!selectedVisualLib || !cfg.libraries[selectedVisualLib]) {
+      let savedLib = "";
+      try { savedLib = localStorage.getItem("posterizarr_selected_visual_lib") || ""; } catch {}
+      const targetLib = (savedLib && cfg.libraries[savedLib]) ? savedLib : libKeys[0];
+      setSelectedVisualLib(targetLib);
+      setSelectedSaveLibrary(targetLib);
+      try { localStorage.setItem("posterizarr_selected_visual_lib", targetLib); } catch {}
+      handleSelectPreviewLibrary(targetLib, cfg);
+    }
+  };
+
   const fetchVisualConfig = async () => {
     try {
       setIsVisualLoading(true);
@@ -2233,14 +2478,21 @@ export default function DynamicOverlays() {
         const data = await res.json();
         if (data.config && data.config.libraries) {
           setVisualConfig(data.config);
+          setIsVisualDirty(false);
           setPreviewRecipeRevision(previous => previous + 1);
           const libKeys = Object.keys(data.config.libraries);
-          const savedLib = localStorage.getItem("posterizarr_selected_visual_lib");
-          const targetLib = (savedLib && data.config.libraries[savedLib]) ? savedLib : (libKeys[0] || "");
-          if (targetLib) {
-            setSelectedVisualLib(targetLib);
-            setSelectedSaveLibrary(targetLib);
-            handleSelectPreviewLibrary(targetLib, data.config);
+          if (libKeys.length === 0) {
+            setSelectedVisualLib("");
+            setSelectedSaveLibrary("");
+            try { localStorage.removeItem("posterizarr_selected_visual_lib"); } catch {}
+          } else {
+            const savedLib = localStorage.getItem("posterizarr_selected_visual_lib");
+            const targetLib = (savedLib && data.config.libraries[savedLib]) ? savedLib : (libKeys[0] || "");
+            if (targetLib) {
+              setSelectedVisualLib(targetLib);
+              setSelectedSaveLibrary(targetLib);
+              handleSelectPreviewLibrary(targetLib, data.config);
+            }
           }
         }
       }
@@ -2261,6 +2513,11 @@ export default function DynamicOverlays() {
       });
       const data = await res.json();
       if (res.ok && data.success) {
+        setIsVisualDirty(false);
+        if (data.scan) setScanData(data.scan);
+        if (data.config?.libraries) {
+          applySyncedVisualConfig(data.config);
+        }
         showSuccess("Visual configuration saved and compiled! No YAML edits needed.");
         fetchAllData();
       } else {
@@ -2280,7 +2537,12 @@ export default function DynamicOverlays() {
       const data = await res.json();
       if (res.ok && data.success) {
         showSuccess(data.message || "Turnkey overlays configured successfully!");
-        if (data.scan) setScanData(data.scan);
+        setIsVisualDirty(false);
+        if (data.scan) {
+          setScanData(data.scan);
+        } else {
+          fetchAllData();
+        }
         if (data.config) {
           setVisualConfig(data.config);
           const libKeys = Object.keys(data.config.libraries || {});
@@ -2289,7 +2551,7 @@ export default function DynamicOverlays() {
             setSelectedVisualLib(firstLib);
             setSelectedSaveLibrary(firstLib);
             try { localStorage.setItem("posterizarr_selected_visual_lib", firstLib); } catch {}
-            handleSelectPreviewLibrary(firstLib);
+            handleSelectPreviewLibrary(firstLib, data.config);
           }
         }
       } else {
@@ -2318,6 +2580,8 @@ export default function DynamicOverlays() {
       const data = await res.json();
       if (res.ok && data.success && data.config) {
         setVisualConfig(data.config);
+        setIsVisualDirty(false);
+        refreshScanData();
         if (data.settings) {
           setFeatureSettings(data.settings);
         } else {
@@ -2428,6 +2692,7 @@ export default function DynamicOverlays() {
     fetchServerConfig();
     fetchWebUISettings();
     fetchOverlaySyncStatus();
+    fetchCleanAssetsCount();
     fetchAnimetafillData();
 
     let tick = 0;
@@ -2731,6 +2996,16 @@ export default function DynamicOverlays() {
   };
 
   // 2. Scan / Recheck
+  const refreshScanData = async () => {
+    try {
+      const res = await fetch("/api/dynamic-overlays/scan");
+      if (res.ok) {
+        const sc = await res.json();
+        setScanData(sc);
+      }
+    } catch (_) {}
+  };
+
   const handleScan = async () => {
     try {
       setIsScanning(true);
@@ -3417,6 +3692,9 @@ export default function DynamicOverlays() {
       if (data.success) {
         showToast(`Removed overlay from ${libraryName}.`, "success");
         if (data.scan) setScanData(data.scan);
+        if (data.config?.libraries) applySyncedVisualConfig(data.config);
+        else await fetchVisualConfig();
+        setPreviewTimestamp(Date.now());
       } else {
         showToast(data.error || "Failed to remove overlay", "error");
       }
@@ -3489,7 +3767,8 @@ export default function DynamicOverlays() {
           );
           setAddOverlayModal(null);
           if (data.scan) setScanData(data.scan);
-          if (data.config?.libraries) setVisualConfig(data.config);
+          if (data.config?.libraries) applySyncedVisualConfig(data.config);
+          else await fetchVisualConfig();
         } else {
           showToast(
             data.detail || data.error || t("dynamicOverlays.customImage.addFailed", "Failed to add custom image overlay."),
@@ -3525,6 +3804,9 @@ export default function DynamicOverlays() {
         showToast(`Added ${newOverlayName} to ${addOverlayModal.libraryName}!`, "success");
         setAddOverlayModal(null);
         if (data.scan) setScanData(data.scan);
+        if (data.config?.libraries) applySyncedVisualConfig(data.config);
+        else await fetchVisualConfig();
+        setPreviewTimestamp(Date.now());
       } else {
         showToast(data.error || "Failed to add overlay", "error");
       }
@@ -3552,6 +3834,8 @@ export default function DynamicOverlays() {
         setIsAddLibraryOpen(false);
         setNewLibraryName("");
         if (data.scan) setScanData(data.scan);
+        if (data.config?.libraries) applySyncedVisualConfig(data.config);
+        else await fetchVisualConfig();
       } else {
         showToast(data.error || "Failed to add library", "error");
       }
@@ -3602,6 +3886,8 @@ export default function DynamicOverlays() {
         setSelectedLibraries(prev => prev.filter(name => !toRemove.includes(name)));
         setRemoveLibraryModal({ isOpen: false, librariesToRemove: [] });
         if (data.scan) setScanData(data.scan);
+        if (data.config?.libraries) applySyncedVisualConfig(data.config);
+        else await fetchVisualConfig();
       } else {
         showToast(data.error || "Failed to remove library section(s)", "error");
       }
@@ -3624,18 +3910,38 @@ export default function DynamicOverlays() {
     const vars = { ...ov.template_defaults, ...ov.variables };
     setEditVariablesJson(JSON.stringify(ov.variables || {}, null, 2));
     setTemplateVariableErrors({});
+    const parseBoolVar = (val) => {
+      if (typeof val === "boolean") return val;
+      if (val === 1 || String(val).trim().toLowerCase() === "true") return true;
+      if (val === 0 || String(val).trim().toLowerCase() === "false") return false;
+      return null;
+    };
+    const useAllStatus = parseBoolVar(vars.use_all);
+    const fallbackStatusColor = String(vars.font_color || "").trim();
+    const initStatusStates = {};
+    const initStatusColors = {};
+    const initStatusTexts = {};
+    for (const meta of STATUS_STATE_META) {
+      const explicitUse = parseBoolVar(vars[`use_${meta.key}`]);
+      initStatusStates[meta.key] = explicitUse !== null ? explicitUse : (useAllStatus !== null ? useAllStatus : true);
+      initStatusColors[meta.key] = String(vars[`font_color_${meta.key}`] || "").trim() || fallbackStatusColor || meta.defaultColor;
+      initStatusTexts[meta.key] = String(vars[`text_${meta.key}`] || "");
+    }
+    const normalizedFont = normalizeFontFilename(vars.font);
     visualVariableBaseline.current = templateVisualValues(ov.name, {
       level: vars.builder_level || "", artworkType: vars.artwork_type || "both",
       hAlign: vars.horizontal_align || vars.horizontal_position || "center",
       vAlign: vars.vertical_align || vars.vertical_position || "bottom",
       hOffset: vars.horizontal_offset !== undefined ? String(vars.horizontal_offset) : "0",
       vOffset: vars.vertical_offset !== undefined ? String(vars.vertical_offset) : "0",
-      backColor: vars.back_color || "#00000000", font: vars.font || "",
+      backColor: vars.back_color || "#00000000", font: normalizedFont,
       fontSize: vars.font_size !== undefined && vars.font_size !== null ? String(vars.font_size) : "",
       fontColor: vars.font_color || "", languages: Array.isArray(vars.languages) ? vars.languages.join(", ") : "de, en, ja",
       useSubtitles: vars.use_subtitles === true || vars.use_subtitles === "true",
-      flagStyle: vars.style || "round", statusText: vars.text || vars.status_label || vars.status || "",
-      statusColor: vars.font_color || vars.status_color || "#FFA500",
+      flagStyle: vars.style || "round",
+      statusStates: initStatusStates,
+      statusColors: initStatusColors,
+      statusTexts: initStatusTexts,
     });
     setVisualLevel(vars.builder_level || "");
     setVisualArtworkType(vars.artwork_type || "both");
@@ -3647,9 +3953,10 @@ export default function DynamicOverlays() {
     setVisualLanguages(Array.isArray(vars.languages) ? vars.languages.join(", ") : "de, en, ja");
     setVisualUseSubtitles(vars.use_subtitles === true || vars.use_subtitles === "true");
     setVisualFlagStyle(vars.style || ov.template_defaults?.style || "round");
-    setVisualStatusText(vars.text || vars.status_label || vars.status || "");
-    setVisualStatusColor(vars.font_color || vars.status_color || "#FFA500");
-    setVisualFont(vars.font || "");
+    setVisualStatusStates(initStatusStates);
+    setVisualStatusColors(initStatusColors);
+    setVisualStatusTexts(initStatusTexts);
+    setVisualFont(normalizedFont);
     setVisualFontSize(vars.font_size !== undefined && vars.font_size !== null ? String(vars.font_size) : "");
     setVisualFontColor(vars.font_color || "");
   };
@@ -3663,7 +3970,7 @@ export default function DynamicOverlays() {
           hOffset: visualHOffset, vOffset: visualVOffset, backColor: visualBackColor,
           font: visualFont, fontSize: visualFontSize, fontColor: visualFontColor,
           languages: visualLanguages, useSubtitles: visualUseSubtitles, flagStyle: visualFlagStyle,
-          statusText: visualStatusText, statusColor: visualStatusColor,
+          statusStates: visualStatusStates, statusColors: visualStatusColors, statusTexts: visualStatusTexts,
         });
         for (const [key, value] of Object.entries(values)) {
           if (JSON.stringify(value) === JSON.stringify(visualVariableBaseline.current[key])) continue;
@@ -3671,6 +3978,17 @@ export default function DynamicOverlays() {
           else finalVariables[key] = value;
           if (key === "horizontal_align" && "horizontal_position" in finalVariables) finalVariables.horizontal_position = value;
           if (key === "vertical_align" && "vertical_position" in finalVariables) finalVariables.vertical_position = value;
+        }
+        if (String(editVariablesModal.overlay.name || "").toLowerCase().includes("status")) {
+          delete finalVariables.font_color;
+          delete finalVariables.text;
+          const useAllRaw = finalVariables.use_all;
+          const isUseAllFalse = useAllRaw === false || String(useAllRaw).trim().toLowerCase() === "false";
+          for (const meta of STATUS_STATE_META) {
+            if (isUseAllFalse && visualStatusStates[meta.key] !== false) {
+              finalVariables[`use_${meta.key}`] = true;
+            }
+          }
         }
       }
       return finalVariables;
@@ -3696,7 +4014,8 @@ export default function DynamicOverlays() {
         showToast("Updated template variables!", "success");
         setEditVariablesModal(null);
         if (data.scan) setScanData(data.scan);
-        await fetchVisualConfig();
+        if (data.config?.libraries) applySyncedVisualConfig(data.config);
+        else await fetchVisualConfig();
         setPreviewTimestamp(Date.now());
       } else {
         showToast(data.error || "Failed updating variables", "error");
@@ -4216,13 +4535,21 @@ export default function DynamicOverlays() {
         };
       }
       if (previewStatus && previewStatus !== "Off") {
+        const activeStateKey = normalizeStatusStateKey(previewStatus);
+        const effectiveStatusColors = {
+          ...DEFAULT_STATUS_COLORS,
+          ...previewStatusColors,
+          ...(activeStateKey && previewStatusColor ? { [activeStateKey]: previewStatusColor } : {}),
+        };
         layoutPayload.status = {
           horizontal_offset: offsets.status.x,
           vertical_offset: offsets.status.y,
           horizontal_align: offsets.status.align,
           vertical_align: offsets.status.valign,
-          text: previewStatus,
-          font_color: previewStatusColor,
+          font_color_airing: effectiveStatusColors.airing,
+          font_color_returning: effectiveStatusColors.returning,
+          font_color_ended: effectiveStatusColors.ended,
+          font_color_canceled: effectiveStatusColors.canceled,
           ...(offsets.status.font_size ? { font_size: offsets.status.font_size } : {}),
           ...(offsets.status.font ? { font: offsets.status.font } : {})
         };
@@ -4246,7 +4573,7 @@ export default function DynamicOverlays() {
       if (previewLanguages && previewLanguages !== "Off") {
         layoutPayload.languages = {
           languages: previewLanguages.split(",").map(code => code.trim()).filter(Boolean),
-          overlay_limit: previewLanguageLimit,
+          overlay_limit: effectivePreviewLanguageLimit,
           style: previewLanguageStyle,
           hide_text: !previewLanguageLabels,
           final_name: "text(<<final_text>>)",
@@ -4269,6 +4596,27 @@ export default function DynamicOverlays() {
           vertical_align: position?.valign || "bottom",
           ...(key === "subtitle_languages" ? { use_subtitles: true, style: previewSubtitleStyle, languages: previewSubtitles.split(",").map(code => code.trim()).filter(Boolean), hide_text: !previewSubtitleLabels, final_name: "text(<<final_text>>)", font_color: "#FFFFFF" } : {}),
           ...(key === "streaming" ? previewStreamingOptions : {})
+        };
+      }
+      if (previewRibbon) {
+        layoutPayload.ribbon = {
+          horizontal_offset: offsets.ribbon?.x ?? 0,
+          vertical_offset: offsets.ribbon?.y ?? 0,
+          horizontal_align: offsets.ribbon?.align || "right",
+          vertical_align: offsets.ribbon?.valign || "bottom",
+          style: previewRibbonStyle || "yellow"
+        };
+      }
+      if (previewMediastinger && !["show_poster", "season_poster", "episode_card", "titlecard"].includes(previewTemplate)) {
+        const stingerBadge = curBadgesForSave?.mediastinger;
+        layoutPayload.mediastinger = {
+          horizontal_offset: offsets.mediastinger?.x ?? 15,
+          vertical_offset: offsets.mediastinger?.y ?? 15,
+          horizontal_align: offsets.mediastinger?.align || "right",
+          vertical_align: offsets.mediastinger?.valign || "top",
+          ...(stingerBadge?.back_color ? { back_color: stingerBadge.back_color } : {}),
+          ...(stingerBadge?.back_width ? { back_width: Number(stingerBadge.back_width) } : {}),
+          ...(stingerBadge?.back_height ? { back_height: Number(stingerBadge.back_height) } : {})
         };
       }
       if (previewNetwork && previewNetwork !== "Off") {
@@ -4336,9 +4684,10 @@ export default function DynamicOverlays() {
       const data = await res.json();
       if (res.ok && data.success) {
         showSuccess(`Saved overlay layout coordinates to '${libName}' in config.yml!`);
+        setIsVisualDirty(false);
         if (data.scan) setScanData(data.scan);
         if (data.config && data.config.libraries) {
-          setVisualConfig(data.config);
+          applySyncedVisualConfig(data.config);
         } else {
           setVisualConfig(prev => {
             if (!prev?.libraries?.[libName]) return prev;
@@ -4348,6 +4697,7 @@ export default function DynamicOverlays() {
             if (curBadges.audio_languages && offsets.languages) {
               curBadges.audio_languages = {
                 ...curBadges.audio_languages,
+                limit: effectivePreviewLanguageLimit,
                 offset_x: offsets.languages.x,
                 offset_y: offsets.languages.y,
                 position: `${offsets.languages.valign || "bottom"}-${offsets.languages.align || "left"}`
@@ -4448,6 +4798,8 @@ export default function DynamicOverlays() {
       setPreviewAspect("");
       setPreviewStudio("");
       setPreviewStreaming("");
+      setPreviewRibbon("");
+      setPreviewMediastinger(false);
       setPreviewRuntime("");
       setPreviewRating("");
       setPreviewAgeRating("Off");
@@ -4472,19 +4824,25 @@ export default function DynamicOverlays() {
 
     // 1. RESOLUTION BADGE / 4K BANNER
     // Landscape formats (Titlecards, Backdrops) NEVER use top banner ribbons!
-    const isResBanner = !isLandscape && Boolean(
-      badges.resolution?.banner_4k ||
+    const tierToPreviewLabel = { "4k": "4K", "1080p": "1080p", "720p": "720p", "576p": "576p", "480p": "480p" };
+    const firstEnabledRes = Array.isArray(badges.resolution?.tiers) && badges.resolution.tiers.length > 0
+      ? (tierToPreviewLabel[String(badges.resolution.tiers[0]).toLowerCase()] || "4K")
+      : "4K";
+    const isResBanner = !isLandscape && (
       badges.resolution?.mode === "banner" ||
       badges.resolution?.mode === "ribbon" ||
-      (!badges.resolution?.offset_y && badges.resolution?.position?.includes("top"))
+      (
+        !["corner_badge", "badge"].includes(badges.resolution?.mode) &&
+        Boolean(badges.resolution?.banner_4k || (!badges.resolution?.offset_y && badges.resolution?.position?.includes("top")))
+      )
     );
     setResolutionMode(isLandscape ? "corner_badge" : (isResBanner ? "banner" : "corner_badge"));
     if (badges.resolution?.preview_scope_matches && (badges.resolution?.enabled || badges.resolution?.banner_4k || badges.resolution?.banner_1080p || badges.resolution?.titlecard_enabled)) {
       if (targetFormat === "movie_poster" || targetFormat === "show_poster" || targetFormat === "season_poster") {
         if (isResBanner) {
           nextOffsets.resolution = { x: 0, y: 0, align: "center", valign: "top", mode: "banner", banner_4k: true };
-          setPreviewResolution("4K");
-        } else if (badges.resolution.banner_1080p) {
+          setPreviewResolution(firstEnabledRes);
+        } else if (badges.resolution.banner_1080p && !Array.isArray(badges.resolution?.tiers)) {
           nextOffsets.resolution = { x: 0, y: 0, align: "center", valign: "top", mode: "banner", banner_4k: true };
           setPreviewResolution("1080p");
         } else {
@@ -4501,7 +4859,7 @@ export default function DynamicOverlays() {
             back_width: Number(badges.resolution.back_width) || 245,
             back_height: Number(badges.resolution.back_height) || 95
           };
-          setPreviewResolution("4K");
+          setPreviewResolution(firstEnabledRes);
         }
       } else if (targetFormat === "episode_card" || targetFormat === "backdrop") {
         const rawPos = badges.resolution.titlecard_position || badges.resolution.position;
@@ -4521,7 +4879,7 @@ export default function DynamicOverlays() {
           back_width: Number(badges.resolution.back_width) || 260,
           back_height: Number(badges.resolution.back_height) || 85
         };
-        setPreviewResolution(badges.resolution.banner_1080p ? "1080p" : "4K");
+        setPreviewResolution(firstEnabledRes || (badges.resolution.banner_1080p ? "1080p" : "4K"));
       } else {
         setPreviewResolution("");
       }
@@ -4538,14 +4896,29 @@ export default function DynamicOverlays() {
         align: p.align,
         valign: p.valign,
         font_size: badges.status?.font_size ?? "",
-        font: badges.status?.font ?? ""
+        font: normalizeFontFilename(badges.status?.font)
       };
-      setPreviewStatus(badges.status.text || "RETURNING SERIES");
-      if (badges.status.colors?.returning) {
-        setPreviewStatusColor(badges.status.colors.returning);
+      const savedColors = {
+        ...DEFAULT_STATUS_COLORS,
+        ...(badges.status.colors || {}),
+      };
+      const savedStates = {
+        ...DEFAULT_STATUS_STATES,
+        ...(badges.status.states || {}),
+      };
+      setPreviewStatusColors(savedColors);
+      const preferredOrder = ["returning", "airing", "ended", "canceled"];
+      const initialKey = preferredOrder.find((k) => savedStates[k] !== false) || null;
+      if (initialKey) {
+        const meta = STATUS_STATE_META.find((m) => m.key === initialKey);
+        setPreviewStatus(meta?.previewValue || "RETURNING SERIES");
+        setPreviewStatusColor(savedColors[initialKey] || meta?.defaultColor || "#FFA500");
+      } else {
+        setPreviewStatus("");
       }
     } else {
       setPreviewStatus("");
+      setPreviewStatusColors({ ...DEFAULT_STATUS_COLORS });
     }
 
     // 3. AUDIO LANGUAGES (FLAGS)
@@ -4565,13 +4938,14 @@ export default function DynamicOverlays() {
         align: p.align,
         valign: p.valign,
         font_size: badges.audio_languages?.font_size ?? "",
-        font: badges.audio_languages?.font ?? ""
+        font: normalizeFontFilename(badges.audio_languages?.font)
       };
       const langs = badges.audio_languages.languages?.length > 0
         ? badges.audio_languages.languages.join(",")
         : "de,en";
       setPreviewLanguages(langs);
-      setPreviewLanguageLimit(Math.max(1, Math.min(5, Number(badges.audio_languages.limit) || 5)));
+      const savedLimit = parseInt(badges.audio_languages.limit, 10);
+      setPreviewLanguageLimit(Number.isFinite(savedLimit) && savedLimit >= 1 ? savedLimit : 5);
     } else {
       setPreviewLanguages("");
     }
@@ -4591,6 +4965,34 @@ export default function DynamicOverlays() {
       }
     }
 
+    const ribbonBadge = badges.ribbon;
+    setPreviewRibbonStyle(ribbonBadge?.style || "yellow");
+    if (ribbonBadge?.enabled) {
+      const p = parsePos(ribbonBadge.position, "right", "bottom");
+      nextOffsets.ribbon = {
+        x: ribbonBadge.offset_x ?? 0,
+        y: ribbonBadge.offset_y ?? 0,
+        align: p.align,
+        valign: p.valign
+      };
+      setPreviewRibbon("imdb");
+    } else {
+      setPreviewRibbon("");
+    }
+
+    const stingerBadge = badges.mediastinger;
+    const showStinger = Boolean(!isTv && stingerBadge?.enabled);
+    if (showStinger) {
+      const p = parsePos(stingerBadge.position, "right", "top");
+      nextOffsets.mediastinger = {
+        x: stingerBadge.offset_x ?? 15,
+        y: stingerBadge.offset_y ?? 15,
+        align: p.align,
+        valign: p.valign
+      };
+    }
+    setPreviewMediastinger(showStinger);
+
     // 4. RUNTIME DURATION
     const shouldShowRuntime = Boolean(badges.runtime?.enabled);
 
@@ -4606,7 +5008,7 @@ export default function DynamicOverlays() {
         align: p.align,
         valign: p.valign,
         font_size: badges.runtime?.font_size ?? (isLandscape ? 52 : 40),
-        font: badges.runtime?.font ?? ""
+        font: normalizeFontFilename(badges.runtime?.font)
       };
       setPreviewRuntime(targetFormat === "episode_card" ? "45 min" : "1h 58m");
       setPreviewRuntimePrefix(badges.runtime.text || "");
@@ -4635,7 +5037,7 @@ export default function DynamicOverlays() {
         align: p.align,
         valign: p.valign,
         font_size: ratingBadge?.font_size ?? "",
-        font: ratingBadge?.font ?? ""
+        font: normalizeFontFilename(ratingBadge?.font)
       };
       setPreviewRating("8.4");
     } else {
@@ -4654,7 +5056,7 @@ export default function DynamicOverlays() {
         align: p.align,
         valign: p.valign,
         font_size: ageBadge?.font_size ?? "",
-        font: ageBadge?.font ?? ""
+        font: normalizeFontFilename(ageBadge?.font)
       };
       const src = ageBadge.source || "commonsense";
       setPreviewAgeSource(src);
@@ -4689,7 +5091,7 @@ export default function DynamicOverlays() {
         align: p.align,
         valign: p.valign,
         font_size: badges.anime?.font_size ?? "",
-        font: badges.anime?.font ?? ""
+        font: normalizeFontFilename(badges.anime?.font)
       };
       setPreviewAnimeTag("Canon");
     } else {
@@ -4848,6 +5250,8 @@ export default function DynamicOverlays() {
 
   const selectedScoreBadge = visualConfig?.libraries?.[selectedSaveLibrary || selectedVisualLib]?.badges?.critic_rating;
   const selectedStreamingBadge = visualConfig?.libraries?.[selectedSaveLibrary || selectedVisualLib]?.badges?.streaming;
+  const selectedRibbonBadge = visualConfig?.libraries?.[selectedSaveLibrary || selectedVisualLib]?.badges?.ribbon;
+  const selectedMediastingerBadge = visualConfig?.libraries?.[selectedSaveLibrary || selectedVisualLib]?.badges?.mediastinger;
   const previewStreamingOptions = {
     region: selectedStreamingBadge?.region || "US",
     availability_types: selectedStreamingBadge?.availability_types || ["flatrate"],
@@ -4887,9 +5291,14 @@ export default function DynamicOverlays() {
     `&runtime_prefix=${encodeURIComponent(previewRuntimePrefix)}&runtime_format=${encodeURIComponent(previewRuntimeFormat)}&language_labels=${previewLanguageLabels}&subtitle_labels=${previewSubtitleLabels}`,
     `&language_style=${encodeURIComponent(previewLanguageStyle)}&subtitle_style=${encodeURIComponent(previewSubtitleStyle)}`,
     `&streaming=${encodeURIComponent(previewStreaming)}&streaming_options=${encodeURIComponent(JSON.stringify(previewStreamingOptions))}`,
+    `&ribbon=${encodeURIComponent(previewRibbon || "off")}&ribbon_style=${encodeURIComponent(previewRibbonStyle || selectedRibbonBadge?.style || "yellow")}`,
+    `&mediastinger=${previewMediastinger ? "on" : "off"}`,
+    selectedMediastingerBadge?.back_color ? `&mediastinger_back_color=${encodeURIComponent(selectedMediastingerBadge.back_color)}` : "",
+    selectedMediastingerBadge?.back_width ? `&mediastinger_back_width=${encodeURIComponent(selectedMediastingerBadge.back_width)}` : "",
+    selectedMediastingerBadge?.back_height ? `&mediastinger_back_height=${encodeURIComponent(selectedMediastingerBadge.back_height)}` : "",
     `&rating_options=${encodeURIComponent(JSON.stringify(previewRatingOptions))}`,
     `&subtitle_languages=${encodeURIComponent(previewSubtitles)}&studio=${encodeURIComponent(previewStudio)}${previewAspect ? `&aspect_ratio=${encodeURIComponent(previewAspect)}` : ""}`,
-    `&supplemental_layout=${encodeURIComponent(JSON.stringify({ subtitle_languages: offsets.subtitle_languages, aspect: offsets.aspect, studio: offsets.studio, streaming: offsets.streaming }))}`,
+    `&supplemental_layout=${encodeURIComponent(JSON.stringify({ subtitle_languages: offsets.subtitle_languages, aspect: offsets.aspect, studio: offsets.studio, streaming: offsets.streaming, ribbon: offsets.ribbon, mediastinger: offsets.mediastinger }))}`,
     offsets.runtime?.font_size ? `&runtime_font_size=${offsets.runtime.font_size}` : (isLandscapeFormat(previewTemplate) ? `&runtime_font_size=52` : `&runtime_font_size=40`),
     offsets.runtime?.font ? `&runtime_font=${encodeURIComponent(offsets.runtime.font)}` : "",
     offsets.rating?.font_size ? `&rating_font_size=${offsets.rating.font_size}` : "",
@@ -4898,7 +5307,7 @@ export default function DynamicOverlays() {
     offsets.age_rating?.font ? `&age_rating_font=${encodeURIComponent(offsets.age_rating.font)}` : "",
     offsets.status?.font_size ? `&status_font_size=${offsets.status.font_size}` : "",
     offsets.status?.font ? `&status_font=${encodeURIComponent(offsets.status.font)}` : "",
-    `&resolution_mode=${encodeURIComponent(offsets.resolution?.mode || resolutionMode || "banner")}`,
+    `&resolution_mode=${encodeURIComponent(offsets.resolution?.mode || resolutionMode || "corner_badge")}`,
     `&resolution_back_color=${encodeURIComponent(offsets.resolution?.back_color ?? "#00000099")}`,
     `&resolution_back_radius=${offsets.resolution?.back_radius ?? 15}`,
     `&resolution_back_width=${offsets.resolution?.back_width || (isLandscapeFormat(previewTemplate) ? 260 : 245)}`,
@@ -4911,7 +5320,7 @@ export default function DynamicOverlays() {
     || (selectedSaveLibrary && selectedSaveLibrary !== "__NEW__" && getAvailableFormats(selectedSaveLibrary).some((format) => format.id === "show_poster"))
     ? "show" : "movie";
   const assetOverlayQuery = `&asset_overlay=${applyAssetOverlay}&media_type=${assetMediaType}`;
-  const compositorPreviewUrl = `${previewUrl}&language_limit=${previewLanguageLimit}${assetOverlayQuery}${selectedSaveLibrary && selectedSaveLibrary !== "__NEW__" ? `&library_name=${encodeURIComponent(selectedSaveLibrary)}` : ""}`;
+  const compositorPreviewUrl = `${previewUrl}&language_limit=${effectivePreviewLanguageLimit}${assetOverlayQuery}${selectedSaveLibrary && selectedSaveLibrary !== "__NEW__" ? `&library_name=${encodeURIComponent(selectedSaveLibrary)}` : ""}`;
   const spritePreviewUrl = (() => {
     const [path, query = ""] = compositorPreviewUrl.split("?");
     const params = new URLSearchParams(query);
@@ -5114,7 +5523,14 @@ export default function DynamicOverlays() {
               pendingCommunityEntry={pendingCommunityBundle}
               onPendingCommunityEntryHandled={() => setPendingCommunityBundle(null)}
             />
-            <div className="flex items-center gap-2.5 bg-theme-bg border border-theme px-3 py-1.5 rounded-lg">
+            <div
+              id="overlay-master-switch"
+              className={`flex items-center gap-2.5 bg-theme-bg border px-3 py-1.5 rounded-lg transition-all duration-300 ${
+                highlightedOverlaySetting === "master_switch"
+                  ? "ring-2 ring-theme-primary border-theme-primary bg-theme-primary/10"
+                  : "border-theme"
+              }`}
+            >
               <span className="text-xs font-semibold text-theme-muted">Master Switch:</span>
               <button
                 type="button"
@@ -5499,6 +5915,12 @@ export default function DynamicOverlays() {
                 <RotateCcw className={`w-3.5 h-3.5 ${isVisualLoading ? "animate-spin text-theme-primary" : ""}`} />
               </button>
 
+              {isVisualDirty && (
+                <span className="px-2.5 py-1 rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-400 text-[11px] font-semibold">
+                  Unsaved changes
+                </span>
+              )}
+
               <button
                 type="button"
                 onClick={handleSaveVisualConfig}
@@ -5534,6 +5956,7 @@ export default function DynamicOverlays() {
             const isTv = curLib.media_type === "show";
 
             const updateBadge = (badgeKey, patch) => {
+              setIsVisualDirty(true);
               setVisualConfig((prev) => {
                 const nextLibs = { ...prev.libraries };
                 const targetLib = { ...nextLibs[selectedVisualLib] };
@@ -5547,6 +5970,7 @@ export default function DynamicOverlays() {
                 return { ...prev, libraries: nextLibs };
               });
               if (badgeKey === "resolution") {
+                const normalizedMode = patch.mode === "badge" ? "corner_badge" : (patch.mode === "ribbon" ? "banner" : patch.mode);
                 setOffsets(prev => ({
                   ...prev,
                   resolution: {
@@ -5561,7 +5985,7 @@ export default function DynamicOverlays() {
                     ...(patch.back_radius !== undefined ? { back_radius: patch.back_radius } : {}),
                     ...(patch.back_width !== undefined ? { back_width: patch.back_width } : {}),
                     ...(patch.back_height !== undefined ? { back_height: patch.back_height } : {}),
-                    ...(patch.mode !== undefined ? { mode: patch.mode } : {})
+                    ...(normalizedMode !== undefined ? { mode: normalizedMode } : {})
                   }
                 }));
                 setPreviewTimestamp(Date.now());
@@ -5589,6 +6013,7 @@ export default function DynamicOverlays() {
             };
 
             const updateAssetOverrides = (nextOverrides) => {
+              setIsVisualDirty(true);
               setVisualConfig(previous => {
                 const nextLibraries = { ...previous.libraries };
                 nextLibraries[selectedVisualLib] = {
@@ -5899,8 +6324,17 @@ export default function DynamicOverlays() {
             const renderResolutionCard = () => {
               const resBadge = badges.resolution || {};
               const isResEnabled = Boolean(resBadge.enabled);
-              const resMode = resBadge.mode || "badge";
-              const activeTiers = resBadge.tiers || ["4k", "1080p", "720p", "576p", "480p"];
+              const isBannerMode = ["banner", "ribbon", "both"].includes(resBadge.mode) || (!resBadge.mode && Boolean(resBadge.banner_4k));
+              const activeTiers = Array.isArray(resBadge.tiers) ? resBadge.tiers : ["4k", "1080p", "720p", "576p", "480p"];
+              const updateResolutionTiers = (nextTiers) => {
+                const ordered = ["4k", "1080p", "720p", "576p", "480p"].filter((t) => nextTiers.includes(t));
+                updateBadge("resolution", {
+                  tiers: ordered,
+                  banner_4k: isBannerMode && ordered.includes("4k"),
+                  banner_1080p: isBannerMode && ordered.includes("1080p"),
+                  banner_720p: isBannerMode && ordered.includes("720p")
+                });
+              };
 
               return (
                 <div className={`p-3.5 sm:p-4 rounded-xl bg-theme-card border transition-all ${
@@ -5959,9 +6393,9 @@ export default function DynamicOverlays() {
                         <div className="grid grid-cols-2 gap-1.5">
                           <button
                             type="button"
-                            onClick={() => updateBadge("resolution", { mode: "badge" })}
+                            onClick={() => updateBadge("resolution", { mode: "corner_badge", banner_4k: false, banner_1080p: false, banner_720p: false })}
                             className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
-                              resMode === "badge"
+                              !isBannerMode
                                 ? "bg-theme-primary text-white border-theme-primary shadow-sm"
                                 : "bg-theme-hover border-theme text-theme-muted hover:text-theme-text"
                             }`}
@@ -5970,9 +6404,14 @@ export default function DynamicOverlays() {
                           </button>
                           <button
                             type="button"
-                            onClick={() => updateBadge("resolution", { mode: "ribbon" })}
+                            onClick={() => updateBadge("resolution", {
+                              mode: "banner",
+                              banner_4k: activeTiers.includes("4k"),
+                              banner_1080p: activeTiers.includes("1080p"),
+                              banner_720p: activeTiers.includes("720p")
+                            })}
                             className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
-                              resMode === "ribbon"
+                              isBannerMode
                                 ? "bg-theme-primary text-white border-theme-primary shadow-sm"
                                 : "bg-theme-hover border-theme text-theme-muted hover:text-theme-text"
                             }`}
@@ -5982,7 +6421,7 @@ export default function DynamicOverlays() {
                         </div>
                       </div>
 
-                      {resMode === "badge" ? (
+                      {!isBannerMode && (
                         <>
                           {/* Position & Offsets for Corner Badges */}
                           <div className="flex items-start gap-2.5">
@@ -6095,62 +6534,70 @@ export default function DynamicOverlays() {
                               </div>
                             </div>
                           </div>
-
-                          {/* Resolution Tiers Checkboxes */}
-                          <div className="space-y-1">
-                            <label className="text-[9px] font-semibold text-theme-muted uppercase">Enabled Resolution Tiers</label>
-                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
-                              {[
-                                { id: "4k", label: "4K UHD (HDR/DV)" },
-                                { id: "1080p", label: "1080p Full HD" },
-                                { id: "720p", label: "720p HD" },
-                                { id: "576p", label: "576p SD / PAL" },
-                                { id: "480p", label: "480p SD / NTSC" }
-                              ].map((t) => {
-                                const isChecked = activeTiers.includes(t.id);
-                                return (
-                                  <label key={t.id} className="flex items-center gap-2 p-1.5 rounded-lg bg-theme-hover/40 border border-theme/40 cursor-pointer hover:bg-theme-hover">
-                                    <input
-                                      type="checkbox"
-                                      checked={isChecked}
-                                      onChange={(e) => {
-                                        const next = e.target.checked
-                                          ? [...activeTiers, t.id]
-                                          : activeTiers.filter(x => x !== t.id);
-                                        updateBadge("resolution", { tiers: next });
-                                      }}
-                                      className="rounded bg-theme-card border-theme text-theme-primary focus:ring-0 w-3.5 h-3.5"
-                                    />
-                                    <span className="font-semibold text-xs text-theme-text truncate">{t.label}</span>
-                                  </label>
-                                );
-                              })}
-                            </div>
-                          </div>
                         </>
-                      ) : (
-                        /* Ribbon Banner Checkboxes */
-                        <div className="space-y-1.5">
-                          <p className="text-[10px] text-theme-muted">Select ribbons to composite at the top:</p>
-                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5">
+                      )}
+
+                      {/* Resolution Tiers Checkboxes (Corner Badges & Top Ribbon Banner) */}
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between gap-2 flex-wrap">
+                          <label className="text-[9px] font-semibold text-theme-muted uppercase">Enabled Resolution Tiers</label>
+                          <div className="flex items-center gap-1">
                             {[
-                              { key: "banner_4k", label: "4K UHD Ribbon" },
-                              { key: "banner_1080p", label: "1080p Full HD" },
-                              { key: "banner_720p", label: "720p HD" }
-                            ].map((b) => (
-                              <label key={b.key} className="flex items-center gap-2 p-1.5 rounded-lg bg-theme-hover/40 border border-theme/40 cursor-pointer hover:bg-theme-hover">
-                                <input
-                                  type="checkbox"
-                                  checked={Boolean(resBadge[b.key])}
-                                  onChange={(e) => updateBadge("resolution", { [b.key]: e.target.checked })}
-                                  className="rounded bg-theme-card border-theme text-theme-primary focus:ring-0 w-3.5 h-3.5"
-                                />
-                                <span className="font-semibold text-xs text-theme-text truncate">{b.label}</span>
-                              </label>
-                            ))}
+                              { label: "4K Only", tiers: ["4k"] },
+                              { label: "4K + 1080p", tiers: ["4k", "1080p"] },
+                              { label: "All", tiers: ["4k", "1080p", "720p", "576p", "480p"] }
+                            ].map((preset) => {
+                              const isPresetActive =
+                                activeTiers.length === preset.tiers.length &&
+                                preset.tiers.every((tier) => activeTiers.includes(tier));
+                              return (
+                                <button
+                                  key={preset.label}
+                                  type="button"
+                                  onClick={() => updateResolutionTiers(preset.tiers)}
+                                  className={`px-1.5 py-0.5 rounded text-[10px] font-semibold border transition-all ${
+                                    isPresetActive
+                                      ? "bg-theme-primary text-white border-theme-primary"
+                                      : "bg-theme-hover border-theme text-theme-muted hover:text-theme-text"
+                                  }`}
+                                >
+                                  {preset.label}
+                                </button>
+                              );
+                            })}
                           </div>
                         </div>
-                      )}
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+                          {[
+                            { id: "4k", label: "4K UHD (HDR/DV)" },
+                            { id: "1080p", label: "1080p Full HD" },
+                            { id: "720p", label: "720p HD" },
+                            { id: "576p", label: "576p SD / PAL" },
+                            { id: "480p", label: "480p SD / NTSC" }
+                          ].map((t) => {
+                            const isChecked = activeTiers.includes(t.id);
+                            return (
+                              <label key={t.id} className="flex items-center gap-2 p-1.5 rounded-lg bg-theme-hover/40 border border-theme/40 cursor-pointer hover:bg-theme-hover">
+                                <input
+                                  type="checkbox"
+                                  checked={isChecked}
+                                  onChange={(e) => {
+                                    const next = e.target.checked
+                                      ? [...activeTiers, t.id]
+                                      : activeTiers.filter(x => x !== t.id);
+                                    updateResolutionTiers(next);
+                                  }}
+                                  className="rounded bg-theme-card border-theme text-theme-primary focus:ring-0 w-3.5 h-3.5"
+                                />
+                                <span className="font-semibold text-xs text-theme-text truncate">{t.label}</span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                        <p className="text-[10px] text-theme-muted">
+                          Unchecked resolutions will not show a badge or banner (compiles to Kometa <span className="font-mono">use_all</span> / <span className="font-mono">use_&lt;resolution&gt;</span>).
+                        </p>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -6709,8 +7156,8 @@ export default function DynamicOverlays() {
                                 handleAddCustomLang();
                               }
                             }}
-                            placeholder="Add code (e.g. TR, NO)..."
-                            maxLength={6}
+                            placeholder="Add code (e.g. TR, CA-VALENCIA)..."
+                            maxLength={24}
                             className="flex-1 bg-theme-hover border border-theme rounded-lg px-2 py-1 text-xs text-theme-text font-mono uppercase focus:outline-none focus:border-theme-primary"
                           />
                           <button
@@ -6800,9 +7247,24 @@ export default function DynamicOverlays() {
                             <input
                               type="number"
                               min={1}
-                              max={10}
                               value={badges.audio_languages?.limit ?? 5}
-                              onChange={(e) => updateBadge("audio_languages", { limit: parseInt(e.target.value) || 5 })}
+                              onChange={(e) => {
+                                const raw = e.target.value;
+                                if (raw === "") {
+                                  updateBadge("audio_languages", { limit: "" });
+                                  return;
+                                }
+                                const parsed = parseInt(raw, 10);
+                                if (Number.isFinite(parsed) && parsed >= 1) {
+                                  updateBadge("audio_languages", { limit: parsed });
+                                }
+                              }}
+                              onBlur={(e) => {
+                                const parsed = parseInt(e.target.value, 10);
+                                if (!Number.isFinite(parsed) || parsed < 1) {
+                                  updateBadge("audio_languages", { limit: 5 });
+                                }
+                              }}
                               className="w-full bg-theme-hover border border-theme rounded-lg px-2 py-1 text-xs text-theme-text font-mono"
                             />
                           </div>
@@ -6827,20 +7289,149 @@ export default function DynamicOverlays() {
 
             const renderSupplementalBadges = () => (
               <div className="space-y-4">
-                {[["subtitle_languages", "Subtitle Languages"], ["aspect", "Aspect Ratio"], ["studio", "Studio Logo"], ["streaming", "Streaming Services"]].map(([key, label]) => {
+                {[
+                  ["subtitle_languages", "Subtitle Languages"],
+                  ["aspect", "Aspect Ratio"],
+                  ["studio", "Studio Logo"],
+                  ["streaming", "Streaming Services"],
+                  ["ribbon", "Award / Chart Ribbon"],
+                  ...(!isTv ? [["mediastinger", "Media Stinger"]] : [])
+                ].map(([key, label]) => {
                   const badge = badges[key] || {};
+                  const defaultLevel = key === "subtitle_languages"
+                    ? (isTv ? "episode" : "movie")
+                    : (key === "mediastinger" ? "movie" : (isTv ? "show" : "movie"));
+                  const defaultPosition = key === "ribbon"
+                    ? "bottom-right"
+                    : (key === "mediastinger" ? "top-right" : "bottom-center");
+                  const defaultOffsetX = key === "ribbon" ? 0 : (key === "mediastinger" ? 15 : (key === "subtitle_languages" ? 48 : 0));
+                  const defaultOffsetY = key === "ribbon" ? 0 : (key === "mediastinger" ? 15 : (key === "subtitle_languages" ? 37 : 150));
+                  const levelOptions = key === "mediastinger" ? ["movie", "all"] : ["movie", "show", "season", "episode", "all"];
                   return (
                     <section key={key} className="border border-theme rounded-lg p-3 space-y-3">
                       <label className="flex items-center justify-between gap-3 text-xs font-semibold text-theme-text">
                         {label}
-                        <input type="checkbox" checked={Boolean(badge.enabled)} onChange={(event) => updateBadge(key, { enabled: event.target.checked })} />
+                        <input
+                          type="checkbox"
+                          checked={Boolean(badge.enabled)}
+                          onChange={(event) => {
+                            const checked = event.target.checked;
+                            if (checked && key === "ribbon") {
+                              updateBadge(key, {
+                                enabled: true,
+                                level: badge.level || defaultLevel,
+                                style: badge.style || "yellow",
+                                position: badge.position || defaultPosition,
+                                offset_x: badge.offset_x ?? defaultOffsetX,
+                                offset_y: badge.offset_y ?? defaultOffsetY
+                              });
+                            } else if (checked && key === "mediastinger") {
+                              updateBadge(key, {
+                                enabled: true,
+                                level: badge.level || defaultLevel,
+                                position: badge.position || defaultPosition,
+                                offset_x: badge.offset_x ?? defaultOffsetX,
+                                offset_y: badge.offset_y ?? defaultOffsetY,
+                                back_color: badge.back_color ?? "#00000099",
+                                back_width: badge.back_width ?? 105,
+                                back_height: badge.back_height ?? 105
+                              });
+                            } else {
+                              updateBadge(key, { enabled: checked });
+                            }
+                          }}
+                        />
                       </label>
                       {badge.enabled && <>
-                        <select aria-label={`${label} target`} value={badge.level || (isTv ? "episode" : "movie")} onChange={(event) => updateBadge(key, { level: event.target.value })} className="w-full bg-theme-hover border border-theme rounded-lg p-2 text-xs text-theme-text">
-                          {["movie", "show", "season", "episode", "all"].map(level => <option key={level} value={level}>{level}</option>)}
+                        <select aria-label={`${label} target`} value={badge.level || defaultLevel} onChange={(event) => updateBadge(key, { level: event.target.value })} className="w-full bg-theme-hover border border-theme rounded-lg p-2 text-xs text-theme-text">
+                          {levelOptions.map(level => <option key={level} value={level}>{level}</option>)}
                         </select>
                         {key === "subtitle_languages" && <input aria-label="Subtitle language codes" value={(badge.languages || ["de", "en"]).join(", ")} onChange={(event) => updateBadge(key, { languages: event.target.value.split(",").map(code => code.trim()).filter(Boolean) })} className="w-full bg-theme-hover border border-theme rounded-lg p-2 text-xs text-theme-text" />}
                         {key === "subtitle_languages" && <label className="flex items-center gap-2 text-xs text-theme-text"><input type="checkbox" checked={Boolean(badge.show_labels)} onChange={event => updateBadge(key, { show_labels: event.target.checked })} />Show Language Codes</label>}
+                        {key === "ribbon" && (
+                          <div className="space-y-2">
+                            <label className="text-xs text-theme-muted block">
+                              Ribbon Style
+                              <select
+                                aria-label="Ribbon style"
+                                value={badge.style || "yellow"}
+                                onChange={(event) => updateBadge(key, { style: event.target.value })}
+                                className="mt-1 w-full bg-theme-hover border border-theme rounded-lg p-2 text-xs text-theme-text"
+                              >
+                                <option value="yellow">Yellow (Default)</option>
+                                <option value="red">Red</option>
+                                <option value="black">Black</option>
+                                <option value="gray">Gray</option>
+                              </select>
+                            </label>
+                            <p className="text-[11px] text-theme-muted">
+                              Highlights winners &amp; top lists (Oscars, Emmys, Golden Globes, IMDb Top 250, Rotten Tomatoes, Metacritic).
+                            </p>
+                          </div>
+                        )}
+                        {key === "mediastinger" && (
+                          <div className="space-y-2">
+                            <div className="space-y-1">
+                              <label className="text-xs text-theme-muted block">
+                                Background Color
+                                <input
+                                  aria-label="Media Stinger background color"
+                                  type="text"
+                                  value={badge.back_color ?? "#00000099"}
+                                  onChange={(event) => updateBadge(key, { back_color: event.target.value })}
+                                  className="mt-1 w-full bg-theme-hover border border-theme rounded-lg p-2 text-xs text-theme-text font-mono"
+                                />
+                              </label>
+                              <div className="flex flex-wrap gap-1">
+                                {[
+                                  { label: "Dark Glass", val: "#00000099" },
+                                  { label: "Solid Dark", val: "#000000E6" },
+                                  { label: "Transparent", val: "#00000000" }
+                                ].map((preset) => (
+                                  <button
+                                    key={preset.val}
+                                    type="button"
+                                    onClick={() => updateBadge(key, { back_color: preset.val })}
+                                    className={`px-2 py-0.5 rounded text-[10px] font-semibold border ${
+                                      String(badge.back_color ?? "#00000099").toLowerCase() === preset.val.toLowerCase()
+                                        ? "bg-theme-primary text-white border-theme-primary"
+                                        : "bg-theme-hover border-theme text-theme-muted hover:text-theme-text"
+                                    }`}
+                                  >
+                                    {preset.label}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-2">
+                              <label className="text-xs text-theme-muted">
+                                Width (px)
+                                <input
+                                  aria-label="Media Stinger width"
+                                  type="number"
+                                  min="1"
+                                  value={badge.back_width ?? 105}
+                                  onChange={(event) => updateBadge(key, { back_width: Number(event.target.value) })}
+                                  className="mt-1 w-full bg-theme-hover border border-theme rounded-lg p-2 text-xs text-theme-text font-mono"
+                                />
+                              </label>
+                              <label className="text-xs text-theme-muted">
+                                Height (px)
+                                <input
+                                  aria-label="Media Stinger height"
+                                  type="number"
+                                  min="1"
+                                  value={badge.back_height ?? 105}
+                                  onChange={(event) => updateBadge(key, { back_height: Number(event.target.value) })}
+                                  className="mt-1 w-full bg-theme-hover border border-theme rounded-lg p-2 text-xs text-theme-text font-mono"
+                                />
+                              </label>
+                            </div>
+                            <p className="text-[11px] text-theme-muted">
+                              Shown when TMDb keywords include <span className="font-mono">aftercreditsstinger</span> or <span className="font-mono">duringcreditsstinger</span> (Movies only).
+                            </p>
+                          </div>
+                        )}
                         {key === "streaming" && <>
                           <label className="text-xs text-theme-muted">Country
                             <input aria-label="Streaming country code" maxLength={2} value={badge.region || "US"} onChange={event => updateBadge(key, { region: event.target.value.toUpperCase() })} className="mt-1 w-full bg-theme-hover border border-theme rounded-lg p-2 text-xs text-theme-text" />
@@ -6858,9 +7449,9 @@ export default function DynamicOverlays() {
                           </div>
                           <a href="https://www.justwatch.com/" target="_blank" rel="noreferrer" className="text-xs text-theme-muted underline">Availability: TMDb / JustWatch</a>
                         </>}
-                        <PositionPicker value={badge.position || "bottom-center"} onChange={position => updateBadge(key, { position })} />
+                        <PositionPicker value={badge.position || defaultPosition} onChange={position => updateBadge(key, { position })} />
                         <div className="grid grid-cols-2 gap-2">
-                          {["x", "y"].map(axis => <label key={axis} className="text-xs text-theme-muted">{axis.toUpperCase()}<input type="number" value={badge[`offset_${axis}`] ?? (axis === "y" ? 150 : 0)} onChange={event => updateBadge(key, { [`offset_${axis}`]: Number(event.target.value) })} className="w-full bg-theme-hover border border-theme rounded-lg p-2 text-theme-text" /></label>)}
+                          {["x", "y"].map(axis => <label key={axis} className="text-xs text-theme-muted">{axis.toUpperCase()}<input type="number" value={badge[`offset_${axis}`] ?? (axis === "x" ? defaultOffsetX : defaultOffsetY)} onChange={event => updateBadge(key, { [`offset_${axis}`]: Number(event.target.value) })} className="w-full bg-theme-hover border border-theme rounded-lg p-2 text-theme-text" /></label>)}
                         </div>
                       </>}
                     </section>
@@ -7220,6 +7811,107 @@ export default function DynamicOverlays() {
                         </div>
                       </div>
 
+                      {/* Per-State Toggles, Custom Text & Font Colors */}
+                      {(() => {
+                        const statusColors = { ...DEFAULT_STATUS_COLORS, ...(badges.status?.colors || {}) };
+                        const statusStates = { ...DEFAULT_STATUS_STATES, ...(badges.status?.states || {}) };
+                        const statusTexts = { ...DEFAULT_STATUS_TEXTS, ...(badges.status?.texts || {}) };
+                        return (
+                          <div className="p-2.5 rounded-lg bg-theme-hover/40 border border-theme/50 space-y-2">
+                            <div className="flex items-center justify-between">
+                              <label className="text-[10px] font-semibold text-theme-text uppercase tracking-wider">
+                                Status States &amp; Colors
+                              </label>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  updateBadge("status", {
+                                    colors: { ...DEFAULT_STATUS_COLORS },
+                                    states: { ...DEFAULT_STATUS_STATES },
+                                    texts: { ...DEFAULT_STATUS_TEXTS },
+                                  });
+                                  if (selectedSaveLibrary === selectedVisualLib) {
+                                    setPreviewStatusColors({ ...DEFAULT_STATUS_COLORS });
+                                    const activeKey = normalizeStatusStateKey(previewStatus);
+                                    if (activeKey) {
+                                      setPreviewStatusColor(DEFAULT_STATUS_COLORS[activeKey]);
+                                    }
+                                    setPreviewTimestamp(Date.now());
+                                  }
+                                }}
+                                className="text-[10px] text-theme-muted hover:text-theme-primary transition-colors"
+                              >
+                                Reset Defaults
+                              </button>
+                            </div>
+                            <div className="space-y-1.5">
+                              {STATUS_STATE_META.map((meta) => {
+                                const isChecked = statusStates[meta.key] !== false;
+                                const stateColor = statusColors[meta.key] || meta.defaultColor;
+                                const handleStateColorUpdate = (nextColor) => {
+                                  updateBadge("status", {
+                                    colors: { ...statusColors, [meta.key]: nextColor },
+                                  });
+                                  if (selectedSaveLibrary === selectedVisualLib) {
+                                    setPreviewStatusColors(prev => ({ ...prev, [meta.key]: nextColor }));
+                                    if (normalizeStatusStateKey(previewStatus) === meta.key) {
+                                      setPreviewStatusColor(nextColor);
+                                    }
+                                    setPreviewTimestamp(Date.now());
+                                  }
+                                };
+                                return (
+                                  <div key={meta.key} className="grid grid-cols-[auto_72px_1fr_auto] items-center gap-2">
+                                    <input
+                                      type="checkbox"
+                                      aria-label={`Enable ${meta.label} status`}
+                                      checked={isChecked}
+                                      onChange={(e) => updateBadge("status", {
+                                        states: { ...statusStates, [meta.key]: e.target.checked },
+                                      })}
+                                      className="rounded border-theme text-theme-primary focus:ring-theme-primary"
+                                    />
+                                    <span className={`text-[11px] font-semibold ${isChecked ? "text-theme-text" : "text-theme-muted line-through"}`}>
+                                      {meta.label}
+                                    </span>
+                                    <input
+                                      type="text"
+                                      aria-label={`${meta.label} custom label`}
+                                      value={statusTexts[meta.key] || ""}
+                                      onChange={(e) => updateBadge("status", {
+                                        texts: { ...statusTexts, [meta.key]: e.target.value },
+                                      })}
+                                      placeholder={meta.defaultText}
+                                      disabled={!isChecked}
+                                      className="w-full bg-theme-card border border-theme rounded-md px-2 py-1 text-[11px] text-theme-text disabled:opacity-50"
+                                    />
+                                    <div className="flex items-center gap-1.5">
+                                      <input
+                                        type="color"
+                                        aria-label={`${meta.label} font color picker`}
+                                        value={toSafeColorPickerHex(stateColor, meta.defaultColor)}
+                                        onChange={(e) => handleStateColorUpdate(e.target.value.toUpperCase())}
+                                        disabled={!isChecked}
+                                        className="h-6 w-7 cursor-pointer rounded border border-theme bg-transparent p-0.5 disabled:opacity-50"
+                                      />
+                                      <input
+                                        type="text"
+                                        aria-label={`${meta.label} font color`}
+                                        value={stateColor}
+                                        onChange={(e) => handleStateColorUpdate(e.target.value)}
+                                        placeholder={meta.defaultColor}
+                                        disabled={!isChecked}
+                                        className="w-20 bg-theme-card border border-theme rounded-md px-1.5 py-1 text-[11px] text-theme-text font-mono disabled:opacity-50"
+                                      />
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })()}
+
                       {/* Contrast Background Pill Controls */}
                       <div className="p-2.5 rounded-lg bg-theme-hover/40 border border-theme/50 space-y-2">
                         <div className="flex items-center justify-between">
@@ -7516,6 +8208,7 @@ export default function DynamicOverlays() {
                       <button
                         type="button"
                         onClick={() => {
+                          setIsVisualDirty(true);
                           setVisualConfig((prev) => {
                             const nextLibs = { ...prev.libraries };
                             const targetLib = { ...nextLibs[selectedVisualLib], media_type: "movie" };
@@ -7539,6 +8232,7 @@ export default function DynamicOverlays() {
                       <button
                         type="button"
                         onClick={() => {
+                          setIsVisualDirty(true);
                           setVisualConfig((prev) => {
                             const nextLibs = { ...prev.libraries };
                             const targetLib = { ...nextLibs[selectedVisualLib], media_type: "show" };
@@ -7562,6 +8256,7 @@ export default function DynamicOverlays() {
                       type="button"
                       onClick={() => {
                         if (window.confirm(`Are you sure you want to remove the library '${selectedVisualLib}' from overlay configuration?`)) {
+                          setIsVisualDirty(true);
                           setVisualConfig((prev) => {
                             const next = { ...prev.libraries };
                             delete next[selectedVisualLib];
@@ -7583,9 +8278,10 @@ export default function DynamicOverlays() {
 
                 {/* ASSET TARGET SELECTOR (POSTERS / BACKDROPS / SEASONS / TITLE CARDS) */}
                 {(() => {
-                  const effectiveAssetTarget = (!isTv && (activeAssetTarget === "season" || activeAssetTarget === "titlecard"))
-                    ? "poster"
-                    : activeAssetTarget;
+                  const validAssetTargets = isTv ? ["poster", "backdrop", "season", "titlecard"] : ["poster", "backdrop"];
+                  const effectiveAssetTarget = validAssetTargets.includes(activeAssetTarget)
+                    ? activeAssetTarget
+                    : "poster";
 
                   return (
                     <>
@@ -7778,10 +8474,20 @@ export default function DynamicOverlays() {
                     </>
                   );
                 })()}
+              </div>
+            );
+          })()}
 
                 {/* CENTRAL ENGINE SETTINGS & PROVIDER KEYS (ACCORDION CARD) */}
                 {/* RATINGS PROVIDERS & AUTO-REFRESH (ACCORDION CARD) */}
-                <div className="bg-theme-card border border-theme rounded-2xl shadow-sm overflow-hidden transition-all mt-6">
+                <div
+                  id="overlay-setting-overlay_engine_settings"
+                  className={`bg-theme-card border rounded-2xl shadow-sm overflow-hidden transition-all mt-6 ${
+                    highlightedOverlaySetting === "overlay_engine_settings"
+                      ? "ring-2 ring-theme-primary border-theme-primary"
+                      : "border-theme"
+                  }`}
+                >
                   <div className="p-4 sm:p-5 flex items-center justify-between gap-4 bg-theme-hover/20 border-b border-theme/60">
                     <div className="flex items-center gap-3">
                       <div className="p-2 rounded-xl bg-theme-primary/10 text-theme-primary border border-theme-primary/20">
@@ -7819,7 +8525,14 @@ export default function DynamicOverlays() {
                   {isGlobalSettingsOpen && (
                     <div className="p-5 space-y-4">
                       {/* Auto-Sync Toggle */}
-                      <div className="flex items-center justify-between p-3.5 rounded-xl bg-theme-hover/30 border border-theme">
+                      <div
+                        id="overlay-setting-auto_sync_on_startup"
+                        className={`flex items-center justify-between p-3.5 rounded-xl border transition-all duration-300 ${
+                          highlightedOverlaySetting === "auto_sync_on_startup"
+                            ? "ring-2 ring-theme-primary border-theme-primary bg-theme-primary/10"
+                            : "bg-theme-hover/30 border-theme"
+                        }`}
+                      >
                         <div>
                           <span className="text-xs font-bold text-theme-text block">Auto-Sync on New Artwork</span>
                           <span className="text-[11px] text-theme-muted">
@@ -7844,7 +8557,14 @@ export default function DynamicOverlays() {
                       {/* Optional API Keys */}
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
                         {/* MDBList */}
-                        <div className="space-y-1.5 p-3 rounded-xl bg-theme-hover/20 border border-theme">
+                        <div
+                          id="overlay-setting-mdblist_api_key"
+                          className={`space-y-1.5 p-3 rounded-xl border transition-all duration-300 ${
+                            highlightedOverlaySetting === "mdblist_api_key"
+                              ? "ring-2 ring-theme-primary border-theme-primary bg-theme-primary/10"
+                              : "bg-theme-hover/20 border-theme"
+                          }`}
+                        >
                           <div className="flex items-center justify-between">
                             <label className="text-[10px] font-bold text-theme-text uppercase tracking-wider flex items-center gap-1.5">
                               <Key className="w-3 h-3 text-amber-400" />
@@ -7905,7 +8625,14 @@ export default function DynamicOverlays() {
                         </div>
 
                         {/* OMDb */}
-                        <div className="space-y-1.5 p-3 rounded-xl bg-theme-hover/20 border border-theme">
+                        <div
+                          id="overlay-setting-omdb_api_key"
+                          className={`space-y-1.5 p-3 rounded-xl border transition-all duration-300 ${
+                            highlightedOverlaySetting === "omdb_api_key"
+                              ? "ring-2 ring-theme-primary border-theme-primary bg-theme-primary/10"
+                              : "bg-theme-hover/20 border-theme"
+                          }`}
+                        >
                           <div className="flex items-center justify-between">
                             <label className="text-[10px] font-bold text-theme-text uppercase tracking-wider flex items-center gap-1.5">
                               <Key className="w-3 h-3 text-cyan-400" />
@@ -7966,7 +8693,14 @@ export default function DynamicOverlays() {
                         </div>
                       </div>
 
-                      <div className="space-y-2 p-3 rounded-lg bg-theme-hover/20 border border-theme">
+                      <div
+                        id="overlay-setting-simkl_client_id"
+                        className={`space-y-2 p-3 rounded-lg border transition-all duration-300 ${
+                          highlightedOverlaySetting === "simkl_client_id"
+                            ? "ring-2 ring-theme-primary border-theme-primary bg-theme-primary/10"
+                            : "bg-theme-hover/20 border-theme"
+                        }`}
+                      >
                         <div className="flex items-center justify-between gap-2 flex-wrap">
                           <label htmlFor="ratings-simkl-client-id" className="text-xs font-semibold text-theme-text flex items-center gap-1.5">
                             <Key className="w-3.5 h-3.5 text-theme-primary" />
@@ -8003,7 +8737,14 @@ export default function DynamicOverlays() {
                             {apiKeyTestResult.simkl.message || apiKeyTestResult.simkl.error}
                           </p>
                         )}
-                        <fieldset className="pt-3 border-t border-theme space-y-2">
+                        <fieldset
+                          id="overlay-setting-season_rating_libraries"
+                          className={`pt-3 border-t space-y-2 transition-all duration-300 ${
+                            highlightedOverlaySetting === "season_rating_libraries"
+                              ? "ring-2 ring-theme-primary border-theme-primary rounded-lg p-2 bg-theme-primary/10"
+                              : "border-theme"
+                          }`}
+                        >
                           <legend className="text-xs font-semibold text-theme-text px-1">Libraries for Anime Season Ratings</legend>
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 min-w-0">
                             {seasonRatingLibraryOptions.map(libraryName => (
@@ -8024,7 +8765,14 @@ export default function DynamicOverlays() {
                       </div>
 
                       {/* Tiered TTL Summary & Clear Ratings Cache */}
-                      <div className="p-3.5 rounded-xl bg-theme-hover/20 border border-theme/60 space-y-3">
+                      <div
+                        id="overlay-setting-ratings_cache_rules"
+                        className={`p-3.5 rounded-xl border space-y-3 transition-all duration-300 ${
+                          highlightedOverlaySetting === "ratings_cache_rules"
+                            ? "ring-2 ring-theme-primary border-theme-primary bg-theme-primary/10"
+                            : "bg-theme-hover/20 border-theme/60"
+                        }`}
+                      >
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                           <div>
                             <div className="font-semibold text-xs text-theme-text flex items-center gap-1.5">
@@ -8054,7 +8802,14 @@ export default function DynamicOverlays() {
                       </div>
 
                       {/* Debug Coordinates Logging Toggle */}
-                      <div className="flex items-center justify-between p-3.5 rounded-xl bg-theme-hover/30 border border-theme">
+                      <div
+                        id="overlay-setting-debug_logging"
+                        className={`flex items-center justify-between p-3.5 rounded-xl border transition-all duration-300 ${
+                          highlightedOverlaySetting === "debug_logging"
+                            ? "ring-2 ring-theme-primary border-theme-primary bg-theme-primary/10"
+                            : "bg-theme-hover/30 border-theme"
+                        }`}
+                      >
                         <div className="space-y-0.5 pr-4">
                           <div className="flex items-center gap-2">
                             <span className="text-xs font-bold text-theme-text">Debug Pixel Coordinates Logging</span>
@@ -8087,7 +8842,14 @@ export default function DynamicOverlays() {
                       </div>
 
                       {/* Parallel In-Memory Processing Concurrency */}
-                      <div className="p-3.5 rounded-xl bg-theme-hover/30 border border-theme space-y-2">
+                      <div
+                        id="overlay-setting-concurrency"
+                        className={`p-3.5 rounded-xl border space-y-2 transition-all duration-300 ${
+                          highlightedOverlaySetting === "concurrency"
+                            ? "ring-2 ring-theme-primary border-theme-primary bg-theme-primary/10"
+                            : "bg-theme-hover/30 border-theme"
+                        }`}
+                      >
                         <div className="flex items-center justify-between">
                           <div>
                             <span className="text-xs font-bold text-theme-text block">Parallel In-Memory Processing</span>
@@ -8126,9 +8888,6 @@ export default function DynamicOverlays() {
                     </div>
                   )}
                 </div>
-              </div>
-            );
-          })()}
         </div>
       )}
 
@@ -8647,6 +9406,18 @@ export default function DynamicOverlays() {
                 <RefreshCw className={`w-4 h-4 ${isScanning ? "animate-spin text-theme-primary" : ""}`} />
                 Re-scan
               </button>
+              {inventory?.defaults?.official_known > 0 && (inventory?.defaults?.official_installed || 0) < inventory.defaults.official_known && (
+                <button
+                  type="button"
+                  onClick={() => handleImport(false)}
+                  disabled={isImporting}
+                  title="Download missing official Kometa default overlay templates"
+                  className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-400 text-xs font-semibold transition-all disabled:opacity-50"
+                >
+                  <Download className={`w-4 h-4 ${isImporting ? "animate-bounce" : ""}`} />
+                  <span>{isImporting ? "Importing..." : "Import Defaults"}</span>
+                </button>
+              )}
             </div>
           </div>
 
@@ -8750,7 +9521,7 @@ export default function DynamicOverlays() {
                         setAddOverlayModal({ libraryName: libName });
                         setNewOverlayType("default");
                         setNewOverlayName("runtimes");
-                        setNewOverlayLevel("episode");
+                        setNewOverlayLevel(resolvePresetBuilderLevel("runtimes", getLibraryMediaType(libName)));
                       }}
                       className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-theme-card hover:bg-theme-hover border border-theme hover:border-theme-primary/50 text-theme-text text-xs font-medium transition-all shadow-sm"
                     >
@@ -9527,14 +10298,33 @@ export default function DynamicOverlays() {
                 {previewLanguages && (
                   <label className="flex items-center justify-between gap-3 text-xs text-theme-text">
                     <span>Max flags</span>
-                    <select
+                    <input
+                      type="number"
+                      min={1}
+                      step={1}
                       aria-label="Maximum audio language flags"
                       value={previewLanguageLimit}
-                      onChange={(event) => { setPreviewLanguageLimit(Number(event.target.value)); setPreviewTimestamp(Date.now()); }}
-                      className="bg-theme-hover border border-theme rounded-lg px-2 py-1 text-xs text-theme-text"
-                    >
-                      {[1, 2, 3, 4, 5].map((limit) => <option key={limit} value={limit}>{limit}</option>)}
-                    </select>
+                      onChange={(event) => {
+                        const raw = event.target.value;
+                        if (raw === "") {
+                          setPreviewLanguageLimit("");
+                          return;
+                        }
+                        const parsed = parseInt(raw, 10);
+                        if (Number.isFinite(parsed) && parsed >= 1) {
+                          setPreviewLanguageLimit(parsed);
+                          setPreviewTimestamp(Date.now());
+                        }
+                      }}
+                      onBlur={(event) => {
+                        const parsed = parseInt(event.target.value, 10);
+                        if (!Number.isFinite(parsed) || parsed < 1) {
+                          setPreviewLanguageLimit(5);
+                          setPreviewTimestamp(Date.now());
+                        }
+                      }}
+                      className="w-20 bg-theme-hover border border-theme rounded-lg px-2 py-1 text-xs text-theme-text font-mono text-right"
+                    />
                   </label>
                 )}
                 {previewLanguages && <label className="flex items-center gap-2 text-xs text-theme-text"><input type="checkbox" checked={previewLanguageLabels} onChange={event => { setPreviewLanguageLabels(event.target.checked); setPreviewTimestamp(Date.now()); }} />Show Language Codes</label>}
@@ -9571,6 +10361,99 @@ export default function DynamicOverlays() {
                   {value && <BadgeOffsetControls itemKey={key} offset={offsets[key]} onChange={handleOffsetChange} fonts={availableFonts} />}
                 </div>
               ))}
+
+              {/* Award / Chart Ribbon Preview */}
+              <div hidden={!isPreviewControlConfigured("ribbon")} className="space-y-2 border border-theme rounded-lg p-3">
+                <label className="flex items-center justify-between gap-2 text-xs font-semibold text-theme-text" htmlFor="enable-preview-ribbon">
+                  Award / Chart Ribbon
+                  <input
+                    id="enable-preview-ribbon"
+                    type="checkbox"
+                    checked={Boolean(previewRibbon)}
+                    onChange={(event) => {
+                      setPreviewRibbon(event.target.checked ? "imdb" : "");
+                      setPreviewTimestamp(Date.now());
+                    }}
+                  />
+                </label>
+                {previewRibbon && (
+                  <>
+                    <div className="grid grid-cols-2 gap-2">
+                      <select
+                        aria-label="Sample ribbon"
+                        value={previewRibbon}
+                        onChange={(event) => {
+                          setPreviewRibbon(event.target.value);
+                          setPreviewTimestamp(Date.now());
+                        }}
+                        className="bg-theme-hover border border-theme rounded-lg p-2 text-xs text-theme-text"
+                      >
+                        <option value="imdb">IMDb Top 250</option>
+                        <option value="emmys">Emmys Winner</option>
+                        <option value="golden">Golden Globe Winner</option>
+                        <option value="rotten">RT Certified Fresh</option>
+                        <option value="metacritic">Metacritic Must See</option>
+                        <option value="common">Common Sense Selection</option>
+                        {!["show_poster", "season_poster", "episode_card", "titlecard"].includes(previewTemplate) && (
+                          <>
+                            <option value="oscars">Oscars Best Picture</option>
+                            <option value="oscars_director">Oscars Best Director</option>
+                            <option value="golden_director">Golden Globe Director</option>
+                            <option value="bafta">BAFTA Winners</option>
+                            <option value="cannes">Cannes Winners</option>
+                            <option value="berlinale">Berlinale Winners</option>
+                            <option value="venice">Venice Winners</option>
+                            <option value="sundance">Sundance Winners</option>
+                            <option value="choice">Critics Choice</option>
+                            <option value="spirit">Spirit Winners</option>
+                            <option value="cesar">Cesar Winners</option>
+                            <option value="letterboxd">Letterboxd Top 500</option>
+                            <option value="rottenverified">RT Verified Hot</option>
+                            <option value="razzie">Razzies Winner</option>
+                          </>
+                        )}
+                      </select>
+                      <select
+                        aria-label="Preview ribbon style"
+                        value={previewRibbonStyle}
+                        onChange={(event) => {
+                          setPreviewRibbonStyle(event.target.value);
+                          setPreviewTimestamp(Date.now());
+                        }}
+                        className="bg-theme-hover border border-theme rounded-lg p-2 text-xs text-theme-text"
+                      >
+                        <option value="yellow">Yellow</option>
+                        <option value="red">Red</option>
+                        <option value="black">Black</option>
+                        <option value="gray">Gray</option>
+                      </select>
+                    </div>
+                    <BadgeOffsetControls itemKey="ribbon" offset={offsets.ribbon} onChange={handleOffsetChange} fonts={availableFonts} />
+                  </>
+                )}
+              </div>
+
+              {/* Media Stinger Preview (Movies only) */}
+              <div
+                hidden={["show_poster", "season_poster", "episode_card", "titlecard"].includes(previewTemplate) || !isPreviewControlConfigured("mediastinger")}
+                className="space-y-2 border border-theme rounded-lg p-3"
+              >
+                <label className="flex items-center justify-between gap-2 text-xs font-semibold text-theme-text" htmlFor="enable-preview-mediastinger">
+                  Media Stinger
+                  <input
+                    id="enable-preview-mediastinger"
+                    type="checkbox"
+                    checked={Boolean(previewMediastinger)}
+                    onChange={(event) => {
+                      setPreviewMediastinger(event.target.checked);
+                      setPreviewTimestamp(Date.now());
+                    }}
+                  />
+                </label>
+                {previewMediastinger && (
+                  <BadgeOffsetControls itemKey="mediastinger" offset={offsets.mediastinger} onChange={handleOffsetChange} fonts={availableFonts} />
+                )}
+              </div>
 
               {/* Runtime Duration */}
               <div hidden={!isPreviewControlConfigured("runtime")} className="space-y-2 p-3.5 rounded-xl bg-theme-hover/20 border border-theme">
@@ -9673,10 +10556,13 @@ export default function DynamicOverlays() {
                           if (st === "Off") {
                             setPreviewStatus("");
                           } else {
+                            const stateKey = normalizeStatusStateKey(st);
                             setPreviewStatus(st);
-                            if (st === "AIRING") setPreviewStatusColor("#27C24C");
-                            else if (st === "RETURNING SERIES") setPreviewStatusColor("#FFA500");
-                            else setPreviewStatusColor("#ED1F1F");
+                            setPreviewStatusColor(
+                              (stateKey && previewStatusColors[stateKey]) ||
+                              DEFAULT_STATUS_COLORS[stateKey] ||
+                              "#FFA500"
+                            );
                           }
                           setPreviewTimestamp(Date.now());
                         }}
@@ -9699,35 +10585,49 @@ export default function DynamicOverlays() {
                   />
 
                   {/* Status Color Picker */}
-                  {previewStatus && (
-                    <div className="flex items-center gap-2.5 pt-1">
-                      <span className="text-[11px] text-theme-muted">Color:</span>
-                      {[
-                        { color: "#FFA500", label: "Orange" },
-                        { color: "#27C24C", label: "Green" },
-                        { color: "#ED1F1F", label: "Red" },
-                        { color: "#3B82F6", label: "Blue" },
-                        { color: "#A855F7", label: "Purple" }
-                      ].map((c) => (
-                        <button
-                          key={c.color}
-                          type="button"
-                          onClick={() => { setPreviewStatusColor(c.color); setPreviewTimestamp(Date.now()); }}
-                          className={`w-5 h-5 rounded-full border-2 transition-transform ${
-                            previewStatusColor === c.color ? "scale-125 border-white shadow-md" : "border-transparent"
-                          }`}
-                          style={{ backgroundColor: c.color }}
-                          title={c.label}
+                  {previewStatus && (() => {
+                    const activeStateKey = normalizeStatusStateKey(previewStatus);
+                    const activeStateMeta = STATUS_STATE_META.find((m) => m.key === activeStateKey);
+                    return (
+                      <div className="flex items-center flex-wrap gap-2 pt-1">
+                        <span className="text-[11px] text-theme-muted">
+                          Color{activeStateMeta ? ` (${activeStateMeta.label})` : ""}:
+                        </span>
+                        {[
+                          { color: "#FFA500", label: "Orange" },
+                          { color: "#27C24C", label: "Green" },
+                          { color: "#ED1F1F", label: "Red" },
+                          { color: "#3B82F6", label: "Blue" },
+                          { color: "#A855F7", label: "Purple" }
+                        ].map((c) => (
+                          <button
+                            key={c.color}
+                            type="button"
+                            onClick={() => handlePreviewStatusColorChange(c.color)}
+                            className={`w-5 h-5 rounded-full border-2 transition-transform ${
+                              previewStatusColor?.toUpperCase() === c.color ? "scale-125 border-white shadow-md" : "border-transparent"
+                            }`}
+                            style={{ backgroundColor: c.color }}
+                            title={c.label}
+                          />
+                        ))}
+                        <input
+                          type="color"
+                          aria-label="Preview status color picker"
+                          value={toSafeColorPickerHex(previewStatusColor, activeStateMeta?.defaultColor || "#FFA500")}
+                          onChange={(e) => handlePreviewStatusColorChange(e.target.value.toUpperCase())}
+                          className="h-6 w-7 cursor-pointer rounded border border-theme bg-transparent p-0.5"
                         />
-                      ))}
-                      <input
-                        type="text"
-                        value={previewStatusColor}
-                        onChange={(e) => { setPreviewStatusColor(e.target.value); setPreviewTimestamp(Date.now()); }}
-                        className="w-20 bg-theme-hover border border-theme rounded-lg px-2 py-0.5 text-[11px] text-theme-text font-mono"
-                      />
-                    </div>
-                  )}
+                        <input
+                          type="text"
+                          aria-label="Preview status color hex"
+                          value={previewStatusColor}
+                          onChange={(e) => handlePreviewStatusColorChange(e.target.value)}
+                          className="w-20 bg-theme-hover border border-theme rounded-lg px-2 py-0.5 text-[11px] text-theme-text font-mono"
+                        />
+                      </div>
+                    );
+                  })()}
 
                   {previewStatus && (
                     <BadgeOffsetControls
@@ -10379,6 +11279,35 @@ export default function DynamicOverlays() {
                 </span>
               </div>
             )}
+            {cleanAssetsCount === 0 && (
+              <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-start gap-2.5 text-amber-200">
+                  <HardDrive className="w-4 h-4 shrink-0 text-amber-400 mt-0.5" />
+                  <div className="space-y-0.5">
+                    <div className="font-semibold text-amber-300">No clean base assets found in your Assets folder yet</div>
+                    <p className="text-amber-200/80 leading-relaxed">
+                      Dynamic Overlays composites badges onto clean base artwork created by <strong>Normal Mode</strong> or <strong>Manual Asset</strong> (so originals stay untouched). Run a library or create one test item first — Sync and Targeted Reapply will skip items without local base files.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => navigate("/blueprints")}
+                    className="px-3 py-1.5 rounded-lg bg-theme-card hover:bg-theme-hover border border-theme text-theme-text font-medium transition-colors"
+                  >
+                    Base Poster Style
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => navigate("/run-modes")}
+                    className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-black font-semibold transition-colors"
+                  >
+                    Open Run Modes
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* Scope, Server, and Library Selectors */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -10642,6 +11571,105 @@ export default function DynamicOverlays() {
               </div>
             )}
 
+            {/* Dry-Run Previews Gallery */}
+            {(isChangeDetectionDryRun || dryRunPreviews.length > 0) && (
+              <div className="p-4 rounded-xl bg-theme-hover/25 border border-theme space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="space-y-0.5">
+                    <div className="flex items-center gap-2 text-xs font-bold text-theme-text">
+                      <Eye className="w-4 h-4 text-theme-primary" />
+                      <span>Dry-Run Previews</span>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-theme-primary/15 text-theme-primary border border-theme-primary/30">
+                        {dryRunPreviews.length}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-theme-muted">
+                      Recent items rendered while Dry Run is active (nothing uploaded to your media server).
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleTabChange("preview")}
+                      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-theme-card hover:bg-theme-hover border border-theme text-xs font-medium text-theme-text transition-colors"
+                    >
+                      <Palette className="w-3.5 h-3.5 text-theme-primary" />
+                      <span>Live Preview</span>
+                    </button>
+                    {isChangeDetectionDryRun && (
+                      <button
+                        type="button"
+                        onClick={() => handleTabChange("media-changes")}
+                        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-theme-card hover:bg-theme-hover border border-theme text-xs font-medium text-theme-text transition-colors"
+                      >
+                        <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>Dry Run Settings</span>
+                      </button>
+                    )}
+                    {dryRunPreviews.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={handleClearDryRunPreviews}
+                        disabled={isClearingDryRunPreviews}
+                        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 text-xs font-medium transition-colors disabled:opacity-50"
+                      >
+                        {isClearingDryRunPreviews ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                        <span>Clear</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {dryRunPreviews.length === 0 ? (
+                  <div className="p-4 rounded-xl bg-theme-bg/50 border border-dashed border-theme text-xs text-theme-muted text-center">
+                    Run a Sync or <strong>Targeted Reapply</strong> with Dry Run enabled to inspect rendered artwork right here before pushing live, or use <strong>Live Preview</strong> to test badge placement.
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                    {dryRunPreviews.map((preview) => {
+                      const assetLabel = ({
+                        poster: "Poster",
+                        season: "Season",
+                        background: "Backdrop",
+                        titlecard: "Titlecard",
+                      })[preview.asset_type] || preview.asset_type || "Asset";
+                      return (
+                        <button
+                          key={preview.id}
+                          type="button"
+                          onClick={() => setSelectedDryRunPreview(preview)}
+                          className="group rounded-xl bg-theme-card border border-theme hover:border-theme-primary/60 overflow-hidden text-left transition-all flex flex-col shadow-sm"
+                        >
+                          <div className="relative h-52 w-full bg-black/50 flex items-center justify-center p-1.5 overflow-hidden">
+                            <img
+                              src={preview.url}
+                              alt={preview.title || assetLabel}
+                              loading="lazy"
+                              className="h-full w-full object-contain group-hover:scale-[1.02] transition-transform"
+                            />
+                            <span className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded bg-black/75 text-[10px] font-semibold text-white">
+                              {assetLabel}
+                            </span>
+                            <span className="absolute top-1.5 right-1.5 px-1.5 py-0.5 rounded bg-theme-primary/90 text-[10px] font-bold text-black">
+                              {preview.layers_count ?? 0}x
+                            </span>
+                          </div>
+                          <div className="p-2 space-y-0.5">
+                            <div className="text-xs font-semibold text-theme-text truncate" title={preview.title}>
+                              {preview.title || "Untitled"}
+                            </div>
+                            <div className="text-[10px] text-theme-muted truncate">
+                              {preview.library_name || "Library"}{preview.server_type ? ` · ${preview.server_type.toUpperCase()}` : ""}
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Live Terminal Log Viewer */}
             {overlaySyncLogs.length > 0 && (
               <div className="space-y-2">
@@ -10899,7 +11927,14 @@ export default function DynamicOverlays() {
               </div>
 
               {/* Setting 3: Upload Dry Run */}
-              <div className="p-4 rounded-xl bg-theme-hover/40 border border-theme flex flex-col justify-between gap-3">
+              <div
+                id="overlay-setting-change_detection_dry_run"
+                className={`p-4 rounded-xl border flex flex-col justify-between gap-3 transition-all duration-300 ${
+                  highlightedOverlaySetting === "change_detection_dry_run"
+                    ? "ring-2 ring-theme-primary border-theme-primary bg-theme-primary/10"
+                    : "bg-theme-hover/40 border-theme"
+                }`}
+              >
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <div className="text-xs font-bold text-theme-text flex items-center gap-1.5">
@@ -10930,17 +11965,28 @@ export default function DynamicOverlays() {
                   </button>
                 </div>
 
-                <div className="pt-2 border-t border-theme/40 text-[11px] text-theme-muted flex items-center justify-between">
+                <div className="pt-2 border-t border-theme/40 text-[11px] text-theme-muted flex items-center justify-between gap-2 flex-wrap">
                   <span>{t("dynamicOverlays.changeDetection.status")}</span>
-                  <span className="font-medium text-theme-text">
-                    {isChangeDetectionDryRun
-                      ? featureSettings?.enabled
-                        ? t("dynamicOverlays.changeDetection.renderOnlyNoPush")
-                        : t("dynamicOverlays.changeDetection.pausedMasterOff")
-                      : featureSettings?.enabled
-                        ? t("dynamicOverlays.changeDetection.serverPushAllowed")
-                        : t("dynamicOverlays.changeDetection.pausedMasterOff")}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-theme-text">
+                      {isChangeDetectionDryRun
+                        ? featureSettings?.enabled
+                          ? t("dynamicOverlays.changeDetection.renderOnlyNoPush")
+                          : t("dynamicOverlays.changeDetection.pausedMasterOff")
+                        : featureSettings?.enabled
+                          ? t("dynamicOverlays.changeDetection.serverPushAllowed")
+                          : t("dynamicOverlays.changeDetection.pausedMasterOff")}
+                    </span>
+                    {(isChangeDetectionDryRun || dryRunPreviews.length > 0) && (
+                      <button
+                        type="button"
+                        onClick={() => handleTabChange("sync")}
+                        className="text-theme-primary hover:underline font-medium"
+                      >
+                        View Dry-Run Previews ({dryRunPreviews.length})
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
@@ -11091,7 +12137,14 @@ export default function DynamicOverlays() {
 
           {/* RATINGS CACHE & AUTO-REFRESH CARD */}
           {activeTab === "ratings-cache" && (
-          <div className="bg-theme-card border border-theme rounded-2xl p-5 sm:p-6 shadow-sm space-y-4">
+          <div
+            id="overlay-setting-ratings_cache"
+            className={`bg-theme-card border rounded-2xl p-5 sm:p-6 shadow-sm space-y-4 transition-all duration-300 ${
+              highlightedOverlaySetting === "ratings_cache"
+                ? "ring-2 ring-theme-primary border-theme-primary"
+                : "border-theme"
+            }`}
+          >
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
                 <h3 className="font-bold text-theme-text text-base flex items-center gap-2">
@@ -11541,7 +12594,14 @@ export default function DynamicOverlays() {
               </div>
 
               {/* 3. SONARR CREDENTIALS & TEST BUTTON (OPTIONAL) */}
-              <div className="space-y-3 pt-2 border-t border-theme">
+              <div
+                id="overlay-setting-animetafill_sonarr"
+                className={`space-y-3 pt-2 border-t transition-all duration-300 ${
+                  highlightedOverlaySetting === "animetafill_sonarr"
+                    ? "ring-2 ring-theme-primary border-theme-primary rounded-xl p-3 bg-theme-primary/10"
+                    : "border-theme"
+                }`}
+              >
                 <div className="flex items-center justify-between flex-wrap gap-2">
                   <div className="flex items-center gap-1.5">
                     <Zap className="w-3.5 h-3.5 text-blue-400" />
@@ -11627,7 +12687,14 @@ export default function DynamicOverlays() {
               </div>
 
               {/* 4. SIMKL CLIENT ID (REQUIRED) */}
-              <div className="space-y-2 pt-2 border-t border-theme text-xs">
+              <div
+                id="overlay-setting-animetafill_simkl_client_id"
+                className={`space-y-2 pt-2 border-t text-xs transition-all duration-300 ${
+                  highlightedOverlaySetting === "animetafill_simkl_client_id"
+                    ? "ring-2 ring-theme-primary border-theme-primary rounded-xl p-3 bg-theme-primary/10"
+                    : "border-theme"
+                }`}
+              >
                 <div className="flex items-center justify-between">
                   <label className="text-theme-text font-semibold flex items-center gap-1.5">
                     <span>SIMKL Client ID</span>
@@ -12695,7 +13762,11 @@ export default function DynamicOverlays() {
               <div className="grid grid-cols-3 gap-2">
                 <button
                   type="button"
-                  onClick={() => { setNewOverlayType("default"); setNewOverlayName("network"); }}
+                  onClick={() => {
+                    setNewOverlayType("default");
+                    setNewOverlayName("network");
+                    setNewOverlayLevel(resolvePresetBuilderLevel("network", getLibraryMediaType(addOverlayModal?.libraryName)));
+                  }}
                   className={`py-2 px-2 rounded-xl text-xs font-semibold border transition-colors ${
                     newOverlayType === "default" ? "bg-theme-primary text-white border-theme-primary" : "bg-theme-hover border-theme text-theme-muted hover:text-theme-text"
                   }`}
@@ -12735,8 +13806,7 @@ export default function DynamicOverlays() {
                   value={newOverlayName}
                   onChange={(e) => {
                     setNewOverlayName(e.target.value);
-                    const preset = DEFAULT_OVERLAY_PRESETS.find(p => p.id === e.target.value);
-                    if (preset?.level) setNewOverlayLevel(preset.level);
+                    setNewOverlayLevel(resolvePresetBuilderLevel(e.target.value, getLibraryMediaType(addOverlayModal?.libraryName)));
                   }}
                   className="w-full bg-theme-hover border border-theme rounded-xl px-3 py-2 text-xs text-theme-text font-medium"
                 >
@@ -13026,6 +14096,7 @@ export default function DynamicOverlays() {
                 <option value="episode">Episode Titlecards (e.g. for Languages, Runtime, Anime)</option>
                 <option value="movie">Movie Posters (e.g. for 4K banners, Ratings)</option>
                 <option value="show">Show Posters (e.g. for Status banners)</option>
+                <option value="all">All Item Levels</option>
                 <option value="">Default / Inherit</option>
               </select>
             </div>
@@ -13236,6 +14307,11 @@ export default function DynamicOverlays() {
                       className="w-full bg-theme-hover border border-theme rounded-xl px-3 py-2 text-xs text-theme-text font-medium"
                     >
                       <option value="">Default Font</option>
+                      {visualFont && !(availableFonts || []).includes(visualFont) && (
+                        <option value={visualFont}>
+                          {visualFont.replace(/\.(ttf|otf|woff2?)$/i, "")}
+                        </option>
+                      )}
                       {(availableFonts || []).map((f) => (
                         <option key={f} value={f}>
                           {f.replace(/\.(ttf|otf|woff2?)$/i, "")}
@@ -13295,68 +14371,93 @@ export default function DynamicOverlays() {
                   </div>
 
                   {/* Font Color */}
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-semibold text-theme-muted uppercase tracking-wider">Font Color (Hex)<TemplateVariableHelp name="font_color" /></label>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="text"
-                        value={visualFontColor}
-                        onChange={(e) => setVisualFontColor(e.target.value)}
-                        placeholder="#FFFFFF"
-                        className="flex-1 bg-theme-hover border border-theme rounded-xl px-3 py-1.5 text-xs text-theme-text font-mono"
-                      />
-                      <div
-                        className="w-7 h-7 rounded-lg border border-theme shrink-0"
-                        style={{ backgroundColor: visualFontColor || "#FFFFFF" }}
-                        title="Font Color Preview"
-                      />
+                  {!editVariablesModal.overlay.name.toLowerCase().includes("status") && (
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-semibold text-theme-muted uppercase tracking-wider">Font Color (Hex)<TemplateVariableHelp name="font_color" /></label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          value={visualFontColor}
+                          onChange={(e) => setVisualFontColor(e.target.value)}
+                          placeholder="#FFFFFF"
+                          className="flex-1 bg-theme-hover border border-theme rounded-xl px-3 py-1.5 text-xs text-theme-text font-mono"
+                        />
+                        <div
+                          className="w-7 h-7 rounded-lg border border-theme shrink-0"
+                          style={{ backgroundColor: visualFontColor || "#FFFFFF" }}
+                          title="Font Color Preview"
+                        />
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </div>
 
-                {/* Optional Status text & color input */}
-                {(editVariablesModal.overlay.name.toLowerCase().includes("status") || visualStatusText) && (
+                {/* Per-State Series Status Controls */}
+                {editVariablesModal.overlay.name.toLowerCase().includes("status") && (
                   <div className="space-y-2 p-3 rounded-xl bg-theme-hover/40 border border-theme">
-                    <label className="text-xs font-semibold text-theme-muted uppercase tracking-wider">Status Banner Text<TemplateVariableHelp name="text" /></label>
-                    <input
-                      type="text"
-                      value={visualStatusText}
-                      onChange={(e) => setVisualStatusText(e.target.value)}
-                      placeholder="e.g. RETURNING SERIES, AIRING, ENDED, CANCELED"
-                      className="w-full bg-theme-hover border border-theme rounded-xl px-3 py-2 text-xs text-theme-text font-medium"
-                    />
-                    <div className="flex flex-wrap gap-1.5">
-                      {["AIRING", "RETURNING SERIES", "ENDED", "CANCELED"].map((st) => (
-                        <button
-                          key={st}
-                          type="button"
-                          onClick={() => {
-                            setVisualStatusText(st);
-                            if (st === "AIRING") setVisualStatusColor("#27C24C");
-                            else if (st === "RETURNING SERIES") setVisualStatusColor("#FFA500");
-                            else setVisualStatusColor("#ED1F1F");
-                          }}
-                          className={`px-2 py-0.5 rounded-lg text-[10px] font-semibold border ${
-                            visualStatusText === st ? "bg-theme-primary text-white border-theme-primary" : "bg-theme-hover border-theme text-theme-muted"
-                          }`}
-                        >
-                          {st}
-                        </button>
-                      ))}
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-semibold text-theme-muted uppercase tracking-wider">
+                        Series Status States &amp; Colors<TemplateVariableHelp name="font_color" />
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setVisualStatusStates({ ...DEFAULT_STATUS_STATES });
+                          setVisualStatusColors({ ...DEFAULT_STATUS_COLORS });
+                          setVisualStatusTexts({ ...DEFAULT_STATUS_TEXTS });
+                        }}
+                        className="text-[11px] text-theme-muted hover:text-theme-primary transition-colors"
+                      >
+                        Reset Defaults
+                      </button>
                     </div>
-                    <div className="flex items-center gap-2 pt-1">
-                      <span className="text-[11px] text-theme-muted">Font Color:<TemplateVariableHelp name="font_color" /></span>
-                      <input
-                        type="text"
-                        value={visualStatusColor}
-                        onChange={(e) => setVisualStatusColor(e.target.value)}
-                        className="w-24 bg-theme-hover border border-theme rounded-lg px-2 py-0.5 text-xs text-theme-text font-mono"
-                      />
-                      <div
-                        className="w-6 h-6 rounded-lg border border-theme shrink-0"
-                        style={{ backgroundColor: visualStatusColor }}
-                        title="Status Font Color Preview"
-                      />
+                    <div className="space-y-2">
+                      {STATUS_STATE_META.map((meta) => {
+                        const isChecked = visualStatusStates[meta.key] !== false;
+                        const stateColor = visualStatusColors[meta.key] || meta.defaultColor;
+                        return (
+                          <div key={meta.key} className="grid grid-cols-[auto_76px_1fr_auto] items-center gap-2">
+                            <input
+                              type="checkbox"
+                              aria-label={`Enable ${meta.label} status in template`}
+                              checked={isChecked}
+                              onChange={(e) => setVisualStatusStates(prev => ({ ...prev, [meta.key]: e.target.checked }))}
+                              className="rounded border-theme text-theme-primary focus:ring-theme-primary"
+                            />
+                            <span className={`text-xs font-semibold ${isChecked ? "text-theme-text" : "text-theme-muted line-through"}`}>
+                              {meta.label}
+                            </span>
+                            <input
+                              type="text"
+                              aria-label={`${meta.label} custom text`}
+                              value={visualStatusTexts[meta.key] || ""}
+                              onChange={(e) => setVisualStatusTexts(prev => ({ ...prev, [meta.key]: e.target.value }))}
+                              placeholder={meta.defaultText}
+                              disabled={!isChecked}
+                              className="w-full bg-theme-hover border border-theme rounded-lg px-2.5 py-1 text-xs text-theme-text disabled:opacity-50"
+                            />
+                            <div className="flex items-center gap-1.5">
+                              <input
+                                type="color"
+                                aria-label={`${meta.label} color picker`}
+                                value={toSafeColorPickerHex(stateColor, meta.defaultColor)}
+                                onChange={(e) => setVisualStatusColors(prev => ({ ...prev, [meta.key]: e.target.value.toUpperCase() }))}
+                                disabled={!isChecked}
+                                className="h-6 w-7 cursor-pointer rounded border border-theme bg-transparent p-0.5 disabled:opacity-50"
+                              />
+                              <input
+                                type="text"
+                                aria-label={`${meta.label} color hex`}
+                                value={stateColor}
+                                onChange={(e) => setVisualStatusColors(prev => ({ ...prev, [meta.key]: e.target.value }))}
+                                placeholder={meta.defaultColor}
+                                disabled={!isChecked}
+                                className="w-24 bg-theme-hover border border-theme rounded-lg px-2 py-1 text-xs text-theme-text font-mono disabled:opacity-50"
+                              />
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 )}
@@ -13753,6 +14854,7 @@ export default function DynamicOverlays() {
                     showError("Please enter a library name.");
                     return;
                   }
+                  setIsVisualDirty(true);
                   setVisualConfig((prev) => {
                     const next = { ...prev.libraries };
                     next[cleanName] = {
@@ -13760,10 +14862,10 @@ export default function DynamicOverlays() {
                       media_type: newLibForm.media_type,
                       enabled: true,
                       badges: {
-                        resolution: { enabled: false, banner_4k: true, banner_1080p: false, banner_720p: false },
+                        resolution: { enabled: false, mode: "corner_badge", banner_4k: false, banner_1080p: false, banner_720p: false, tiers: ["4k", "1080p", "720p", "576p", "480p"], position: "top-left", offset_x: 15, offset_y: 15 },
                         audio_languages: { enabled: true, languages: ["de", "en"], position: "bottom-left", offset_x: 48, offset_y: 37, limit: 5 },
                         runtime: { enabled: true, position: "bottom-right", offset_x: 18, offset_y: 20, back_width: 205, back_height: 80 },
-                        status: { enabled: newLibForm.media_type === "show", position: "bottom-center", offset_x: 0, offset_y: 23, font_size: 80, colors: { airing: "#27C24C", returning: "#FFA500", ended: "#FF0000", canceled: "#ED1F1F" } },
+                        status: { enabled: newLibForm.media_type === "show", position: "bottom-center", offset_x: 0, offset_y: 23, font_size: 80, colors: { ...DEFAULT_STATUS_COLORS }, states: { ...DEFAULT_STATUS_STATES }, texts: { ...DEFAULT_STATUS_TEXTS } },
                         network: { enabled: false, level: "season", position: "bottom-center", offset_x: 30, offset_y: 50 },
                         rating: { enabled: false, source: "commonsense", position: "bottom-left", offset_x: 255, offset_y: 37, back_width: 230 },
                         anime: { enabled: false, level: "episode" }
@@ -14545,6 +15647,20 @@ export default function DynamicOverlays() {
                 className="p-2 shrink-0 rounded-lg text-theme-muted hover:bg-theme-hover"><X className="w-4 h-4" /></button>
             </div>
             <div className="p-4 border-b border-theme space-y-3">
+              {cleanAssetsCount === 0 && (
+                <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 text-xs flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-amber-200">
+                    No clean base assets exist in <strong>/assets</strong> yet. Targeted Reapply only composites onto existing local base artwork — create at least one item via <strong>Run Modes</strong> first.
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => { setIsItemSyncPickerOpen(false); navigate("/run-modes"); }}
+                    className="px-2.5 py-1 rounded-md bg-amber-500 hover:bg-amber-400 text-black font-semibold shrink-0"
+                  >
+                    Open Run Modes
+                  </button>
+                </div>
+              )}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <label className="text-xs text-theme-muted space-y-1"><span>Target</span>
                   <select value={syncTargetMode} onChange={(event) => {
@@ -15681,6 +16797,34 @@ export default function DynamicOverlays() {
                     </p>
                   </div>
                 </div>
+
+                <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="space-y-1">
+                    <div className="font-semibold text-amber-300 flex items-center gap-1.5">
+                      <Palette className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Two-Stage Flow: Base Poster Style + Dynamic Overlays</span>
+                    </div>
+                    <p className="text-theme-muted leading-relaxed">
+                      Clean base artwork (<strong>ClearLogos</strong>, <strong>Standard Posters</strong>, or text titles) is configured in <strong>Blueprints / Config</strong> and fetched by <strong>Normal Run</strong> (or <strong>Manual Asset</strong>). Dynamic Overlays then composites badges onto those clean files — inspect real outputs anytime under <strong>Synchronize → Dry-Run Previews</strong>.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => navigate("/blueprints")}
+                      className="px-2.5 py-1.5 rounded-lg bg-theme-card hover:bg-theme-hover border border-theme text-theme-text font-medium transition-colors"
+                    >
+                      Blueprints
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => navigate("/run-modes")}
+                      className="px-2.5 py-1.5 rounded-lg bg-theme-card hover:bg-theme-hover border border-theme text-theme-text font-medium transition-colors"
+                    >
+                      Run Modes
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
 
@@ -16449,6 +17593,48 @@ export default function DynamicOverlays() {
                   </>
                 )}
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {selectedDryRunPreview && (
+        <div
+          className="app-dialog-backdrop fixed inset-0 z-[70] bg-black/85 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={() => setSelectedDryRunPreview(null)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Dry-Run Preview: ${selectedDryRunPreview.title || "Asset"}`}
+            className="app-dialog-panel w-full max-w-4xl bg-theme-card border border-theme rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-theme">
+              <div className="min-w-0">
+                <h3 className="text-sm font-bold text-theme-text truncate">
+                  {selectedDryRunPreview.title || "Dry-Run Preview"}
+                </h3>
+                <p className="text-[11px] text-theme-muted truncate">
+                  {selectedDryRunPreview.library_name || "Library"} · {(selectedDryRunPreview.server_type || "").toUpperCase()} · {selectedDryRunPreview.asset_type || "asset"} · {selectedDryRunPreview.layers_count ?? 0} layer(s)
+                  {selectedDryRunPreview.sync_reason ? ` · ${selectedDryRunPreview.sync_reason}` : ""}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedDryRunPreview(null)}
+                aria-label="Close Dry-Run preview"
+                className="p-1.5 rounded-lg text-theme-muted hover:text-theme-text hover:bg-theme-hover"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-4 bg-black/60 flex items-center justify-center overflow-auto">
+              <img
+                src={selectedDryRunPreview.url}
+                alt={selectedDryRunPreview.title || "Dry-Run Preview"}
+                className="max-h-[75vh] w-auto max-w-full object-contain rounded-lg shadow-lg"
+              />
             </div>
           </div>
         </div>

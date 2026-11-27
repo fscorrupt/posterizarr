@@ -32,8 +32,9 @@ import logging
 import asyncio
 import threading
 import traceback
+import uuid
 from pathlib import Path
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from typing import Optional, Dict, Any, List, Tuple, Union, Callable
 import urllib.parse
 from xml.etree.ElementTree import ParseError, fromstring, tostring
@@ -50,13 +51,163 @@ from overlay_resolver import (
     language_base_code,
     get_item_language_tags,
     _language_target_matches,
+    REGIONAL_LANGUAGE_FLAGS,
+    LANGUAGE_DISPLAY_LABELS,
 )
 from ratings_service import resolve_media_ratings, resolve_season_ratings, build_multi_rating_layers, ratings_cache, RatingsProviderRunState
+from overlay_external_lists import resolve_tmdb_keywords, resolve_external_lists_for_library
 from dynamic_overlays_service import get_dynamic_overlays_settings, season_ratings_enabled_for_library
 from plex_push_service import get_asset_path_from_config
 from silo_client import SiloClient, get_silo_credentials
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+
+DRY_RUN_PREVIEW_MAX_ITEMS = 24
+_DRY_RUN_PREVIEW_LOCK = threading.Lock()
+_DRY_RUN_PREVIEW_ID_RE = re.compile(r"^[0-9a-f]{8,32}$")
+
+
+def get_dry_run_previews_dir(base_dir: Path) -> Path:
+    """Return the cache directory used to store rendered Dry-Run preview JPEGs."""
+    return Path(base_dir) / "Overlayfiles" / "dynamic_overlays" / "cache" / "dry_run_previews"
+
+
+def _load_dry_run_manifest_unlocked(manifest_path: Path) -> List[Dict[str, Any]]:
+    if not manifest_path.is_file():
+        return []
+    try:
+        raw = json.loads(manifest_path.read_text(encoding="utf-8"))
+        if isinstance(raw, list):
+            return [entry for entry in raw if isinstance(entry, dict)]
+    except Exception:
+        pass
+    return []
+
+
+def _write_dry_run_manifest_unlocked(manifest_path: Path, entries: List[Dict[str, Any]]) -> None:
+    tmp_path = manifest_path.with_suffix(".json.tmp")
+    tmp_path.write_text(json.dumps(entries, indent=2), encoding="utf-8")
+    os.replace(tmp_path, manifest_path)
+
+
+def _unlink_dry_run_image_unlocked(previews_dir: Path, preview_id: str) -> None:
+    eid = str(preview_id or "").strip()
+    if not _DRY_RUN_PREVIEW_ID_RE.fullmatch(eid):
+        return
+    try:
+        (previews_dir / f"{eid}.jpg").unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
+def record_dry_run_preview(
+    base_dir: Path,
+    image_bytes: bytes,
+    *,
+    title: str,
+    library_name: str,
+    server_type: str,
+    item_id: str,
+    asset_type: str,
+    media_type: str = "",
+    layers_count: int = 0,
+    sync_reason: str = "",
+) -> Optional[Dict[str, Any]]:
+    """Persist a bounded copy of a rendered Dry-Run JPEG for dashboard inspection."""
+    if not image_bytes or not base_dir:
+        return None
+    try:
+        previews_dir = get_dry_run_previews_dir(base_dir)
+        manifest_path = previews_dir / "manifest.json"
+        preview_id = uuid.uuid4().hex[:16]
+        dedupe_key = (
+            str(server_type or "").lower(),
+            str(item_id or ""),
+            str(asset_type or "poster").lower(),
+        )
+        entry = {
+            "id": preview_id,
+            "title": str(title or ""),
+            "library_name": str(library_name or ""),
+            "server_type": str(server_type or "").lower(),
+            "item_id": str(item_id or ""),
+            "asset_type": str(asset_type or "poster").lower(),
+            "media_type": str(media_type or "").lower(),
+            "layers_count": int(layers_count or 0),
+            "sync_reason": str(sync_reason or ""),
+            "rendered_at": datetime.now(timezone.utc).isoformat(),
+            "size_bytes": len(image_bytes),
+            "url": f"/api/dynamic-overlays/dry-run-preview/{preview_id}",
+        }
+        with _DRY_RUN_PREVIEW_LOCK:
+            previews_dir.mkdir(parents=True, exist_ok=True)
+            (previews_dir / f"{preview_id}.jpg").write_bytes(image_bytes)
+            existing = _load_dry_run_manifest_unlocked(manifest_path)
+            kept: List[Dict[str, Any]] = []
+            removed_ids: List[str] = []
+            for old in existing:
+                old_key = (
+                    str(old.get("server_type") or "").lower(),
+                    str(old.get("item_id") or ""),
+                    str(old.get("asset_type") or "poster").lower(),
+                )
+                if old_key == dedupe_key:
+                    removed_ids.append(str(old.get("id") or ""))
+                else:
+                    kept.append(old)
+            updated = [entry] + kept
+            if len(updated) > DRY_RUN_PREVIEW_MAX_ITEMS:
+                for pruned in updated[DRY_RUN_PREVIEW_MAX_ITEMS:]:
+                    removed_ids.append(str(pruned.get("id") or ""))
+                updated = updated[:DRY_RUN_PREVIEW_MAX_ITEMS]
+            _write_dry_run_manifest_unlocked(manifest_path, updated)
+            for old_id in removed_ids:
+                _unlink_dry_run_image_unlocked(previews_dir, old_id)
+        return entry
+    except Exception as err:
+        logger.warning("[OverlaySync] Could not store Dry-Run preview image: %s", err)
+        return None
+
+
+def list_dry_run_previews(base_dir: Path) -> List[Dict[str, Any]]:
+    """Return currently stored Dry-Run preview metadata entries, newest first."""
+    if not base_dir:
+        return []
+    previews_dir = get_dry_run_previews_dir(base_dir)
+    manifest_path = previews_dir / "manifest.json"
+    with _DRY_RUN_PREVIEW_LOCK:
+        entries = _load_dry_run_manifest_unlocked(manifest_path)
+        valid: List[Dict[str, Any]] = []
+        for entry in entries:
+            eid = str(entry.get("id") or "").strip()
+            if _DRY_RUN_PREVIEW_ID_RE.fullmatch(eid) and (previews_dir / f"{eid}.jpg").is_file():
+                valid.append(entry)
+                if len(valid) >= DRY_RUN_PREVIEW_MAX_ITEMS:
+                    break
+        return valid
+
+
+def clear_dry_run_previews(base_dir: Path) -> int:
+    """Remove all stored Dry-Run preview JPEGs and their manifest."""
+    if not base_dir:
+        return 0
+    previews_dir = get_dry_run_previews_dir(base_dir)
+    if not previews_dir.is_dir():
+        return 0
+    removed = 0
+    with _DRY_RUN_PREVIEW_LOCK:
+        for jpg in previews_dir.glob("*.jpg"):
+            try:
+                jpg.unlink(missing_ok=True)
+                removed += 1
+            except OSError:
+                pass
+        for extra in ("manifest.json", "manifest.json.tmp"):
+            try:
+                (previews_dir / extra).unlink(missing_ok=True)
+            except OSError:
+                pass
+    return removed
 
 EDITION_PATTERNS = [
     (r"(?i)\b(?:director'?s|directors)\s*cut\b", "Director's Cut"),
@@ -446,6 +597,33 @@ def cached_episode_streams(entry, server_updated_at, filepath):
         return None
     return streams
 
+_FILEPATH_TECH_TOKEN_RE = re.compile(
+    r"(?<![a-z0-9])(?:"
+    r"2160p|1080p|720p|576p|480p|4k|uhd|fhd|sd|"
+    r"dolby[ ._-]?vision|dovi|dv|hdr10(?:\+|plus)?|hdr|hlg|sdr|"
+    r"truehd|atmos|dts[ ._-]?hd(?:[ ._-]?(?:ma|hra))?|hra|dts[ .:_-]?x|dts[ ._-]?es|dts|"
+    r"dd[p+][ ._-]?[2567]\.[01]|dolby[ ._-]?digital(?:[ ._-]?plus)?|"
+    r"e[ ._-]?ac3|eac3|ac3|dd\+|ddp|dd|flac|lpcm|pcm|aac|mp3|opus|[2567]\.[01]|"
+    r"remux|blu[ ._-]?ray|bdrip|brrip|web[ ._-]?(?:dl|rip)|webdl|hdtv|dvdrip|dvd|sdtv|"
+    r"hevc|[hx]\.?26[45]|av1|vc-?1"
+    r")(?![a-z0-9])",
+    re.IGNORECASE,
+)
+
+
+def _filepath_tag_signature(filepath: Optional[str]) -> Tuple[str, ...]:
+    """Build a canonical signature of technical tags present in an episode filename."""
+    filename = re.split(r"[\\/]", str(filepath or "").strip())[-1]
+    if not filename:
+        return ()
+    stem = re.sub(r"\.[^.]+$", "", filename)
+    tokens = {
+        re.sub(r"[ ._-]+", " ", match.lower()).strip()
+        for match in _FILEPATH_TECH_TOKEN_RE.findall(stem)
+    }
+    return tuple(sorted(token for token in tokens if token))
+
+
 def aggregate_episode_streams(episodes, language_order=None):
     language_counts = Counter()
     audio_tag_counts = Counter()
@@ -459,13 +637,16 @@ def aggregate_episode_streams(episodes, language_order=None):
     subtitle_tag_first_seen = {}
     codec_first_seen = {}
     codec_details = {}
+    episode_paths = []
     language_priority = {str(code).strip().lower(): index for index, code in enumerate(language_order or [])}
 
     for episode in episodes:
         if not isinstance(episode, dict):
             continue
+        video_tuple = None
         if episode.get("resolution"):
-            video_counts[(episode["resolution"], bool(episode.get("has_hdr")), bool(episode.get("has_dolby_vision")))] += 1
+            video_tuple = (episode["resolution"], bool(episode.get("has_hdr")), bool(episode.get("has_dolby_vision")))
+            video_counts[video_tuple] += 1
         for field, fallback_field, counts, first_seen in (
             ("audio_languages", None, language_counts, language_first_seen),
             ("audio_language_tags", "audio_languages", audio_tag_counts, audio_tag_first_seen),
@@ -484,6 +665,7 @@ def aggregate_episode_streams(episodes, language_order=None):
                 counts[code] += 1
 
         codec = str(episode.get("audio_codec") or "").strip().lower()
+        codec_key = None
         if codec:
             profile = str(episode.get("audio_profile") or "")
             track_title = str(episode.get("audio_track_title") or episode.get("audio_title") or "")
@@ -494,6 +676,10 @@ def aggregate_episode_streams(episodes, language_order=None):
                 codec_first_seen[codec_key] = len(codec_first_seen)
                 codec_details[codec_key] = {"audio_profile": profile or None, "audio_track_title": track_title or None, "audio_title": track_title or None}
             codec_counts[codec_key] += 1
+
+        filepath_str = str(episode.get("filepath") or "").strip()
+        if filepath_str:
+            episode_paths.append((video_tuple, codec_key, filepath_str))
 
     def ranked(counts, first_seen, use_language_priority=False):
         def _lang_pri(val):
@@ -517,6 +703,33 @@ def aggregate_episode_streams(episodes, language_order=None):
     ranked_audio_tags = ranked(audio_tag_counts, audio_tag_first_seen, use_language_priority=True)
     selected_codec = ranked(codec_counts, codec_first_seen)[0] if codec_counts else None
     selected_video = max(video_counts, key=lambda value: (video_counts[value], _resolution_rank(value[0]), value[2], value[1])) if video_counts else None
+
+    selected_filepath = None
+    if episode_paths:
+        candidate_tiers = []
+        if selected_video is not None and selected_codec is not None:
+            candidate_tiers.append([
+                fp for vt, ck, fp in episode_paths if vt == selected_video and ck == selected_codec
+            ])
+        if selected_video is not None:
+            candidate_tiers.append([fp for vt, _, fp in episode_paths if vt == selected_video])
+        if selected_codec is not None:
+            candidate_tiers.append([fp for _, ck, fp in episode_paths if ck == selected_codec])
+        candidate_tiers.append([fp for _, _, fp in episode_paths])
+        selected_tier = next((tier for tier in candidate_tiers if tier), [])
+        if selected_tier:
+            sig_counts = Counter()
+            sig_first_seen = {}
+            sig_sample_path = {}
+            for fp in selected_tier:
+                sig = _filepath_tag_signature(fp)
+                if sig not in sig_first_seen:
+                    sig_first_seen[sig] = len(sig_first_seen)
+                    sig_sample_path[sig] = fp
+                sig_counts[sig] += 1
+            winning_sig = max(sig_counts, key=lambda sig: (sig_counts[sig], len(sig), -sig_first_seen[sig]))
+            selected_filepath = sig_sample_path[winning_sig]
+
     return {
         **({"resolution": selected_video[0], "has_hdr": selected_video[1], "has_dolby_vision": selected_video[2]} if selected_video else {}),
         "audio_languages": ranked_languages,
@@ -525,6 +738,7 @@ def aggregate_episode_streams(episodes, language_order=None):
         "subtitle_language_tags": ranked(subtitle_tag_counts, subtitle_tag_first_seen, use_language_priority=True),
         "audio_codec": selected_codec[0] if selected_codec else None,
         **(codec_details[selected_codec] if selected_codec else {"audio_profile": None, "audio_track_title": None, "audio_title": None}),
+        "filepath": selected_filepath,
     }
 
 def _configured_language_order(rules):
@@ -537,6 +751,15 @@ def _configured_language_order(rules):
             return [str(code).strip().lower() for code in languages if str(code).strip()]
     return ["de", "en", "ja", "zh", "ko"]
 
+
+def _builder_level_targets_parent(builder_level, default_to_parent: bool = False) -> bool:
+    """Return True if builder_level applies to parent TV artwork (show/season/all)."""
+    if builder_level is None:
+        return default_to_parent
+    levels = builder_level if isinstance(builder_level, list) else str(builder_level).split(",")
+    return any(str(level).strip().lower() in ("all", "show", "season") for level in levels)
+
+
 def _parent_stream_aggregation_requested(rules):
     for rule in rules:
         if not isinstance(rule, dict):
@@ -545,13 +768,42 @@ def _parent_stream_aggregation_requested(rules):
         if default not in ("languages", "audio_codec"):
             continue
         variables = rule.get("template_variables") or {}
-        builder_level = variables.get("builder_level")
-        if builder_level is None:
-            continue
-        levels = builder_level if isinstance(builder_level, list) else str(builder_level).split(",")
-        if any(str(level).strip().lower() in ("all", "show", "season") for level in levels):
+        if _builder_level_targets_parent(variables.get("builder_level"), default_to_parent=False):
             return True
     return False
+
+
+def _rules_need_parent_stream_aggregation(overlays_dir: Path, rules) -> bool:
+    """Return True if any library rule targeting show/season posters needs aggregated episode streams or filepath."""
+    if _parent_stream_aggregation_requested(rules):
+        return True
+    dict_rules = [rule for rule in rules if isinstance(rule, dict)]
+    rules_str = json.dumps(dict_rules).lower()
+    if "resolution" in rules_str or "overlays_tv" in rules_str or _rule_files_mention(overlays_dir, dict_rules, "resolution"):
+        return True
+    for rule in dict_rules:
+        if str(rule.get("default", "")).lower() == "video_format":
+            variables = rule.get("template_variables") or {}
+            if _builder_level_targets_parent(variables.get("builder_level"), default_to_parent=True):
+                return True
+    parent_file_rules = [
+        rule for rule in dict_rules
+        if rule.get("file")
+        and not str(rule["file"]).strip().lower().endswith("anime_overlays.yml")
+        and _builder_level_targets_parent((rule.get("template_variables") or {}).get("builder_level"), default_to_parent=True)
+    ]
+    return bool(parent_file_rules) and any(
+        _rule_files_mention(overlays_dir, parent_file_rules, keyword)
+        for keyword in (
+            "filepath.regex",
+            "file.regex",
+            "filename.regex",
+            "has_dolby_vision",
+            "has_hdr",
+            "audio_codec",
+            "audio_track_title.regex",
+        )
+    )
 
 def _normalized_stream_language(value):
     return language_base_code(value)
@@ -584,6 +836,41 @@ def _extract_jellyfin_stream_language(stream_obj) -> Tuple[Optional[str], Option
     return language_base_code(tag), tag
 
 
+def _plex_video_stream_hdr_dv(stream) -> Tuple[bool, bool]:
+    """Return (has_hdr, has_dolby_vision) from a Plex video Stream XML element."""
+    dovi_raw = str(stream.get("DOVIPresent") or stream.get("doviPresent") or "").strip().lower()
+    disp = str(stream.get("displayTitle") or "").lower()
+    has_dv = dovi_raw in ("1", "true") or "dovi" in disp or "dolby vision" in disp
+    cp = str(stream.get("colorPrimaries") or "").strip().lower()
+    ctrc = str(stream.get("colorTrc") or "").strip().lower()
+    has_hdr = cp == "bt2020" or ctrc in ("smpte2084", "arib-std-b67") or "hdr" in disp
+    return has_hdr, has_dv
+
+
+def _jellyfin_video_stream_hdr_dv(stream) -> Tuple[bool, bool]:
+    """Return (has_hdr, has_dolby_vision) from a Jellyfin/Emby video MediaStream dict."""
+    v_range = str(stream.get("VideoRange") or "").strip().lower()
+    v_range_type = str(stream.get("VideoRangeType") or "").strip().lower()
+    v_dovi_title = str(stream.get("VideoDoViTitle") or "").strip().lower()
+    v_disp = str(stream.get("DisplayTitle") or "").strip().lower()
+    has_dv = (
+        bool(v_dovi_title)
+        or "dovi" in v_range_type
+        or "dolby vision" in v_range_type
+        or "dovi" in v_disp
+        or "dolby vision" in v_disp
+    )
+    has_hdr = (
+        "hdr" in v_range
+        or "hlg" in v_range
+        or "hdr" in v_range_type
+        or "hlg" in v_range_type
+        or "hdr" in v_disp
+        or "hdr" in v_dovi_title
+    )
+    return has_hdr, has_dv
+
+
 def _plex_episode_stream_summary(item):
     languages = []
     language_tags = []
@@ -608,8 +895,9 @@ def _plex_episode_stream_summary(item):
             if full_tag and full_tag not in language_tags:
                 language_tags.append(full_tag)
         elif stream_type == "1":
-            has_dolby_vision = has_dolby_vision or stream.get("DOVIPresent") == "1"
-            has_hdr = has_hdr or stream.get("colorPrimaries") == "bt2020"
+            st_hdr, st_dv = _plex_video_stream_hdr_dv(stream)
+            has_dolby_vision = has_dolby_vision or st_dv
+            has_hdr = has_hdr or st_hdr
     part = item.find(".//Part")
     streams = _extract_stream_overlay_metadata(item)
     media = item.find(".//Media")
@@ -647,8 +935,9 @@ def _emby_episode_stream_summary(item):
             if not audio_codec and stream.get("Codec"):
                 audio_codec = str(stream["Codec"]).strip().lower()
         elif stream_type == "Video":
-            has_dolby_vision = has_dolby_vision or bool(stream.get("VideoDoViTitle") or "dovi" in str(stream.get("DisplayTitle", "")).lower())
-            has_hdr = has_hdr or stream.get("VideoRange") == "HDR" or "hdr" in str(stream.get("DisplayTitle", "")).lower()
+            st_hdr, st_dv = _jellyfin_video_stream_hdr_dv(stream)
+            has_dolby_vision = has_dolby_vision or st_dv
+            has_hdr = has_hdr or st_hdr
     sources = item.get("MediaSources") or []
     filepath = item.get("Path") or next((source.get("Path") for source in sources if source.get("Path")), None)
     streams = _extract_stream_overlay_metadata(item)
@@ -985,6 +1274,10 @@ LANGUAGE_MAP = {
     "tha": "th",
     "ind": "id",
     "heb": "he",
+    "cat": "ca",
+    "val": "ca-valencia",
+    "eus": "eu", "baq": "eu",
+    "glg": "gl",
     # Common full language names
     "german": "de", "deutsch": "de",
     "english": "en",
@@ -993,6 +1286,10 @@ LANGUAGE_MAP = {
     "korean": "ko",
     "french": "fr", "français": "fr",
     "spanish": "es", "español": "es",
+    "catalan": "ca", "català": "ca", "catala": "ca",
+    "valencian": "ca-valencia", "valencià": "ca-valencia",
+    "basque": "eu", "euskara": "eu", "euskera": "eu",
+    "galician": "gl", "galego": "gl",
     "italian": "it", "italiano": "it",
     "russian": "ru",
     "portuguese": "pt",
@@ -1276,7 +1573,7 @@ def get_server_credentials(config_path: Path) -> Dict[str, Any]:
 
         # Plex
         p_url = cfg.get("PlexUrl") or cfg.get("PlexPart", {}).get("PlexUrl")
-        p_tok = cfg.get("PlexToken") or cfg.get("ApiPart", {}).get("PlexToken")
+        p_tok = cfg.get("PlexToken") or cfg.get("PlexPart", {}).get("PlexToken") or cfg.get("ApiPart", {}).get("PlexToken")
         p_use = cfg.get("UsePlex") or cfg.get("PlexPart", {}).get("UsePlex")
         p_ex = cfg.get("PlexLibstoExclude") or cfg.get("PlexPart", {}).get("LibstoExclude", [])
         if p_url and is_safe_url(p_url):
@@ -1292,6 +1589,8 @@ def get_server_credentials(config_path: Path) -> Dict[str, Any]:
         jf_key = (
             cfg.get("JellyfinAPIKey")
             or cfg.get("JellyfinApiKey")
+            or cfg.get("JellyfinPart", {}).get("JellyfinToken")
+            or cfg.get("JellyfinPart", {}).get("JellyfinAPIKey")
             or cfg.get("ApiPart", {}).get("JellyfinAPIKey")
             or cfg.get("ApiPart", {}).get("JellyfinApiKey")
         )
@@ -1310,6 +1609,8 @@ def get_server_credentials(config_path: Path) -> Dict[str, Any]:
         em_key = (
             cfg.get("EmbyAPIKey")
             or cfg.get("EmbyApiKey")
+            or cfg.get("EmbyPart", {}).get("EmbyToken")
+            or cfg.get("EmbyPart", {}).get("EmbyAPIKey")
             or cfg.get("ApiPart", {}).get("EmbyAPIKey")
             or cfg.get("ApiPart", {}).get("EmbyApiKey")
         )
@@ -2414,6 +2715,91 @@ def _rating_theme_colors(theme: str, source: str, score: Optional[float]) -> Tup
     return "#E53935E6", "#FFFFFF"
 
 
+RESOLUTION_TIERS: Tuple[str, ...] = ("4k", "1080p", "720p", "576p", "480p")
+RESOLUTION_VARIANT_CANDIDATES: Dict[Tuple[bool, bool], Tuple[str, ...]] = {
+    (True, True): ("dvhdr", "dv", "hdr", ""),
+    (True, False): ("dv", ""),
+    (False, True): ("hdr", ""),
+    (False, False): ("",),
+}
+
+
+def _parse_overlay_bool(value: Any) -> Optional[bool]:
+    """Parse boolean-like template variables strictly, returning None when unset."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int):
+        if value == 1:
+            return True
+        if value == 0:
+            return False
+        return None
+    if isinstance(value, str):
+        norm = value.strip().lower()
+        if norm in ("true", "1", "yes"):
+            return True
+        if norm in ("false", "0", "no"):
+            return False
+    return None
+
+
+def is_resolution_tier_enabled(variables: Dict[str, Any], tier: str) -> bool:
+    """Evaluate Kometa use_all / use_<tier> and Posterizarr tiers filtering for one resolution tier."""
+    norm_tier = str(tier or "").strip().lower()
+    if norm_tier not in RESOLUTION_TIERS:
+        return False
+    vars_lower = {str(k).strip().lower(): v for k, v in (variables or {}).items()}
+    if _parse_overlay_bool(vars_lower.get("use_resolution")) is False:
+        return False
+
+    tier_flag = _parse_overlay_bool(vars_lower.get(f"use_{norm_tier}"))
+    if tier_flag is not None:
+        return tier_flag
+
+    use_all_flag = _parse_overlay_bool(vars_lower.get("use_all"))
+    if use_all_flag is not None:
+        return use_all_flag
+
+    raw_tiers = vars_lower.get("tiers")
+    if isinstance(raw_tiers, list):
+        normalized_tiers = {str(item).strip().lower() for item in raw_tiers if str(item).strip()}
+        return norm_tier in normalized_tiers
+
+    if str(vars_lower.get("mode") or "").strip().lower() == "banner" and _parse_overlay_bool(vars_lower.get(f"{norm_tier}_banner")) is False:
+        return False
+
+    return True
+
+
+def extract_enabled_resolution_tiers(variables: Dict[str, Any]) -> List[str]:
+    """Return canonical enabled resolution tiers for a resolution template_variables dict."""
+    return [tier for tier in RESOLUTION_TIERS if is_resolution_tier_enabled(variables, tier)]
+
+
+def _resolve_allowed_resolution_variant(
+    variables: Dict[str, Any], tier: str, has_dv: bool, has_hdr: bool
+) -> Optional[str]:
+    """Return highest-priority allowed HDR/DV suffix ('dvhdr', 'dv', 'hdr', ''), or None if tier is disabled."""
+    vars_lower = {str(k).strip().lower(): v for k, v in (variables or {}).items()}
+    if _parse_overlay_bool(vars_lower.get("use_resolution")) is False:
+        return None
+
+    norm_tier = str(tier or "").strip().lower()
+    base_enabled = is_resolution_tier_enabled(variables, norm_tier)
+    for variant in RESOLUTION_VARIANT_CANDIDATES[(bool(has_dv), bool(has_hdr))]:
+        if variant == "":
+            if base_enabled:
+                return ""
+            continue
+        explicit_combo = _parse_overlay_bool(vars_lower.get(f"use_{norm_tier}_{variant}"))
+        explicit_alt = _parse_overlay_bool(vars_lower.get(f"use_{variant}"))
+        if explicit_combo is False or explicit_alt is False:
+            continue
+        if explicit_combo is True or base_enabled:
+            return variant
+    return None
+
+
 # ==============================================================================
 # OVERLAY RECIPE BUILDER
 # ==============================================================================
@@ -2494,6 +2880,11 @@ def build_overlay_layers_for_item(
         ) if any(term in resolution for term in terms)), None)
         if tier is None:
             continue
+        has_dv = bool(item_metadata.get("has_dolby_vision"))
+        has_hdr = bool(item_metadata.get("has_hdr"))
+        allowed_variant = _resolve_allowed_resolution_variant(variables, tier, has_dv, has_hdr)
+        if allowed_variant is None:
+            continue
         if variables.get("mode") == "banner" and not is_landscape:
             banner_assets = {
                 "4k": ("4K_banner.png", "4K ULTRA HD"),
@@ -2520,18 +2911,25 @@ def build_overlay_layers_for_item(
                     banner["font_path"] = str(font_path)
             native_rating_layers.append(banner)
         else:
-            variant = "dvhdr" if item_metadata.get("has_dolby_vision") and item_metadata.get("has_hdr") else ("dv" if item_metadata.get("has_dolby_vision") else ("hdr" if item_metadata.get("has_hdr") else ""))
+            variant = allowed_variant
             badge_dir = overlays_dir / "assets" / "resolution"
             selected_asset = variables.get(f"file_{tier}")
+            fallback_artwork = None
             if selected_asset:
                 asset_path = Path(str(selected_asset))
                 artwork = asset_path if asset_path.is_absolute() else overlays_dir / "assets" / asset_path
             else:
                 engine = _get_overlay_config_engine(overlays_dir)
-                artwork = engine.resolve_image_path(f"resolution/{tier}{variant}.png")
-                if artwork is None or not artwork.exists():
-                    artwork = engine.resolve_image_path(f"resolution/{tier}.png") or badge_dir / f"{tier}.png"
-            native_rating_layers.append({
+                base_artwork = engine.resolve_image_path(f"resolution/{tier}.png") or badge_dir / f"{tier}.png"
+                if variant:
+                    artwork = engine.resolve_image_path(f"resolution/{tier}{variant}.png")
+                    if artwork is None:
+                        artwork = base_artwork
+                    else:
+                        fallback_artwork = base_artwork
+                else:
+                    artwork = base_artwork
+            res_layer = {
                 "name": "resolution", "type": "image", "image_path": str(artwork), "scale_height": int(variables.get("scale_height", 55)),
                 "horizontal_align": variables.get("horizontal_align") or variables.get("horizontal_position") or "left",
                 "vertical_align": variables.get("vertical_align") or variables.get("vertical_position") or "top",
@@ -2542,7 +2940,10 @@ def build_overlay_layers_for_item(
                 "back_align": variables.get("back_align") or "center",
                 "back_padding": int(variables.get("back_padding", 0)),
                 "fit_to_box": True,
-            })
+            }
+            if fallback_artwork and str(fallback_artwork) != str(artwork):
+                res_layer["fallback_image_path"] = str(fallback_artwork)
+            native_rating_layers.append(res_layer)
     for rule in rating_rules:
         variables = rule.get("template_variables") or {}
         target = str(variables.get("builder_level", "all")).lower()
@@ -2565,18 +2966,37 @@ def build_overlay_layers_for_item(
     native_parent_stream_layers = []
     flag_assets_dir = overlays_dir / "assets"
 
+    def _parse_overlay_limit(value: Any, default: int = 5) -> int:
+        try:
+            return max(0, int(value))
+        except (TypeError, ValueError):
+            return default
+
     def resolve_parent_flag(code, variables):
         norm_code = normalize_language_tag(code) or str(code).strip().lower()
-        filename = LANGUAGE_TO_FLAG_MAP.get(norm_code)
-        if not filename:
-            if "-" in norm_code:
-                region = norm_code.split("-", 1)[1]
-                filename = f"{region}.png" if len(region) == 2 and region.isalpha() else f"{norm_code}.png"
-            else:
-                filename = f"{norm_code}.png"
         style = "round" if str(variables.get("style", "round")).lower() == "round" else "square"
-        selected_asset = variables.get(f"file_{norm_code}") or variables.get(f"file_{code}") or f"flag/{style}/{filename}"
-        return _get_overlay_config_engine(overlays_dir).resolve_image_path(selected_asset) or flag_assets_dir / "flag" / style / filename
+        engine = _get_overlay_config_engine(overlays_dir)
+
+        explicit_asset = variables.get(f"file_{norm_code}") or variables.get(f"file_{code}")
+        if explicit_asset:
+            return engine.resolve_image_path(explicit_asset) or (flag_assets_dir / str(explicit_asset))
+
+        custom_flag = engine.resolve_custom_flag_path(norm_code, style)
+        if custom_flag:
+            return custom_flag
+
+        regional_stem = REGIONAL_LANGUAGE_FLAGS.get(norm_code)
+        if regional_stem:
+            filename = f"{regional_stem}.png"
+        else:
+            filename = LANGUAGE_TO_FLAG_MAP.get(norm_code)
+            if not filename:
+                if "-" in norm_code:
+                    region = norm_code.split("-", 1)[1]
+                    filename = f"{region}.png" if len(region) == 2 and region.isalpha() else f"{norm_code}.png"
+                else:
+                    filename = f"{norm_code}.png"
+        return engine.resolve_image_path(f"flag/{style}/{filename}") or flag_assets_dir / "flag" / style / filename
 
     engine_rules = []
     for rule in library_rules:
@@ -2628,7 +3048,7 @@ def build_overlay_layers_for_item(
             if item_level in ("show", "season") and variables.get("parent_language_mode", "preferred_then_frequency") == "preferred_then_frequency" and allowed and allowed[0] in selected:
                 selected.remove(allowed[0])
                 selected.insert(0, allowed[0])
-            selected = selected[:max(0, min(5, int(variables.get("overlay_limit", 5))))]
+            selected = selected[:_parse_overlay_limit(variables.get("overlay_limit", 5), 5)]
             display_priority = {code: index for index, code in enumerate(allowed)}
             selected.sort(key=display_priority.__getitem__)
             horizontal_align = variables.get("horizontal_align") or variables.get("horizontal_position", "left")
@@ -2678,7 +3098,9 @@ def build_overlay_layers_for_item(
                         "vertical_offset": vertical_offset + position_index * 61,
                     })
                 else:
-                    lang_text = code.lower() if str(variables.get("use_lowercase", False)).lower() in ("true", "1") else code.upper()
+                    raw_label = str(variables.get(f"text_{code}") or LANGUAGE_DISPLAY_LABELS.get(code) or code)
+                    lang_text = raw_label.lower() if str(variables.get("use_lowercase", False)).lower() in ("true", "1") else raw_label.upper()
+                    is_three_char = bool(variables.get("three_characters")) or len(lang_text) >= 3
                     style = str(variables.get("style", "round")).lower()
                     flag_align = variables.get("flag_alignment") or ("right" if subtitle_rule else "left")
                     back_radius = 26 if style in ("round", "half") else 0
@@ -2699,7 +3121,7 @@ def build_overlay_layers_for_item(
                         "font_size": int(variables.get("font_size") or (70 if variables.get("size") == "big" else 50)),
                         "font_color": variables.get("font_color", "#FFFFFF"),
                         "back_color": variables.get("back_color", "#00000000"),
-                        "back_width": int(variables["back_width"]) if variables.get("back_width") else (290 if variables.get("three_characters") and variables.get("size") == "big" else (230 if variables.get("three_characters") else (216 if variables.get("size") == "big" else 190))),
+                        "back_width": int(variables["back_width"]) if variables.get("back_width") else (290 if is_three_char and variables.get("size") == "big" else (230 if is_three_char else (216 if variables.get("size") == "big" else 190))),
                         "back_height": int(variables["back_height"]) if variables.get("back_height") else (60 if variables.get("size") == "big" else None),
                         "back_radius": back_radius,
                         "back_padding": int(variables.get("back_padding", 0)),
@@ -2729,14 +3151,18 @@ def build_overlay_layers_for_item(
             style = str(variables.get("style", "compact")).lower()
             engine = _get_overlay_config_engine(overlays_dir)
             selected_asset = variables.get(f"file_{matched_codec}")
+            fallback_codec_image = None
             if selected_asset:
                 codec_image = engine.resolve_image_path(str(selected_asset))
             else:
                 codec_image = engine.resolve_image_path(f"audio_codec/{style}/{matched_codec}.png")
+                if style != "standard":
+                    fallback_codec_image = engine.resolve_image_path(f"audio_codec/standard/{matched_codec}.png")
                 if codec_image is None:
-                    codec_image = engine.resolve_image_path(f"audio_codec/standard/{matched_codec}.png")
-            if codec_image is not None and codec_image.exists():
-                native_parent_stream_layers.append({
+                    codec_image = fallback_codec_image
+                    fallback_codec_image = None
+            if codec_image is not None:
+                codec_layer = {
                     "name": f"audio_codec_{matched_codec}",
                     "type": "image",
                     "image_path": str(codec_image),
@@ -2749,7 +3175,10 @@ def build_overlay_layers_for_item(
                     "horizontal_offset": int(variables.get("horizontal_offset", 0)),
                     "vertical_align": variables.get("vertical_align") or variables.get("vertical_position", "top"),
                     "vertical_offset": int(variables.get("vertical_offset", 15)),
-                })
+                }
+                if fallback_codec_image is not None and str(fallback_codec_image) != str(codec_image):
+                    codec_layer["fallback_image_path"] = str(fallback_codec_image)
+                native_parent_stream_layers.append(codec_layer)
 
     try:
         engine = _get_overlay_config_engine(overlays_dir)
@@ -2831,7 +3260,26 @@ def build_overlay_layers_for_item(
     if resolution and resolution not in ("none", "off", "false", "", "unknown"):
         if has_res_rule or "4k" in resolution:
             is_4k = ("4k" in resolution or "3840" in resolution or "2160" in resolution or "uhd" in resolution)
-            if has_4k_banner and is_4k and (assets_dir / "4K_banner.png").exists() and not is_landscape:
+            tier = "1080p"
+            if is_4k:
+                tier = "4k"
+            elif "1080" in resolution or "fhd" in resolution:
+                tier = "1080p"
+            elif "720" in resolution or "hd" in resolution:
+                tier = "720p"
+            elif "576" in resolution or "pal" in resolution:
+                tier = "576p"
+            elif "480" in resolution or "sd" in resolution or "ntsc" in resolution:
+                tier = "480p"
+
+            res_vars = rule_names.get("resolution") or rule_names.get("4k_banner") or rule_names.get("4k") or {}
+            has_dv = bool(item_metadata.get("has_dolby_vision"))
+            has_hdr = bool(item_metadata.get("has_hdr"))
+            allowed_variant = _resolve_allowed_resolution_variant(res_vars, tier, has_dv, has_hdr)
+
+            if allowed_variant is None:
+                pass
+            elif has_4k_banner and is_4k and (assets_dir / "4K_banner.png").exists() and not is_landscape:
                 layers.append({
                     "name": "resolution_banner",
                     "type": "image",
@@ -2842,37 +3290,22 @@ def build_overlay_layers_for_item(
                     "vertical_offset": 0
                 })
             elif "resolution" in rule_names or has_res_rule:
-                res_vars = rule_names.get("resolution", {})
                 h_pos = res_vars.get("horizontal_align") or res_vars.get("horizontal_position", "left")
                 v_pos = res_vars.get("vertical_align") or res_vars.get("vertical_position", "top")
                 h_off = int(res_vars.get("horizontal_offset", 15))
                 v_off = int(res_vars.get("vertical_offset", 15))
 
-                tier = "1080p"
-                if is_4k:
-                    tier = "4k"
-                elif "1080" in resolution or "fhd" in resolution:
-                    tier = "1080p"
-                elif "720" in resolution or "hd" in resolution:
-                    tier = "720p"
-                elif "576" in resolution or "pal" in resolution:
-                    tier = "576p"
-                elif "480" in resolution or "sd" in resolution or "ntsc" in resolution:
-                    tier = "480p"
-
-                has_dv = bool(item_metadata.get("has_dolby_vision"))
-                has_hdr = bool(item_metadata.get("has_hdr"))
-
                 badge_cands = []
-                if has_dv and has_hdr:
+                if allowed_variant == "dvhdr":
                     badge_cands.extend([f"{tier}dvhdr.png", f"{tier}dvhdrplus.png"])
-                elif has_dv:
+                elif allowed_variant == "dv":
                     badge_cands.append(f"{tier}dv.png")
-                elif has_hdr:
+                elif allowed_variant == "hdr":
                     badge_cands.append(f"{tier}hdr.png")
                 badge_cands.extend([f"{tier}.png", f"{tier.upper()}.png"])
 
-                selected_asset = variables.get(f"file_{tier}")
+                selected_asset = res_vars.get(f"file_{tier}")
+                fallback_badge = None
                 if selected_asset:
                     asset_path = Path(str(selected_asset))
                     badge_file = asset_path if asset_path.is_absolute() else assets_dir / asset_path
@@ -2887,9 +3320,15 @@ def build_overlay_layers_for_item(
                         elif p2.exists():
                             badge_file = p2
                             break
+                    if badge_file is None and badge_cands:
+                        engine = _get_overlay_config_engine(overlays_dir)
+                        badge_file = engine.resolve_image_path(f"resolution/{badge_cands[0]}")
+                        base_cand = engine.resolve_image_path(f"resolution/{tier}.png")
+                        if base_cand and badge_file and str(base_cand) != str(badge_file):
+                            fallback_badge = base_cand
 
                 if badge_file:
-                    layers.append({
+                    res_layer = {
                         "name": "resolution",
                         "type": "image",
                         "image_path": str(badge_file),
@@ -2897,7 +3336,10 @@ def build_overlay_layers_for_item(
                         "horizontal_offset": h_off,
                         "vertical_align": v_pos,
                         "vertical_offset": v_off
-                    })
+                    }
+                    if fallback_badge:
+                        res_layer["fallback_image_path"] = str(fallback_badge)
+                    layers.append(res_layer)
 
     # 2. Audio Languages (Country Flags)
     if "languages" in rule_names:
@@ -2925,7 +3367,7 @@ def build_overlay_layers_for_item(
             if not item_metadata.get("_language_order_precomputed"):
                 language_priority = {language: index for index, language in enumerate(allowed_langs)}
                 clean_detected.sort(key=language_priority.__getitem__)
-            limit = int(lang_vars.get("overlay_limit", 5))
+            limit = _parse_overlay_limit(lang_vars.get("overlay_limit", 5), 5)
             clean_detected = clean_detected[:limit]
             display_priority = {code: index for index, code in enumerate(allowed_langs)}
             clean_detected.sort(key=display_priority.__getitem__)
@@ -2938,8 +3380,8 @@ def build_overlay_layers_for_item(
 
                 hide_text = str(lang_vars.get("hide_text", True)).lower() in ("true", "1")
                 if hide_text:
-                    if len(clean_detected) == 1:
-                        code = clean_detected[0]
+                    for index, code in enumerate(clean_detected):
+                        position_index = len(clean_detected) - index - 1
                         flag_path = resolve_flag_path(code)
                         layers.append({
                             "name": f"language_flag_{code}",
@@ -2950,44 +3392,17 @@ def build_overlay_layers_for_item(
                             "horizontal_align": "left",
                             "horizontal_offset": h_offset,
                             "vertical_align": "bottom",
-                            "vertical_offset": v_offset
-                        })
-                    elif len(clean_detected) >= 2:
-                        # Stack flags vertically: first flag on top, second flag on bottom (Image 2 style)
-                        code_top = clean_detected[0]
-                        code_bottom = clean_detected[1]
-                        top_flag_file = resolve_flag_path(code_top)
-                        bot_flag_file = resolve_flag_path(code_bottom)
-
-                        layers.append({
-                            "name": f"language_flag_{code_bottom}",
-                            "type": "image",
-                            "image_path": str(bot_flag_file),
-                            "scale_width": flag_w,
-                            "scale_height": flag_h,
-                            "horizontal_align": "left",
-                            "horizontal_offset": h_offset,
-                            "vertical_align": "bottom",
-                            "vertical_offset": v_offset
-                        })
-                        layers.append({
-                            "name": f"language_flag_{code_top}",
-                            "type": "image",
-                            "image_path": str(top_flag_file),
-                            "scale_width": flag_w,
-                            "scale_height": flag_h,
-                            "horizontal_align": "left",
-                            "horizontal_offset": h_offset,
-                            "vertical_align": "bottom",
-                            "vertical_offset": v_offset + flag_h + 4
+                            "vertical_offset": v_offset + position_index * (flag_h + 4),
                         })
                 else:
                     for index, code in enumerate(clean_detected):
                         flag_path = resolve_flag_path(code)
-                        lang_text = code.lower() if str(lang_vars.get("use_lowercase", False)).lower() in ("true", "1") else code.upper()
+                        raw_label = str(lang_vars.get(f"text_{code}") or LANGUAGE_DISPLAY_LABELS.get(code) or code)
+                        lang_text = raw_label.lower() if str(lang_vars.get("use_lowercase", False)).lower() in ("true", "1") else raw_label.upper()
                         style = str(lang_vars.get("style", "round")).lower()
                         flag_align = lang_vars.get("flag_alignment") or "left"
                         back_radius = 26 if style in ("round", "half") else 0
+                        default_bw = 230 if (lang_vars.get("three_characters") or len(lang_text) >= 3) else 190
                         layers.append({
                             "name": f"language_flag_{code}",
                             "type": "text",
@@ -2999,7 +3414,7 @@ def build_overlay_layers_for_item(
                             "font_size": int(lang_vars.get("font_size", 50)),
                             "font_color": lang_vars.get("font_color", "#FFFFFF"),
                             "back_color": lang_vars.get("back_color", "#00000000"),
-                            "back_width": int(lang_vars["back_width"]) if lang_vars.get("back_width") else 190,
+                            "back_width": int(lang_vars["back_width"]) if lang_vars.get("back_width") else default_bw,
                             "back_radius": back_radius,
                             "back_align": flag_align,
                             "horizontal_align": "left",
@@ -3100,29 +3515,35 @@ def build_overlay_layers_for_item(
         is_recently_aired = matches_episode_air_date(status_vars.get("last", 14), item_metadata)
         eff_status = "airing" if is_recently_aired else norm_series_status
         if eff_status in ["airing", "returning", "ended", "canceled"]:
-            status_colors = {
-                "airing": status_vars.get("font_color_airing", "#27C24C"),
-                "returning": status_vars.get("font_color_returning", "#FFA500"),
-                "ended": status_vars.get("font_color_ended", "#FF0000"),
-                "canceled": status_vars.get("font_color_canceled", "#ED1F1F"),
-            }
-            color = status_colors.get(eff_status, "#FF0000")
-            status_text = str(status_vars.get(f"text_{eff_status}") or eff_status.upper())
-            layers.append({
-                "name": "status",
-                "type": "text",
-                "text": status_text,
-                "font_path": str(colus_font) if colus_font.exists() else font_to_use,
-                "font_size": int(status_vars.get("font_size", 80 if not is_landscape else 50)),
-                "font_color": color,
-                "back_color": status_vars.get("back_color", "#00000000"),
-                "back_width": int(status_vars.get("back_width", 965)),
-                "back_height": int(status_vars.get("back_height", 149)),
-                "horizontal_align": status_vars.get("horizontal_align", "center"),
-                "horizontal_offset": int(status_vars.get("horizontal_offset", 0)),
-                "vertical_align": status_vars.get("vertical_align") or status_vars.get("vertical_position") or "bottom",
-                "vertical_offset": int(status_vars.get("vertical_offset", 23))
-            })
+            use_all_status = _parse_overlay_bool(status_vars.get("use_all"))
+            explicit_state_enabled = _parse_overlay_bool(status_vars.get(f"use_{eff_status}"))
+            state_enabled = explicit_state_enabled if explicit_state_enabled is not None else (use_all_status if use_all_status is not None else True)
+            if state_enabled:
+                fallback_fc = status_vars.get("font_color")
+                status_colors = {
+                    "airing": status_vars.get("font_color_airing") or fallback_fc or "#27C24C",
+                    "returning": status_vars.get("font_color_returning") or fallback_fc or "#FFA500",
+                    "ended": status_vars.get("font_color_ended") or fallback_fc or "#FF0000",
+                    "canceled": status_vars.get("font_color_canceled") or fallback_fc or "#ED1F1F",
+                }
+                color = status_colors.get(eff_status, "#FF0000")
+                status_text = str(status_vars.get(f"text_{eff_status}") or eff_status.upper())
+                layers.append({
+                    "name": "status",
+                    "type": "text",
+                    "text": status_text,
+                    "font_path": str(colus_font) if colus_font.exists() else font_to_use,
+                    "font_size": int(status_vars.get("font_size", 80 if not is_landscape else 50)),
+                    "font_color": color,
+                    "back_color": status_vars.get("back_color", "#00000000"),
+                    "back_radius": int(status_vars.get("back_radius", 15)),
+                    "back_width": int(status_vars.get("back_width", 965)),
+                    "back_height": int(status_vars.get("back_height", 149)),
+                    "horizontal_align": status_vars.get("horizontal_align", "center"),
+                    "horizontal_offset": int(status_vars.get("horizontal_offset", 0)),
+                    "vertical_align": status_vars.get("vertical_align") or status_vars.get("vertical_position") or "bottom",
+                    "vertical_offset": int(status_vars.get("vertical_offset", 23))
+                })
 
     # 6. Ratings Badge (Audience/Critic Score - ONLY if explicitly configured in rules!)
     if "ratings" in rule_names or "rating" in rule_names:
@@ -3439,7 +3860,10 @@ def _rule_files_mention(overlays_dir: Path, rules, keyword: str) -> bool:
             continue
         name = str(rule["file"]).strip()
         name = name[7:] if name.startswith("config/") else name
-        for candidate in (overlays_dir / "configs" / name, Path(name)):
+        candidates = [overlays_dir / "configs" / name, Path(name)]
+        if "/" in name or "\\" in name:
+            candidates.append(overlays_dir / "configs" / re.split(r"[\\/]", name)[-1])
+        for candidate in candidates:
             try:
                 if candidate.is_file():
                     if keyword in _overlay_file_text(str(candidate), candidate.stat().st_mtime):
@@ -3569,6 +3993,75 @@ def _parse_plex_item(it, sec_title: str, sec_type: str) -> Optional[Dict[str, An
     }
 
 
+_JELLYFIN_OVERLAY_ITEM_FIELDS = (
+    "MediaStreams,MediaSources,Width,Height,OfficialRating,CustomRating,"
+    "RunTimeTicks,Status,ProviderIds,ProductionYear,Studios,CommunityRating,"
+    "CriticRating,DateModified,DateCreated,Path"
+)
+_JELLYFIN_LIBRARY_PAGE_SIZE = 500
+
+
+async def _fetch_jellyfin_library_items(
+    http_client: httpx.AsyncClient,
+    server_url: str,
+    headers: Dict[str, str],
+    base_params: Dict[str, Any],
+    page_size: int = _JELLYFIN_LIBRARY_PAGE_SIZE,
+) -> Tuple[List[Dict[str, Any]], int, Optional[str]]:
+    """Fetch all items for a Jellyfin/Emby library using StartIndex/Limit pagination."""
+    effective_page_size = page_size if page_size > 0 else _JELLYFIN_LIBRARY_PAGE_SIZE
+    all_items: List[Dict[str, Any]] = []
+    seen_ids = set()
+    start_index = 0
+    pages_fetched = 0
+
+    while True:
+        page_params = {
+            **base_params,
+            "StartIndex": start_index,
+            "Limit": effective_page_size,
+            "SortBy": "SortName",
+            "SortOrder": "Ascending",
+        }
+        resp = await http_client.get(
+            f"{server_url}/Items",
+            params=page_params,
+            headers=headers,
+        )
+        if resp.status_code != 200:
+            snippet = (getattr(resp, "text", None) or "")[:120]
+            return all_items, pages_fetched, f"HTTP {resp.status_code}: {snippet}"
+
+        payload = resp.json() or {}
+        pages_fetched += 1
+        batch = payload.get("Items") or []
+        raw_total = payload.get("TotalRecordCount")
+        total_records = raw_total if isinstance(raw_total, int) and raw_total >= 0 else None
+
+        added_this_page = 0
+        for item_obj in batch:
+            raw_id = item_obj.get("Id")
+            item_key = str(raw_id) if raw_id is not None else None
+            if item_key is not None:
+                if item_key in seen_ids:
+                    continue
+                seen_ids.add(item_key)
+            all_items.append(item_obj)
+            added_this_page += 1
+
+        if not batch or added_this_page == 0:
+            break
+
+        start_index += len(batch)
+        if total_records is not None:
+            if start_index >= total_records:
+                break
+        elif len(batch) < effective_page_size:
+            break
+
+    return all_items, pages_fetched, None
+
+
 def _parse_jellyfin_item(item_obj: dict, lib_name: str) -> Optional[Dict[str, Any]]:
     it_id = item_obj.get("Id")
     if not it_id:
@@ -3613,11 +4106,10 @@ def _parse_jellyfin_item(item_obj: dict, lib_name: str) -> Optional[Dict[str, An
                 vid_w = sw
             if sh > vid_h:
                 vid_h = sh
-            v_range = str(s.get("VideoRange") or "").lower()
-            v_title = str(s.get("VideoDoViTitle") or s.get("DisplayTitle") or "").lower()
-            if "dovi" in v_title or "dolby vision" in v_title or s.get("VideoDoViTitle"):
+            st_hdr, st_dv = _jellyfin_video_stream_hdr_dv(s)
+            if st_dv:
                 item_has_dv = True
-            if "hdr" in v_range or "hdr" in v_title or s.get("VideoRange") == "HDR":
+            if st_hdr:
                 item_has_hdr = True
 
     res_val = "1080p"
@@ -4027,7 +4519,7 @@ async def _run_overlay_sync_task(
                 pass
 
     if dry_run:
-        write_log("DRY RUN is active: overlays will be evaluated and rendered, but no artwork will be uploaded or marked synced.")
+        write_log("DRY RUN is active: overlays will be evaluated and rendered into Dry-Run Previews, but no artwork will be uploaded or marked synced.")
 
     # Fast targeted item handling
     is_target_mode = bool(target_items)
@@ -4136,6 +4628,23 @@ async def _run_overlay_sync_task(
                     if not any((d / fname).is_file() for d in candidate_default_dirs)
                 ]
                 if missing_defaults:
+                    try:
+                        from overlay_resolver import OverlayResolver
+                        resolver_root = overlays_dir.parent.parent if overlays_dir.parent.name.lower() == "overlayfiles" else base_dir
+                        ensure_resolver = OverlayResolver(resolver_root, overlays_dir=overlays_dir)
+                        ensure_res = await ensure_resolver.ensure_default_templates(missing_defaults)
+                        downloaded = ensure_res.get("downloaded") or []
+                        if downloaded:
+                            write_log(f"Auto-imported {len(downloaded)} missing overlay default template(s): {', '.join(downloaded)}")
+                        if ensure_res.get("errors"):
+                            write_log(f"Warning: Could not auto-download missing default template(s): {'; '.join(ensure_res['errors'])}")
+                    except Exception as ensure_err:
+                        write_log(f"Warning: Auto-import of missing default templates skipped: {ensure_err}")
+                    missing_defaults = [
+                        fname for fname in referenced_non_native + ["templates.yml"]
+                        if not any((d / fname).is_file() for d in candidate_default_dirs)
+                    ]
+                if missing_defaults:
                     write_log(
                         f"Warning: Missing default overlay template file(s): {', '.join(missing_defaults)}. "
                         "Non-native overlays may not render as expected until you run 'Import Default Templates' "
@@ -4184,7 +4693,7 @@ async def _run_overlay_sync_task(
         total_failed = 0
 
         provider_run_state = RatingsProviderRunState()
-        async with httpx.AsyncClient(timeout=45.0) as http_client:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(60.0, connect=15.0)) as http_client:
             for s_type in servers_to_run:
                 write_log(f"\n>>> Processing Server: {s_type.upper()} <<<")
                 creds = server_creds[s_type]
@@ -4289,7 +4798,7 @@ async def _run_overlay_sync_task(
 
                                 media_items.extend(sec_media_items)
                     except Exception as pe:
-                        write_log(f"Error querying Plex API: {pe}")
+                        write_log(f"Error querying Plex API: {format_sync_error(pe, phase='querying plex API')}")
 
                 elif s_type in ["jellyfin", "emby"]:
                     api_key = creds.get("api_key")
@@ -4323,53 +4832,61 @@ async def _run_overlay_sync_task(
                                     "Recursive": "true",
                                     "IncludeItemTypes": "Movie,Series",
                                     "CollapseBoxSetItems": "false",
-                                    "Fields": "MediaStreams,MediaSources,Width,Height,OfficialRating,CustomRating,RunTimeTicks,Status,ProviderIds,ProductionYear,Studios,CommunityRating,CriticRating,DateModified,DateCreated,Path,Overview",
+                                    "Fields": _JELLYFIN_OVERLAY_ITEM_FIELDS,
                                 }
-                                sec_media_items = []
-                                if is_target_mode and (target_titles or target_roots):
-                                    searched_terms = target_titles | target_roots
-                                    for s_term in searched_terms:
-                                        clean_term = re.sub(r"\s*\(\d{4}\)$", "", s_term).strip()
-                                        terms_to_try = [s_term]
-                                        if clean_term and clean_term != s_term:
-                                            terms_to_try.append(clean_term)
-                                        for term in terms_to_try:
-                                            try:
-                                                it_resp = await http_client.get(f"{s_url}/Items", params={**items_params, "SearchTerm": term}, headers=headers)
-                                                if it_resp.status_code == 200:
-                                                    lib_items = it_resp.json().get("Items", [])
-                                                    for item_obj in lib_items:
-                                                        parsed_it = _parse_jellyfin_item(item_obj, lib_name)
-                                                        if parsed_it:
-                                                            sec_media_items.append(parsed_it)
-                                            except Exception as je:
-                                                pass
+                                try:
+                                    sec_media_items = []
+                                    if is_target_mode and (target_titles or target_roots):
+                                        searched_terms = target_titles | target_roots
+                                        for s_term in searched_terms:
+                                            clean_term = re.sub(r"\s*\(\d{4}\)$", "", s_term).strip()
+                                            terms_to_try = [s_term]
+                                            if clean_term and clean_term != s_term:
+                                                terms_to_try.append(clean_term)
+                                            for term in terms_to_try:
+                                                try:
+                                                    it_resp = await http_client.get(f"{s_url}/Items", params={**items_params, "SearchTerm": term}, headers=headers)
+                                                    if it_resp.status_code == 200:
+                                                        lib_items = it_resp.json().get("Items", [])
+                                                        for item_obj in lib_items:
+                                                            parsed_it = _parse_jellyfin_item(item_obj, lib_name)
+                                                            if parsed_it:
+                                                                sec_media_items.append(parsed_it)
+                                                except Exception as je:
+                                                    pass
 
-                                if not sec_media_items and not is_target_mode:
-                                    it_resp = await http_client.get(f"{s_url}/Items", params=items_params, headers=headers)
-                                    if it_resp.status_code == 200:
-                                        lib_items = it_resp.json().get("Items", [])
-                                        write_log(f"  [+] Library '{lib_name}': Discovered {len(lib_items)} items.")
-                                        for item_obj in lib_items:
-                                            parsed_it = _parse_jellyfin_item(item_obj, lib_name)
-                                            if parsed_it:
-                                                sec_media_items.append(parsed_it)
-                                    else:
-                                        write_log(f"  [-] Failed to fetch items for library '{lib_name}' ({it_resp.status_code}): {it_resp.text[:120]}")
-                                elif is_target_mode and not any(_matches_overlay_target(item, target) for item in sec_media_items for target in target_items):
-                                    it_resp = await http_client.get(f"{s_url}/Items", params=items_params, headers=headers)
-                                    if it_resp.status_code == 200:
-                                        lib_items = it_resp.json().get("Items", [])
-                                        for item_obj in lib_items:
-                                            parsed_it = _parse_jellyfin_item(item_obj, lib_name)
-                                            if parsed_it:
-                                                sec_media_items.append(parsed_it)
+                                    if not sec_media_items and not is_target_mode:
+                                        lib_items, pages_fetched, fetch_err = await _fetch_jellyfin_library_items(
+                                            http_client, s_url, headers, items_params
+                                        )
+                                        if fetch_err:
+                                            write_log(f"  [-] Failed to fetch items for library '{lib_name}' ({fetch_err})")
+                                        else:
+                                            page_note = f" ({pages_fetched} pages)" if pages_fetched > 1 else ""
+                                            write_log(f"  [+] Library '{lib_name}': Discovered {len(lib_items)} items{page_note}.")
+                                            for item_obj in lib_items:
+                                                parsed_it = _parse_jellyfin_item(item_obj, lib_name)
+                                                if parsed_it:
+                                                    sec_media_items.append(parsed_it)
+                                    elif is_target_mode and not any(_matches_overlay_target(item, target) for item in sec_media_items for target in target_items):
+                                        lib_items, _, fetch_err = await _fetch_jellyfin_library_items(
+                                            http_client, s_url, headers, items_params
+                                        )
+                                        if fetch_err:
+                                            write_log(f"  [-] Failed to fetch items for library '{lib_name}' during targeted fallback ({fetch_err})")
+                                        else:
+                                            for item_obj in lib_items:
+                                                parsed_it = _parse_jellyfin_item(item_obj, lib_name)
+                                                if parsed_it:
+                                                    sec_media_items.append(parsed_it)
 
-                                media_items.extend(sec_media_items)
+                                    media_items.extend(sec_media_items)
+                                except Exception as lib_err:
+                                    write_log(f"  [-] Error querying {s_type.upper()} library '{lib_name}': {format_sync_error(lib_err, phase=f'fetching {s_type} items')}")
                         else:
                             write_log(f"  [-] Failed to fetch virtual folders on {s_type.upper()} ({vf_resp.status_code}): {vf_resp.text[:120]}")
                     except Exception as je:
-                        write_log(f"Error querying {s_type} API: {je}")
+                        write_log(f"Error querying {s_type} API: {format_sync_error(je, phase=f'querying {s_type} API')}")
 
                 if is_target_mode and not direct_id_targets:
                     matched_items = []
@@ -4425,6 +4942,8 @@ async def _run_overlay_sync_task(
                 write_log(f"Processing {len(media_items)} items on {s_type.upper()} (Concurrency: {concurrency}, Debug Logging: {debug_log_enabled})...")
 
                 dir_cache: Dict[str, Any] = {}
+                external_lists_run_state: Dict[str, Any] = {}
+                external_lists_lock = asyncio.Lock()
                 server_stats = {"synced": 0, "skipped": 0, "failed": 0}
                 stats_lock = asyncio.Lock()
                 skip_timing_samples = {"count": 0}
@@ -4478,7 +4997,6 @@ async def _run_overlay_sync_task(
                     )
                     needs_regional_languages = needs_languages and _rules_use_regional_languages(overlays_dir, lib_rules)
                     needs_audio = any(k in rules_str for k in ["audio", "atmos", "truehd", "dts", "codec", "surround"])
-                    needs_hdr_dv = any(k in rules_str for k in ["hdr", "dovi", "dolby_vision", "dv"])
                     needs_ratings = any(
                         (isinstance(r, dict) and str(r.get("default", "")).lower() in ("ratings", "rating"))
                         or "rating" in str(r).lower()
@@ -4486,8 +5004,16 @@ async def _run_overlay_sync_task(
                     ) or _rule_files_mention(overlays_dir, lib_rules, "rating")
                     needs_status = any(k in rules_str for k in ["status", "ended", "airing", "returning", "canceled"])
                     needs_streaming = any(isinstance(rule, dict) and str(rule.get("default", "")).lower() == "streaming" for rule in lib_rules)
+                    has_mediastinger_default = any(isinstance(rule, dict) and str(rule.get("default", "")).lower() == "mediastinger" for rule in lib_rules)
+                    has_custom_keyword_rule = _rule_files_mention(overlays_dir, lib_rules, "tmdb_keyword")
+                    needs_keywords = (has_mediastinger_default and m_type == "movie") or has_custom_keyword_rule
+                    needs_external_lists = (
+                        any(isinstance(rule, dict) and str(rule.get("default", "")).lower() == "ribbon" for rule in lib_rules)
+                        or any(_rule_files_mention(overlays_dir, lib_rules, kw) for kw in ("imdb_chart", "imdb_award", "mdblist_list"))
+                    )
                     needs_resolution = "resolution" in rules_str or "overlays_tv" in rules_str or _rule_files_mention(overlays_dir, lib_rules, "resolution")
-                    needs_parent_stream_aggregation = (_parent_stream_aggregation_requested(lib_rules) or needs_resolution) and not episode_only_targets
+                    needs_hdr_dv = needs_resolution or any(k in rules_str for k in ["hdr", "dovi", "dolby_vision", "dv"])
+                    needs_parent_stream_aggregation = _rules_need_parent_stream_aggregation(overlays_dir, lib_rules) and not episode_only_targets
                     provider_rules = [rule for rule in lib_rules if isinstance(rule, dict) and str(rule.get("default", "")).lower() in ("rating", "ratings")]
                     library_rating_sources = list(dict.fromkeys(
                         source for rule in provider_rules for source in (
@@ -4676,9 +5202,13 @@ async def _run_overlay_sync_task(
                         # Skip detailed XML fetch if rules do NOT require audio streams, languages, HDR, or ratings
                         if needs_streaming and not item.get("tmdb_id"):
                             need_plex_detail = True
+                        if needs_keywords and not item.get("tmdb_id"):
+                            need_plex_detail = True
+                        if needs_external_lists and not (item.get("imdb_id") or item.get("tmdb_id")):
+                            need_plex_detail = True
                         if needs_media_path:
                             need_plex_detail = True
-                        if need_plex_detail and not (needs_languages or needs_audio or needs_hdr_dv or needs_ratings or needs_snapshot_refresh or needs_streaming or needs_media_path):
+                        if need_plex_detail and not (needs_languages or needs_audio or needs_hdr_dv or needs_ratings or needs_snapshot_refresh or needs_streaming or needs_keywords or needs_external_lists or needs_media_path):
                             need_plex_detail = False
 
                         if need_plex_detail:
@@ -4712,11 +5242,10 @@ async def _run_overlay_sync_task(
                                                 item["audio_track_title"] = a_title
                                                 item["audio_title"] = a_title
                                         elif s.get("streamType") == "1":
-                                            dovi = s.get("DOVIPresent") or s.get("doviPresent")
-                                            if dovi == "1" or "dovi" in str(s.get("displayTitle", "")).lower():
+                                            st_hdr, st_dv = _plex_video_stream_hdr_dv(s)
+                                            if st_dv:
                                                 item["has_dolby_vision"] = True
-                                            cp = s.get("colorPrimaries")
-                                            if cp == "bt2020" or "hdr" in str(s.get("displayTitle", "")).lower():
+                                            if st_hdr:
                                                 item["has_hdr"] = True
                                     if audio_langs:
                                         item["audio_languages"] = audio_langs
@@ -4890,6 +5419,27 @@ async def _run_overlay_sync_task(
                             await _inc_stats(failed=1)
                             write_log(f"  [!] {w_tag}'{title}' ({lib_name}): {provider_error}")
                             return
+                    if needs_keywords:
+                        try:
+                            item["tmdb_keywords"] = await resolve_tmdb_keywords(
+                                item.get("tmdb_id"), m_type, creds.get("tmdb_token"), http_client, ratings_cache
+                            )
+                        except RuntimeError as kw_error:
+                            await _inc_stats(failed=1)
+                            write_log(f"  [!] {w_tag}'{title}' ({lib_name}): {kw_error}")
+                            return
+                    if needs_external_lists:
+                        item["_external_lists"] = await resolve_external_lists_for_library(
+                            _get_overlay_config_engine(overlays_dir),
+                            lib_rules,
+                            m_type,
+                            http_client,
+                            ratings_cache,
+                            mdblist_api_key=mdblist_key,
+                            run_state=external_lists_run_state,
+                            run_lock=external_lists_lock,
+                            write_log=write_log,
+                        )
                     # Resolve multi-source ratings only if ratings overlays are configured for this library
                     multi_ratings = {}
                     server_rating_missing = not (item.get("audience_rating") or item.get("rating"))
@@ -4931,7 +5481,7 @@ async def _run_overlay_sync_task(
                     ratings_resolved_at = time.perf_counter() if debug_log_enabled else 0.0
 
                     show_stream_data = None
-                    if m_type == "show" and needs_parent_stream_aggregation and (clean_asset or clean_backdrop):
+                    if m_type == "show" and needs_parent_stream_aggregation and (clean_asset or clean_backdrop or (asset_type_filter == "season" and asset_directory)):
                         try:
                             show_stream_data = await fetch_show_episode_stream_data(
                                 http_client, s_type, s_url, item_id, creds, cache_map,
@@ -4953,6 +5503,8 @@ async def _run_overlay_sync_task(
                                 for key in ("resolution", "has_hdr", "has_dolby_vision"):
                                     if key in aggregate:
                                         item[key] = aggregate[key]
+                                if aggregate.get("filepath"):
+                                    item["filepath"] = aggregate["filepath"]
                                 item["_aggregated_episode_streams"] = True
                                 item["_language_order_precomputed"] = True
                                 stream_count = sum(len(items) for items in show_stream_data["episodes_by_season"].values())
@@ -5185,6 +5737,18 @@ async def _run_overlay_sync_task(
                                     else:
                                         write_log(f"  [+] {w_tag}Overlays Removed & Clean Poster Restored: '{title}' ({lib_name}) -> {s_type.upper()} [Reason: {sync_reason}]")
                                 elif dry_run and composited_jpeg is not None:
+                                    record_dry_run_preview(
+                                        base_dir,
+                                        composited_jpeg,
+                                        title=title,
+                                        library_name=lib_name,
+                                        server_type=s_type,
+                                        item_id=str(item_id),
+                                        asset_type="poster",
+                                        media_type=m_type,
+                                        layers_count=len(overlay_layers or []),
+                                        sync_reason=sync_reason,
+                                    )
                                     await _inc_stats(skipped=1)
                                 elif composited_jpeg is not None:
                                     await _inc_stats(failed=1)
@@ -5388,6 +5952,18 @@ async def _run_overlay_sync_task(
                                     else:
                                         write_log(f"  [+] {w_tag}Overlays Removed & Clean Backdrop Restored: '{title}' ({lib_name}) -> {s_type.upper()} [Reason: {b_sync_reason}]")
                                 elif dry_run and b_comp is not None:
+                                    record_dry_run_preview(
+                                        base_dir,
+                                        b_comp,
+                                        title=f"{title} (Backdrop)",
+                                        library_name=lib_name,
+                                        server_type=s_type,
+                                        item_id=str(item_id),
+                                        asset_type="background",
+                                        media_type=m_type,
+                                        layers_count=len(b_layers or []),
+                                        sync_reason=b_sync_reason,
+                                    )
                                     await _inc_stats(skipped=1)
                                 elif b_comp is not None:
                                     await _inc_stats(failed=1)
@@ -5519,6 +6095,7 @@ async def _run_overlay_sync_task(
                                     s_item_meta = {
                                         **item,
                                         "resolution": s_resolution,
+                                        "filepath": None,
                                         "media_type": "season",
                                         "is_season": True,
                                         "season_number": s_num,
@@ -5678,6 +6255,19 @@ async def _run_overlay_sync_task(
                                                 await _inc_stats(synced=1)
                                                 write_log(f"  [+] {w_tag}Overlaid & Synced Season: '{title} S{s_num:02d}' ({lib_name}) -> {s_type.upper()} [Reason: {s_sync_reason}]")
                                             elif dry_run:
+                                                if s_comp is not None:
+                                                    record_dry_run_preview(
+                                                        base_dir,
+                                                        s_comp,
+                                                        title=f"{title} - Season {s_num:02d}",
+                                                        library_name=lib_name,
+                                                        server_type=s_type,
+                                                        item_id=str(s_rk),
+                                                        asset_type="season",
+                                                        media_type="season",
+                                                        layers_count=len(s_layers or []),
+                                                        sync_reason=s_sync_reason,
+                                                    )
                                                 await _inc_stats(skipped=1)
                                             else:
                                                 await _inc_stats(failed=1)
@@ -5751,9 +6341,10 @@ async def _run_overlay_sync_task(
                                                             if full_tag and full_tag not in ep_lang_tags:
                                                                 ep_lang_tags.append(full_tag)
                                                         elif st_node.get("streamType") == "1":
-                                                            if st_node.get("DOVIPresent") == "1":
+                                                            st_hdr, st_dv = _plex_video_stream_hdr_dv(st_node)
+                                                            if st_dv:
                                                                 ep_has_dv = True
-                                                            if st_node.get("colorPrimaries") == "bt2020":
+                                                            if st_hdr:
                                                                 ep_has_hdr = True
 
                                                     part_elem = ep_elem.find(".//Part")
@@ -5798,9 +6389,10 @@ async def _run_overlay_sync_task(
                                                                         if full_tag and full_tag not in ep_lang_tags:
                                                                             ep_lang_tags.append(full_tag)
                                                                     elif st_node.get("streamType") == "1":
-                                                                        if st_node.get("DOVIPresent") == "1":
+                                                                        st_hdr, st_dv = _plex_video_stream_hdr_dv(st_node)
+                                                                        if st_dv:
                                                                             ep_has_dv = True
-                                                                        if st_node.get("colorPrimaries") == "bt2020":
+                                                                        if st_hdr:
                                                                             ep_has_hdr = True
                                                         except Exception:
                                                             pass
@@ -5940,11 +6532,10 @@ async def _run_overlay_sync_task(
                                                             w_val = s.get("Width") or 0
                                                             if w_val >= 3840:
                                                                 ep_res = "4K"
-                                                            dovi = s.get("VideoDoViTitle") or ("dovi" in str(s.get("DisplayTitle", "")).lower())
-                                                            if dovi:
+                                                            st_hdr, st_dv = _jellyfin_video_stream_hdr_dv(s)
+                                                            if st_dv:
                                                                 ep_has_dv = True
-                                                            hdr = (s.get("VideoRange") == "HDR") or ("hdr" in str(s.get("DisplayTitle", "")).lower())
-                                                            if hdr:
+                                                            if st_hdr:
                                                                 ep_has_hdr = True
 
                                                     ep_aud = ep_obj.get("CommunityRating")
@@ -6215,6 +6806,19 @@ async def _run_overlay_sync_task(
                                                     await _inc_stats(synced=1)
                                                     write_log(f"  [+] {w_tag}Overlaid & Synced Titlecard: '{title} S{s_num:02d}E{ep_num:02d}' ({lib_name}) -> {s_type.upper()} [Reason: {ep_sync_reason}]")
                                                 elif dry_run:
+                                                    if tc_comp is not None:
+                                                        record_dry_run_preview(
+                                                            base_dir,
+                                                            tc_comp,
+                                                            title=f"{title} S{s_num:02d}E{ep_num:02d} - {ep_title}",
+                                                            library_name=lib_name,
+                                                            server_type=s_type,
+                                                            item_id=str(ep_rk),
+                                                            asset_type="titlecard",
+                                                            media_type="episode",
+                                                            layers_count=len(ep_layers or []),
+                                                            sync_reason=ep_sync_reason,
+                                                        )
                                                     await _inc_stats(skipped=1)
                                                 else:
                                                     await _inc_stats(failed=1)
@@ -6449,7 +7053,7 @@ async def detect_media_changes(
     elif target_server.lower() in creds_map:
         servers_to_scan = [target_server.lower()]
 
-    async with httpx.AsyncClient(timeout=15.0, verify=False) as http_client:
+    async with httpx.AsyncClient(timeout=httpx.Timeout(45.0, connect=15.0), verify=False) as http_client:
         for s_type in servers_to_scan:
             creds = creds_map[s_type]
             s_url = creds["url"]
@@ -6477,11 +7081,11 @@ async def detect_media_changes(
                             if abs(clean_asset.stat().st_mtime - float(cached.get("clean_asset_mtime") or 0)) > 1:
                                 differences.append("asset_modified")
                             silo_rules = resolve_library_rules(name, "show", library_rules_map)[1]
-                            silo_needs_streams = _parent_stream_aggregation_requested(silo_rules) or any(term in json.dumps(silo_rules).lower() for term in ("resolution", "overlays_tv"))
+                            silo_needs_streams = _rules_need_parent_stream_aggregation(overlays_dir, silo_rules)
                             if item["media_type"] == "show" and silo_needs_streams:
                                 stream_data = await fetch_show_episode_stream_data(http_client, "silo", s_url, item["id"], creds, cache_map)
                                 if stream_data:
-                                    item.update(stream_data["aggregate"])
+                                    item.update({k: v for k, v in stream_data["aggregate"].items() if k != "filepath" or v})
                             if sorted(item.get("audio_languages") or []) != sorted(filter(None, (cached.get("detected_languages") or "").split(","))):
                                 differences.append("languages")
                             for category, current_key, cached_key in (("editions", "edition", "edition"), ("runtimes", "runtime_mins", "runtime_mins"), ("status", "status", "show_status")):
@@ -6684,7 +7288,7 @@ async def detect_media_changes(
                                             }
                                         })
                 except Exception as pe:
-                    logger.warning(f"[DetectChanges] Plex detection error: {pe}")
+                    logger.warning(f"[DetectChanges] Plex detection error: {format_sync_error(pe, phase='detecting plex changes')}")
 
             elif s_type in ["jellyfin", "emby"]:
                 api_key = creds.get("api_key")
@@ -6713,11 +7317,17 @@ async def detect_media_changes(
                                 "Recursive": "true",
                                 "IncludeItemTypes": "Movie,Series",
                                 "CollapseBoxSetItems": "false",
-                                "Fields": "MediaStreams,MediaSources,Width,Height,OfficialRating,CustomRating,RunTimeTicks,Status,ProviderIds,ProductionYear,Studios,CommunityRating,CriticRating,DateModified,DateCreated,Path,Overview",
+                                "Fields": _JELLYFIN_OVERLAY_ITEM_FIELDS,
                             }
-                            it_resp = await http_client.get(f"{s_url}/Items", params=items_params, headers=headers)
-                            if it_resp.status_code == 200:
-                                lib_items = it_resp.json().get("Items", [])
+                            try:
+                                lib_items, _, fetch_err = await _fetch_jellyfin_library_items(
+                                    http_client, s_url, headers, items_params
+                                )
+                                if fetch_err:
+                                    logger.warning(
+                                        f"[DetectChanges] Failed to fetch {s_type} items for library '{lib_name}': {fetch_err}"
+                                    )
+                                    continue
                                 for item_obj in lib_items:
                                     it_id = item_obj.get("Id")
                                     it_name = item_obj.get("Name", "")
@@ -6892,8 +7502,12 @@ async def detect_media_changes(
                                                 "server_updated_at": s_up_at
                                             }
                                         })
+                            except Exception as lib_err:
+                                logger.warning(
+                                    f"[DetectChanges] {s_type} library '{lib_name}' error: {format_sync_error(lib_err, phase=f'detecting {s_type} changes')}"
+                                )
                 except Exception as je:
-                    logger.warning(f"[DetectChanges] {s_type} detection error: {je}")
+                    logger.warning(f"[DetectChanges] {s_type} detection error: {format_sync_error(je, phase=f'detecting {s_type} changes')}")
 
     result_report = {
         "success": True,

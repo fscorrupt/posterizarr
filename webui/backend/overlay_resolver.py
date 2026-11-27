@@ -20,8 +20,15 @@ import ipaddress
 import urllib.parse
 from datetime import date, datetime, timedelta
 from pathlib import Path, PurePosixPath
-from typing import Optional, Dict, Any, List, Set, Union, Tuple
+from typing import Optional, Dict, Any, List, Set, Union, Tuple, Iterable
 import httpx
+
+from overlay_external_lists import (
+    _matches_library_type_value,
+    _overlay_enabled_for_library,
+    matches_external_builders,
+    overlay_has_external_builders,
+)
 
 # ==============================================================================
 # DYNAMIC OVERLAY RESOLUTION ENGINE:
@@ -30,6 +37,27 @@ import httpx
 
 logger = logging.getLogger("overlay_resolver")
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+BUNDLED_ASSETS_DIR = Path(__file__).resolve().parent / "bundled_assets"
+
+
+def seed_bundled_overlay_assets(target_assets_dir: Path) -> int:
+    """Copy missing bundled fallback assets (e.g. regional flags) without overwriting existing files."""
+    if not BUNDLED_ASSETS_DIR.is_dir():
+        return 0
+    copied = 0
+    for src in BUNDLED_ASSETS_DIR.rglob("*"):
+        if not src.is_file():
+            continue
+        dest = target_assets_dir / src.relative_to(BUNDLED_ASSETS_DIR)
+        if dest.exists():
+            continue
+        try:
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, dest)
+            copied += 1
+        except OSError as exc:
+            logger.warning("[OverlayAssets] Could not seed bundled asset %s -> %s: %s", src, dest, exc)
+    return copied
 
 def matches_artwork_type(rule: Dict[str, Any], metadata: Dict[str, Any]) -> bool:
     variables = rule.get("template_variables") or rule.get("variables") or {}
@@ -146,6 +174,10 @@ LANGUAGE_CODE_MAP = {
     "tha": "th", "thai": "th",
     "ind": "id", "indonesian": "id",
     "heb": "he", "hebrew": "he",
+    "cat": "ca", "catalan": "ca", "català": "ca", "catala": "ca",
+    "val": "ca-valencia", "valencian": "ca-valencia", "valencià": "ca-valencia", "valencia": "ca-valencia",
+    "eus": "eu", "baq": "eu", "basque": "eu", "euskara": "eu", "euskera": "eu",
+    "glg": "gl", "galician": "gl", "galego": "gl",
 }
 
 LANGUAGE_REGION_NAME_MAP = {
@@ -167,7 +199,32 @@ LANGUAGE_REGION_NAME_MAP = {
     "hong kong": "hk",
     "simplified": "hans", "simplifié": "hans",
     "traditional": "hant", "traditionnel": "hant",
+    "valencia": "valencia", "valencian": "valencia", "valencià": "valencia",
+    "catalonia": "ct", "catalunya": "ct",
+    "basque country": "pv", "euskadi": "pv",
+    "galicia": "ga", "galiza": "ga",
 }
+
+REGIONAL_LANGUAGE_FLAGS: Dict[str, str] = {
+    "ca": "es-ct",
+    "ca-valencia": "es-vc",
+    "eu": "es-pv",
+    "gl": "es-ga",
+}
+BUNDLED_REGIONAL_FLAG_STEMS: Set[str] = set(REGIONAL_LANGUAGE_FLAGS.values())
+LANGUAGE_DISPLAY_LABELS: Dict[str, str] = {
+    "ca-valencia": "VAL",
+}
+
+
+def _canonicalize_language_subtags(tag: str) -> str:
+    """Collapse regional language variant synonyms (e.g. ca-ES-valencia -> ca-valencia)."""
+    parts = [p for p in tag.split("-") if p]
+    if not parts:
+        return tag
+    if parts[0] == "ca-valencia" or (parts[0] == "ca" and "valencia" in parts[1:]):
+        return "ca-valencia"
+    return "-".join(parts)
 
 
 def normalize_language_tag(value: Any) -> Optional[str]:
@@ -187,7 +244,7 @@ def normalize_language_tag(value: Any) -> Optional[str]:
             region = LANGUAGE_REGION_NAME_MAP.get(region_raw)
             if not region and re.fullmatch(r"[a-z]{2}|\d{3}|[a-z]{4}", region_raw):
                 region = region_raw
-            return f"{base}-{region}" if region else base
+            return _canonicalize_language_subtags(f"{base}-{region}" if region else base)
 
     parts = [p.strip() for p in s.replace("_", "-").split("-") if p.strip()]
     if not parts:
@@ -196,8 +253,8 @@ def normalize_language_tag(value: Any) -> Optional[str]:
     if base in ("und", "unknown", ""):
         return None
     if len(parts) > 1:
-        return "-".join([base, *parts[1:]])
-    return base
+        return _canonicalize_language_subtags("-".join([base, *parts[1:]]))
+    return _canonicalize_language_subtags(base)
 
 
 def language_base_code(value: Any) -> Optional[str]:
@@ -335,6 +392,11 @@ OFFICIAL_KOMETA_ROOT_IMAGES = {
     "dual_audio.png", "dual_subs.png", "edition.png", "fire.png",
     "flame.png", "flame2.png", "multi_audio.png", "multi_subs.png",
     "versions.png"
+}
+OFFICIAL_KOMETA_ROOT_IMAGE_CASING = {
+    "commonsense.png": "Commonsense.png",
+    "direct-play.png": "Direct-Play.png",
+    "mediastinger.png": "Mediastinger.png",
 }
 
 RATING_SOURCE_IMAGE_FILES = {
@@ -536,10 +598,14 @@ def resolve_official_kometa_image_url(image_name: str) -> Optional[str]:
     asset_indices = [index for index, part in enumerate(parts) if part.lower() == "assets"]
     if asset_indices:
         clean = str(PurePosixPath(*parts[asset_indices[-1] + 1:]))
+    if clean.lower().startswith(("flag/custom/", "flags/custom/")):
+        return None
     if clean.lower().startswith(("flag/", "flags/")):
         flag_parts = list(PurePosixPath(clean).parts)
         flag_parts[0] = "flag"
         flag_name = PurePosixPath(flag_parts[-1])
+        if flag_name.stem.lower() in BUNDLED_REGIONAL_FLAG_STEMS:
+            return None
         flag_parts[-1] = FLAG_CODE_ALIASES.get(flag_name.stem.lower(), flag_name.stem) + (flag_name.suffix or ".png")
         clean = str(PurePosixPath(*flag_parts))
     elif len(PurePosixPath(clean).parts) == 1:
@@ -564,9 +630,11 @@ def resolve_official_kometa_image_url(image_name: str) -> Optional[str]:
         fn = normalized if normalized.lower().endswith(tuple(ALLOWED_IMAGE_EXTS)) else f"{normalized}.png"
         return f"{KOMETA_IMAGES_RAW}/{fn}"
 
-    # 3. Known root images (e.g. ribbon.png, etc.)
+    # 3. Known root images (e.g. Mediastinger.png, etc.)
+    root_lookup = clean_lower if clean_lower.endswith(tuple(ALLOWED_IMAGE_EXTS)) else f"{clean_lower}.png"
     if clean_lower in OFFICIAL_KOMETA_ROOT_IMAGES or f"{clean_lower}.png" in OFFICIAL_KOMETA_ROOT_IMAGES:
         fn = clean if clean.lower().endswith(tuple(ALLOWED_IMAGE_EXTS)) else f"{clean}.png"
+        fn = OFFICIAL_KOMETA_ROOT_IMAGE_CASING.get(root_lookup, fn)
         return f"{KOMETA_IMAGES_RAW}/{fn}"
 
     # 4. Standalone resolution keywords (e.g. 4k, 1080p, 720p, hdr, dv, dolby_vision, imax)
@@ -817,6 +885,11 @@ def load_cached_yaml_file(file_path: Path) -> Dict[str, Any]:
         return {}
 
 
+def clear_yaml_cache() -> None:
+    """Invalidate cached YAML documents after external writes."""
+    _YAML_MTIME_CACHE.clear()
+
+
 _images_import_progress: Dict[str, Any] = {
     "is_running": False,
     "phase": "idle",
@@ -843,14 +916,17 @@ def is_images_import_running() -> bool:
 class OverlayResolver:
     """Manages Kometa configuration files, dependencies, and asset resolution."""
 
-    def __init__(self, project_root: Union[Path, str]):
+    def __init__(self, project_root: Union[Path, str], overlays_dir: Optional[Union[Path, str]] = None):
         self.project_root = Path(project_root)
         self.overlayfiles_dir = self.project_root / "Overlayfiles"
-        self.overlays_dir = self.overlayfiles_dir / "dynamic_overlays"
-        if not self.overlays_dir.exists():
-            legacy = self.overlayfiles_dir / "kometa"
-            if legacy.exists():
-                self.overlays_dir = legacy
+        if overlays_dir is not None:
+            self.overlays_dir = Path(overlays_dir)
+        else:
+            self.overlays_dir = self.overlayfiles_dir / "dynamic_overlays"
+            if not self.overlays_dir.exists():
+                legacy = self.overlayfiles_dir / "kometa"
+                if legacy.exists():
+                    self.overlays_dir = legacy
         self.kometa_dir = self.overlays_dir
         self.configs_dir = self.overlays_dir / "configs"
         self.defaults_dir = self.overlays_dir / "defaults"
@@ -1034,6 +1110,75 @@ class OverlayResolver:
             "total_installed": total_installed,
         }
 
+    async def ensure_default_templates(self, default_names: Iterable[str]) -> Dict[str, Any]:
+        """Download only missing official default overlay templates (plus templates.yml) into self.defaults_dir."""
+        official_map = {Path(name).name.lower(): Path(name).name for name in OFFICIAL_KOMETA_OVERLAY_DEFAULTS}
+        requested_files: List[str] = []
+        seen_requested: Set[str] = set()
+        for raw_name in default_names or ():
+            clean = str(raw_name or "").strip()
+            if not clean:
+                continue
+            fname = clean if clean.lower().endswith((".yml", ".yaml")) else f"{clean}.yml"
+            canonical = official_map.get(Path(fname).name.lower())
+            if canonical and canonical not in seen_requested:
+                seen_requested.add(canonical)
+                requested_files.append(canonical)
+
+        if not requested_files:
+            return {"success": True, "downloaded": [], "already_present": [], "errors": []}
+
+        if "templates.yml" not in seen_requested and "templates.yml" in official_map:
+            seen_requested.add("templates.yml")
+            requested_files.append("templates.yml")
+
+        self.defaults_dir.mkdir(parents=True, exist_ok=True)
+        already_present: List[str] = []
+        missing_files: List[str] = []
+        for fname in requested_files:
+            safe_path = safe_resolve_overlay_path(self.defaults_dir, fname, ALLOWED_CONFIG_EXTS)
+            if safe_path and safe_path.is_file():
+                already_present.append(fname)
+            elif safe_path:
+                missing_files.append(fname)
+
+        if not missing_files:
+            return {"success": True, "downloaded": [], "already_present": already_present, "errors": []}
+
+        downloaded: List[str] = []
+        errors: List[str] = []
+        try:
+            async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
+                for fname in missing_files:
+                    safe_path = safe_resolve_overlay_path(self.defaults_dir, fname, ALLOWED_CONFIG_EXTS)
+                    if not safe_path:
+                        continue
+                    raw_url = f"{KOMETA_GITHUB_RAW}/defaults/overlays/{fname}"
+                    try:
+                        resp = await client.get(raw_url)
+                        if resp.status_code == 200:
+                            content_str = resp.text
+                            yaml.safe_load(content_str)
+                            with open(safe_path, "w", encoding="utf-8") as fp:
+                                fp.write(content_str)
+                            _YAML_MTIME_CACHE.pop(str(safe_path.resolve()), None)
+                            downloaded.append(fname)
+                        else:
+                            errors.append(f"{fname}: HTTP {resp.status_code}")
+                    except Exception as err:
+                        logger.warning(f"[OverlayResolver] Failed auto-downloading {fname}: {err}")
+                        errors.append(f"{fname}: {err}")
+        except Exception as client_err:
+            logger.warning(f"[OverlayResolver] Error initializing HTTP client for defaults auto-download: {client_err}")
+            errors.append(str(client_err))
+
+        return {
+            "success": len(errors) == 0,
+            "downloaded": downloaded,
+            "already_present": already_present,
+            "errors": errors,
+        }
+
     def list_available_image_assets(self, category: Optional[str] = None) -> List[str]:
         """List local overlay images as safe relative paths for per-variant asset selection."""
         aliases = {
@@ -1177,8 +1322,8 @@ class OverlayResolver:
         try:
             main_config = load_cached_yaml_file(config_path)
         except Exception as e:
-            logger.error(f"[OverlayResolver] Failed reading main config {config_path}: {e}")
-            return {"has_configs": False, "error": f"Invalid YAML in {config_path.name}: {e}"}
+            logger.error(f"[OverlayResolver] Failed reading main config {config_path}: {e}", exc_info=True)
+            return {"has_configs": False, "error": f"Invalid YAML in {config_path.name}. Check backend logs for details."}
 
         # Extract API keys if present in main config
         if isinstance(main_config, dict):
@@ -1578,40 +1723,90 @@ class OverlayResolver:
 
             # 3. Images
             elif cat == "image":
-                name_lower = name.lower()
+                name_posix = name.replace("\\", "/")
+                name_lower = name_posix.lower()
                 target_stem = Path(name_lower).stem
                 found_local = None
                 search_roots = [self.assets_dir, self.defaults_dir / "images", self.overlayfiles_dir]
-                for root in search_roots:
-                    direct_match = safe_resolve_overlay_path(root, name, ALLOWED_IMAGE_EXTS)
-                    if direct_match and direct_match.is_file() and not direct_match.is_symlink():
-                        found_local = direct_match
-                        break
-                sub_folders = [
-                    "", "network", "network/color", "network/white",
-                    "streaming", "streaming/color", "streaming/white",
-                    "studio", "studio/standard", "studio/bigger",
-                    "resolution", "rating", "flags/square", "flag/square",
-                    "flags/round", "flag/round",
-                    "ribbon/red", "ribbon/black", "ribbon", "ribbon/yellow", "ribbon/gray",
-                    "audio_codec", "audio_codec/compact", "audio_codec/standard",
-                    "cr", "edition", "logo", "logo/round", "logo/square"
-                ]
-                for root in search_roots:
-                    for sub in sub_folders:
-                        check_dir = root / sub if sub else root
-                        if check_dir.exists() and check_dir.is_dir():
-                            try:
-                                for f in check_dir.iterdir():
-                                    if f.is_file() and (f.name.lower() == name_lower or f.stem.lower() == target_stem):
-                                        found_local = f
-                                        break
-                            except Exception:
-                                pass
+                scoped_flag_match = re.match(r"^(?:assets/)?(flags?)/(round|square|custom)/([^/]+)$", name_posix, re.IGNORECASE)
+                scoped_variant_match = re.match(
+                    r"^(?:assets/)?("
+                    r"streaming/(?:color|white)|"
+                    r"ribbon/(?:red|black|yellow|gray)|"
+                    r"logo/(?:round|square)|"
+                    r"network/(?:color|white)|"
+                    r"studio/(?:standard|bigger)|"
+                    r"audio_codec/(?:compact|standard)"
+                    r")/([^/]+)$",
+                    name_posix,
+                    re.IGNORECASE,
+                )
+
+                if scoped_flag_match:
+                    flag_style = scoped_flag_match.group(2).lower()
+                    raw_leaf = scoped_flag_match.group(3)
+                    leaf_lower = raw_leaf.lower()
+                    leaf_stem = Path(leaf_lower).stem
+                    candidate_names = {leaf_lower, f"{leaf_stem}.png"}
+                    if leaf_stem in FLAG_CODE_ALIASES:
+                        candidate_names.add(f"{FLAG_CODE_ALIASES[leaf_stem]}.png")
+                    flag_search_roots = list(search_roots)
+                    if BUNDLED_ASSETS_DIR.is_dir() and BUNDLED_ASSETS_DIR not in flag_search_roots:
+                        flag_search_roots.append(BUNDLED_ASSETS_DIR)
+                    for root in flag_search_roots:
+                        for family in ("flag", "flags"):
+                            style_dir = root / family / flag_style
+                            if style_dir.exists() and style_dir.is_dir():
+                                try:
+                                    for f in style_dir.iterdir():
+                                        if f.is_file() and not f.is_symlink() and f.name.lower() in candidate_names:
+                                            found_local = f
+                                            break
+                                except Exception:
+                                    pass
+                            if found_local:
+                                break
                         if found_local:
                             break
-                    if found_local:
-                        break
+                elif scoped_variant_match:
+                    rel_variant = f"{scoped_variant_match.group(1)}/{scoped_variant_match.group(2)}"
+                    for root in search_roots:
+                        direct_match = safe_resolve_overlay_path(root, rel_variant, ALLOWED_IMAGE_EXTS)
+                        if direct_match and direct_match.is_file() and not direct_match.is_symlink():
+                            found_local = direct_match
+                            break
+                else:
+                    for root in search_roots:
+                        direct_match = safe_resolve_overlay_path(root, name, ALLOWED_IMAGE_EXTS)
+                        if direct_match and direct_match.is_file() and not direct_match.is_symlink():
+                            found_local = direct_match
+                            break
+                    if not found_local:
+                        sub_folders = [
+                            "", "network", "network/color", "network/white",
+                            "streaming", "streaming/color", "streaming/white",
+                            "studio", "studio/standard", "studio/bigger",
+                            "resolution", "rating", "flags/square", "flag/square",
+                            "flags/round", "flag/round",
+                            "ribbon/red", "ribbon/black", "ribbon", "ribbon/yellow", "ribbon/gray",
+                            "audio_codec", "audio_codec/compact", "audio_codec/standard",
+                            "cr", "edition", "logo", "logo/round", "logo/square"
+                        ]
+                        for root in search_roots:
+                            for sub in sub_folders:
+                                check_dir = root / sub if sub else root
+                                if check_dir.exists() and check_dir.is_dir():
+                                    try:
+                                        for f in check_dir.iterdir():
+                                            if f.is_file() and (f.name.lower() == name_lower or f.stem.lower() == target_stem):
+                                                found_local = f
+                                                break
+                                    except Exception:
+                                        pass
+                                if found_local:
+                                    break
+                            if found_local:
+                                break
 
                 found_url = resolve_official_kometa_image_url(name)
                 if found_local:
@@ -1771,11 +1966,19 @@ class OverlayResolver:
                 with open(safe_dest, "wb") as fp:
                     fp.write(content)
 
-                # Also save copy in root of assets_dir if safe_dest was in a subfolder
+                # Also save copy in root of assets_dir only for unscoped assets (never duplicate flag/round vs flag/square)
+                _style_scoped_prefixes = (
+                    "flag/", "flags/", "streaming/", "ribbon/", "logo/", "network/", "studio/", "audio_codec/",
+                )
+                is_style_scoped = (
+                    (rel_sub or "").lower().startswith(_style_scoped_prefixes)
+                    or asset_name.replace("\\", "/").lower().startswith(_style_scoped_prefixes)
+                )
                 assets_base = os.path.normpath(os.path.abspath(str(self.assets_dir)))
                 base_dest_str = os.path.normpath(os.path.join(assets_base, Path(asset_name).name))
                 if (
-                    base_dest_str.startswith(assets_base + os.sep)
+                    not is_style_scoped
+                    and base_dest_str.startswith(assets_base + os.sep)
                     and os.path.normpath(os.path.abspath(str(safe_dest))) != base_dest_str
                     and not os.path.exists(base_dest_str)
                 ):
@@ -2469,6 +2672,64 @@ class OverlayResolver:
         """Remove a single library entry from config.yml."""
         return self.remove_libraries([library_name], filename)
 
+    _STATUS_STATE_COLORS: Dict[str, str] = {
+        "airing": "#27C24C",
+        "returning": "#FFA500",
+        "canceled": "#ED1F1F",
+        "ended": "#FF0000",
+    }
+
+    @staticmethod
+    def _normalize_status_state_key(raw: Any) -> Optional[str]:
+        s = str(raw or "").strip().lower()
+        if s == "airing":
+            return "airing"
+        if s in ("returning", "returning series", "continuing"):
+            return "returning"
+        if s == "ended":
+            return "ended"
+        if s in ("canceled", "cancelled"):
+            return "canceled"
+        return None
+
+    @classmethod
+    def _apply_status_layout_vars(cls, target_vars: Dict[str, Any], coords: Dict[str, Any]) -> None:
+        """Apply positional and per-state Series Status variables without leaking generic text/font_color."""
+        skip_keys = {"text", "font_color", "status_state"}
+        for coord_k, coord_v in coords.items():
+            if coord_v is None or coord_k in skip_keys:
+                continue
+            if coord_k.startswith("text_") and isinstance(coord_v, str) and not coord_v.strip():
+                target_vars.pop(coord_k, None)
+                continue
+            target_vars[coord_k] = coord_v
+
+        has_per_state_colors = any(
+            str(coords.get(f"font_color_{st}") or "").strip() for st in cls._STATUS_STATE_COLORS
+        )
+        if has_per_state_colors:
+            for st in cls._STATUS_STATE_COLORS:
+                val = str(coords.get(f"font_color_{st}") or "").strip()
+                if val:
+                    target_vars[f"font_color_{st}"] = val
+            target_vars.pop("font_color", None)
+        elif str(coords.get("font_color") or "").strip():
+            raw_fc = str(coords["font_color"]).strip()
+            mapped_state = cls._normalize_status_state_key(
+                coords.get("status_state") or coords.get("text")
+            )
+            if mapped_state:
+                target_vars[f"font_color_{mapped_state}"] = raw_fc
+                target_vars.pop("font_color", None)
+            elif any(f"font_color_{st}" in target_vars for st in cls._STATUS_STATE_COLORS):
+                for st in cls._STATUS_STATE_COLORS:
+                    target_vars[f"font_color_{st}"] = raw_fc
+                target_vars.pop("font_color", None)
+            else:
+                target_vars["font_color"] = raw_fc
+
+        target_vars.pop("text", None)
+
     def save_library_layout(
         self,
         library_name: str,
@@ -2586,6 +2847,8 @@ class OverlayResolver:
                     )
                     if key_lower in ("languages", "subtitle_languages") and rule_name in ("languages", "subtitle_languages"):
                         is_match = key_lower == rule_name
+                    if key_lower in ("ribbon", "mediastinger") or rule_name in ("ribbon", "mediastinger"):
+                        is_match = key_lower == rule_name
                     if is_match:
                         matched_entries.append((key, coords))
                         matched_keys.add(key)
@@ -2701,6 +2964,8 @@ class OverlayResolver:
                             vars_dict["back_width"] = int(best_coords["back_width"])
                         elif "back_width" not in vars_dict:
                             vars_dict["back_width"] = 205
+                    elif best_key.lower() == "status":
+                        self._apply_status_layout_vars(vars_dict, best_coords)
                     else:
                         for coord_k, coord_v in best_coords.items():
                             if coord_v is not None:
@@ -2722,7 +2987,11 @@ class OverlayResolver:
                 # If key is an age rating alias but an age rating rule is already configured, skip
                 if key_lower in age_rating_aliases and any(any(cr in str(r.get("default") or r.get("file") or "").lower() for cr in age_rating_aliases) for r in overlay_files if isinstance(r, dict)):
                     continue
-                clean_vars = {k: v for k, v in coords.items() if v is not None}
+                if key_lower == "status":
+                    clean_vars = {}
+                    self._apply_status_layout_vars(clean_vars, {k: v for k, v in coords.items() if v is not None})
+                else:
+                    clean_vars = {k: v for k, v in coords.items() if v is not None}
                 if clean_vars:
                     target_level = {
                         "movie_poster": "movie", "show_poster": "show", "season_poster": "season",
@@ -2763,14 +3032,25 @@ class OverlayResolver:
             has_critic_enabled = False
             try:
                 from dynamic_overlays_service import load_visual_config
-                vis_cfg = load_visual_config()
-                lib_badges = vis_cfg.get("libraries", {}).get(clean_lib_name, {}).get("badges", {})
-                has_critic_enabled = bool(
-                    lib_badges.get("critic_rating", {}).get("enabled") or
-                    (lib_badges.get("rating", {}).get("source") == "ratings" and lib_badges.get("rating", {}).get("enabled"))
-                )
+                vis_cfg = load_visual_config() or {}
+                vis_libs_map = vis_cfg.get("libraries") if isinstance(vis_cfg, dict) else {}
+                if isinstance(vis_libs_map, dict) and clean_lib_name in vis_libs_map:
+                    lib_badges = vis_libs_map[clean_lib_name].get("badges", {})
+                    has_critic_enabled = bool(
+                        lib_badges.get("critic_rating", {}).get("enabled") or
+                        (lib_badges.get("rating", {}).get("source") == "ratings" and lib_badges.get("rating", {}).get("enabled"))
+                    )
+                else:
+                    # Fallback to config.yml state when visual_config.json is stale or missing this library
+                    has_critic_enabled = any(
+                        isinstance(r, dict) and (r.get("default") == "ratings" or "ratings.yml" in str(r.get("file") or "").lower())
+                        for r in overlay_files
+                    )
             except Exception:
-                pass
+                has_critic_enabled = any(
+                    isinstance(r, dict) and (r.get("default") == "ratings" or "ratings.yml" in str(r.get("file") or "").lower())
+                    for r in overlay_files
+                )
 
             ratings_update_val = layout_updates.get("ratings")
             if isinstance(ratings_update_val, dict) and ratings_update_val.get("enabled") is not False:
@@ -2823,13 +3103,19 @@ class OverlayResolver:
                 except Exception as save_err:
                     logger.debug(f"[OverlayResolver] Config sync notice for {cfg_path}: {save_err}")
 
-            # Synchronize layout updates back to visual configuration JSON so both stay in lockstep
+            # Synchronize layout updates back to visual configuration JSON from authoritative config.yml so both stay in lockstep
             vis_data = {}
             try:
-                from dynamic_overlays_service import load_visual_config
-                vis_data = load_visual_config()
+                from dynamic_overlays_service import parse_config_yml_to_visual, load_visual_config
+                vis_data = parse_config_yml_to_visual(safe_path, auto_seed=False)
+                if not isinstance(vis_data, dict) or not vis_data.get("libraries"):
+                    vis_data = load_visual_config()
             except Exception:
-                vis_data = {}
+                try:
+                    from dynamic_overlays_service import load_visual_config
+                    vis_data = load_visual_config()
+                except Exception:
+                    vis_data = {}
 
             try:
                 vis_libs = vis_data.setdefault("libraries", {})
@@ -2848,6 +3134,9 @@ class OverlayResolver:
                         "subtitle_languages": "subtitle_languages",
                         "aspect": "aspect",
                         "studio": "studio",
+                        "streaming": "streaming",
+                        "ribbon": "ribbon",
+                        "mediastinger": "mediastinger",
                         "runtimes": "runtime",
                         "runtime": "runtime",
                         "status": "status",
@@ -2865,6 +3154,10 @@ class OverlayResolver:
                     }
                     for l_key, l_coords in layout_updates.items():
                         target_badge = badge_map.get(l_key.lower())
+                        if target_badge and target_badge not in b and target_badge in (
+                            "ribbon", "mediastinger", "streaming", "aspect", "studio", "subtitle_languages"
+                        ):
+                            b[target_badge] = {"enabled": True}
                         if target_badge and target_badge in b and isinstance(l_coords, dict):
                             if "horizontal_offset" in l_coords:
                                 b[target_badge]["offset_x"] = int(l_coords["horizontal_offset"])
@@ -2876,6 +3169,45 @@ class OverlayResolver:
                                 b[target_badge]["font_size"] = int(l_coords["font_size"])
                             if "font" in l_coords:
                                 b[target_badge]["font"] = str(l_coords["font"])
+                            if l_key.lower() == "status":
+                                colors = b[target_badge].setdefault("colors", dict(self._STATUS_STATE_COLORS))
+                                states = b[target_badge].setdefault("states", {st: True for st in self._STATUS_STATE_COLORS})
+                                texts = b[target_badge].setdefault("texts", {st: "" for st in self._STATUS_STATE_COLORS})
+                                has_state_colors = any(
+                                    str(l_coords.get(f"font_color_{st}") or "").strip()
+                                    for st in self._STATUS_STATE_COLORS
+                                )
+                                if has_state_colors:
+                                    for st in self._STATUS_STATE_COLORS:
+                                        fc = str(l_coords.get(f"font_color_{st}") or "").strip()
+                                        if fc:
+                                            colors[st] = fc
+                                elif str(l_coords.get("font_color") or "").strip():
+                                    raw_fc = str(l_coords["font_color"]).strip()
+                                    mapped = self._normalize_status_state_key(
+                                        l_coords.get("status_state") or l_coords.get("text")
+                                    )
+                                    if mapped:
+                                        colors[mapped] = raw_fc
+                                    else:
+                                        for st in self._STATUS_STATE_COLORS:
+                                            colors[st] = raw_fc
+                                for st in self._STATUS_STATE_COLORS:
+                                    if isinstance(l_coords.get(f"use_{st}"), bool):
+                                        states[st] = l_coords[f"use_{st}"]
+                                    if f"text_{st}" in l_coords:
+                                        texts[st] = str(l_coords.get(f"text_{st}") or "").strip()
+                            if l_key.lower() == "ribbon":
+                                r_style = str(l_coords.get("style") or "").strip().lower()
+                                if r_style in ("yellow", "red", "black", "gray"):
+                                    b[target_badge]["style"] = r_style
+                            if l_key.lower() == "mediastinger":
+                                if l_coords.get("back_color") is not None:
+                                    b[target_badge]["back_color"] = str(l_coords["back_color"])
+                                if l_coords.get("back_width") is not None:
+                                    b[target_badge]["back_width"] = int(l_coords["back_width"])
+                                if l_coords.get("back_height") is not None:
+                                    b[target_badge]["back_height"] = int(l_coords["back_height"])
                             if l_key.lower() == "resolution":
                                 if l_coords.get("mode") == "banner" or l_coords.get("banner_4k"):
                                     b[target_badge]["banner_4k"] = True
@@ -2997,7 +3329,10 @@ def _kometa_evaluate_conditionals(
                 if clean_k.endswith(".exists"):
                     target_k = clean_k[:-7]
                     should_exist = str(clean_exp).lower() in ("true", "1", "yes")
-                    exists = target_k in variables and variables[target_k] not in (None, "", False)
+                    if target_k.startswith("use_"):
+                        exists = target_k in variables and variables[target_k] not in (None, "")
+                    else:
+                        exists = target_k in variables and variables[target_k] not in (None, "", False)
                     if should_exist != exists:
                         passed = False
                         break
@@ -3071,7 +3406,11 @@ class OverlayConfigEngine:
 
         # Multi-root resolution: Collect all viable base candidate directories across Docker, project, and config
         self.candidate_roots: List[Path] = []
-        for r in [self.project_root, PROJECT_ROOT, Path("/app"), Path("/config")]:
+        raw_roots = [self.project_root, PROJECT_ROOT, Path("/app"), Path("/config")]
+        app_data = os.environ.get("APP_DATA")
+        if app_data:
+            raw_roots.append(Path(app_data))
+        for r in raw_roots:
             if r and Path(r).exists() and Path(r) not in self.candidate_roots:
                 self.candidate_roots.append(Path(r))
 
@@ -3082,6 +3421,8 @@ class OverlayConfigEngine:
                 cr / "Overlayfiles" / "kometa" / "fonts",
                 cr / "Overlayfiles" / "dynamic_overlays" / "configs" / "fonts",
                 cr / "Overlayfiles" / "kometa" / "configs" / "fonts",
+                cr / "Overlayfiles" / "fonts",
+                cr / "Overlayfiles",
                 cr / "fonts",
             ]:
                 if sub not in self.candidate_font_dirs:
@@ -3108,6 +3449,8 @@ class OverlayConfigEngine:
             defaults_images_dir = self.defaults_dir / "images"
             if defaults_images_dir not in self.candidate_asset_dirs:
                 self.candidate_asset_dirs.append(defaults_images_dir)
+        if BUNDLED_ASSETS_DIR.exists() and BUNDLED_ASSETS_DIR not in self.candidate_asset_dirs:
+            self.candidate_asset_dirs.append(BUNDLED_ASSETS_DIR)
 
         # Keep self.defaults_dir first even if it does not exist yet so later imports are picked up without restart.
         self.candidate_default_dirs: List[Path] = [self.defaults_dir]
@@ -3138,6 +3481,38 @@ class OverlayConfigEngine:
             )
         return {"standard": copy.deepcopy(BUILTIN_STANDARD_TEMPLATE)}
 
+    def resolve_custom_flag_path(self, language_tag: Optional[str], style: str = "round") -> Optional[Path]:
+        """Resolve an optional user-provided custom flag override in assets/flag/custom/."""
+        raw_tag = str(language_tag or "").strip().lower().replace("_", "-")
+        if not raw_tag or any(ch in raw_tag for ch in ("/", "\\", "..", "\x00")):
+            return None
+        tag = normalize_language_tag(raw_tag) or raw_tag
+        if not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,31}", tag):
+            return None
+
+        flag_style = "round" if str(style or "round").strip().lower() == "round" else "square"
+        exts = (".png", ".webp", ".jpg", ".jpeg")
+        target_names = {f"{tag}{ext}" for ext in exts}
+        for base_asset_dir in self.candidate_asset_dirs:
+            for family in ("flag", "flags"):
+                custom_root = base_asset_dir / family / "custom"
+                if not custom_root.exists() or not custom_root.is_dir():
+                    continue
+                for search_dir in (custom_root / flag_style, custom_root):
+                    if not search_dir.exists() or not search_dir.is_dir():
+                        continue
+                    for ext in exts:
+                        candidate = search_dir / f"{tag}{ext}"
+                        if candidate.is_file():
+                            return candidate
+                    try:
+                        for entry in search_dir.iterdir():
+                            if entry.is_file() and entry.name.lower() in target_names:
+                                return entry
+                    except Exception:
+                        pass
+        return None
+
     def resolve_image_path(self, raw_path: Optional[str]) -> Optional[Path]:
         if not raw_path or str(raw_path).startswith("text(") or str(raw_path).startswith("blur("):
             return None
@@ -3149,6 +3524,13 @@ class OverlayConfigEngine:
         # Clean extension
         if not p_str.lower().endswith((".png", ".jpg", ".jpeg", ".webp")):
             p_str = f"{p_str}.png"
+
+        if os.path.isabs(p_str):
+            req_norm = os.path.normpath(os.path.abspath(p_str))
+            for allowed_dir in [*self.candidate_asset_dirs, self.assets_dir]:
+                base_norm = os.path.normpath(os.path.abspath(str(allowed_dir)))
+                if req_norm.startswith(base_norm + os.sep) and os.path.isfile(req_norm):
+                    return Path(req_norm)
 
         stem = Path(p_str).stem.lower()
         flag_aliases = FLAG_CODE_ALIASES
@@ -3177,6 +3559,30 @@ class OverlayConfigEngine:
             if official_url:
                 return self.assets_dir / "flag" / flag_style / Path(official_url).name
             return None
+
+        is_ribbon_subpath = p_str.replace("\\", "/").lower().startswith("ribbon/")
+        if ("/" in p_str or "\\" in p_str) and not os.path.isabs(p_str):
+            rel_posix = p_str.replace("\\", "/")
+            rel_parent = str(PurePosixPath(rel_posix).parent)
+            rel_name = PurePosixPath(rel_posix).name.lower()
+            for base_asset_dir in self.candidate_asset_dirs:
+                cand1 = base_asset_dir / rel_posix
+                if cand1.exists():
+                    return cand1
+                parent_dir = base_asset_dir if rel_parent in ("", ".") else (base_asset_dir / rel_parent)
+                if parent_dir.exists() and parent_dir.is_dir():
+                    try:
+                        for f in parent_dir.iterdir():
+                            if f.is_file() and f.name.lower() in (rel_name, target_name_with_ext):
+                                return f
+                    except Exception:
+                        pass
+            if is_ribbon_subpath:
+                official_url = resolve_official_kometa_image_url(p_str)
+                if official_url:
+                    target_sub = official_url[len(KOMETA_IMAGES_RAW) + 1:] if official_url.startswith(f"{KOMETA_IMAGES_RAW}/") else Path(p_str).name
+                    return self.assets_dir / target_sub
+                return None
 
         sub_dirs = [
             "",
@@ -3334,7 +3740,118 @@ class OverlayConfigEngine:
             if k in ext_vars and k not in merged_vars:
                 merged_vars[k] = ext_vars[k]
 
+        if default_name == "languages":
+            file_overlays = self._prepare_language_overlays(file_overlays, merged_vars, temp_vars)
+
         return file_overlays, file_queues, file_templates, merged_vars
+
+    def _prepare_language_overlays(
+        self,
+        raw_overlays: Any,
+        merged_vars: Dict[str, Any],
+        temp_vars: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """Apply bundled regional Spanish flag mappings and synthesize missing requested tags."""
+        file_overlays = copy.deepcopy(raw_overlays) if isinstance(raw_overlays, dict) else {}
+
+        raw_langs = merged_vars.get("languages")
+        if isinstance(raw_langs, str):
+            raw_lang_list = [x.strip() for x in raw_langs.split(",") if x.strip()]
+        elif isinstance(raw_langs, (list, tuple, set)):
+            raw_lang_list = list(raw_langs)
+        else:
+            raw_lang_list = []
+
+        normalized_langs: List[str] = []
+        seen_norm: Set[str] = set()
+        for entry_lang in raw_lang_list:
+            norm_l = normalize_language_tag(entry_lang) or str(entry_lang).strip().lower()
+            if norm_l and norm_l not in seen_norm:
+                seen_norm.add(norm_l)
+                normalized_langs.append(norm_l)
+        if raw_langs is not None:
+            merged_vars["languages"] = normalized_langs
+
+        for ov_def in file_overlays.values():
+            if not isinstance(ov_def, dict):
+                continue
+            ov_vars = ov_def.get("variables")
+            if not isinstance(ov_vars, dict):
+                continue
+            lang_key = normalize_language_tag(ov_vars.get("key")) or str(ov_vars.get("key") or "").strip().lower()
+            if lang_key in REGIONAL_LANGUAGE_FLAGS:
+                user_overrode = any(
+                    k in temp_vars and temp_vars[k] not in (None, "")
+                    for k in (
+                        f"country_{lang_key}",
+                        f"file_{lang_key}",
+                        f"url_{lang_key}",
+                        f"git_{lang_key}",
+                        f"repo_{lang_key}",
+                    )
+                )
+                if not user_overrode:
+                    ov_vars["country"] = REGIONAL_LANGUAGE_FLAGS[lang_key]
+
+        existing_keys = {
+            str((ov_def.get("variables") or {}).get("key") or "").strip().lower()
+            for ov_def in file_overlays.values()
+            if isinstance(ov_def, dict)
+        }
+        requested_tags = list(normalized_langs)
+        for tk, tv in temp_vars.items():
+            tk_str = str(tk)
+            if tk_str.startswith("use_") and str(tv).lower() in ("true", "1", "yes"):
+                cand_tag = normalize_language_tag(tk_str[4:]) or tk_str[4:].strip().lower()
+                if cand_tag and cand_tag not in requested_tags:
+                    requested_tags.append(cand_tag)
+
+        flag_style = "round" if str(merged_vars.get("style", "round")).strip().lower() == "round" else "square"
+        hide_text_val = str(merged_vars.get("hide_text", True)).strip().lower() in ("true", "1")
+        is_big_size = str(merged_vars.get("size", "")).strip().lower() == "big"
+
+        for req_tag in requested_tags:
+            if not req_tag or req_tag in existing_keys:
+                continue
+            custom_path = self.resolve_custom_flag_path(req_tag, flag_style)
+            if req_tag not in REGIONAL_LANGUAGE_FLAGS and not custom_path and "-" not in req_tag:
+                continue
+            if req_tag in REGIONAL_LANGUAGE_FLAGS:
+                country_code = REGIONAL_LANGUAGE_FLAGS[req_tag]
+            elif "-" in req_tag:
+                region_part = req_tag.split("-", 1)[1]
+                country_code = region_part if (len(region_part) == 2 and region_part.isalpha()) else req_tag
+            else:
+                country_code = req_tag
+
+            display_text = str(
+                temp_vars.get(f"text_{req_tag}")
+                or LANGUAGE_DISPLAY_LABELS.get(req_tag)
+                or req_tag.upper()
+            )
+            synth_vars: Dict[str, Any] = {
+                "key": req_tag,
+                "text": display_text,
+                "weight": 575,
+                "country": country_code,
+            }
+            if len(display_text) >= 3:
+                synth_vars["three_characters"] = True
+                if not hide_text_val and "back_width" not in temp_vars and "width" not in temp_vars:
+                    w = 290 if is_big_size else 230
+                    synth_vars["width"] = w
+                    synth_vars["back_width"] = w
+
+            synth_key = f"lang_{req_tag.replace('-', '_')}"
+            while synth_key in file_overlays:
+                synth_key = f"{synth_key}_custom"
+            file_overlays[synth_key] = {
+                "variables": synth_vars,
+                "template": [{"name": "flags"}, {"name": "standard"}],
+            }
+            existing_keys.add(req_tag)
+
+        return file_overlays
 
     def _candidate_overlays_for_title(self, definitions, expanded_definitions, templates, variables, definitions_key, metadata):
         from copy import deepcopy
@@ -3388,6 +3905,7 @@ class OverlayConfigEngine:
         queue_lang_order: Dict[str, List[str]] = {}
 
         media_type = str(item_metadata.get("media_type", "movie")).lower()
+        library_type = "show" if media_type in ("show", "series", "season", "episode") else "movie"
         is_season = (item_metadata.get("season_number") is not None and media_type != "episode") or (media_type == "season")
         is_episode = (media_type == "episode") or bool(item_metadata.get("is_episode"))
 
@@ -3410,6 +3928,7 @@ class OverlayConfigEngine:
             if not res or len(res) < 4:
                 continue
             file_overlays, file_queues, file_templates, file_vars = res
+            file_vars = {**file_vars, "library_type": library_type}
             subtitle_rule = str(file_vars.get("use_subtitles", False)).lower() in ("true", "1")
             queue_prefix = "subtitle_" if subtitle_rule else ""
             definitions_key = dumps([file_overlays, file_templates, file_vars])
@@ -3437,21 +3956,29 @@ class OverlayConfigEngine:
             # Resolve queues for this file
             for q_name, q_def in file_queues.items():
                 if isinstance(q_def, dict) and "settings" in q_def:
-                    slots = self._resolve_queue_slots(q_def["settings"], file_vars)
                     full_q = queue_prefix + q_name
-                    all_queues[full_q] = slots
                     q_limit = rule_limit
                     if q_limit is None and q_def["settings"].get("overlay_limit") is not None:
                         try:
                             q_limit = int(q_def["settings"]["overlay_limit"])
                         except (ValueError, TypeError):
                             pass
+                    slots = self._resolve_queue_slots(
+                        q_def["settings"],
+                        file_vars,
+                        min_slots=max(21, q_limit or 21),
+                    )
+                    all_queues[full_q] = slots
                     queue_limits[full_q] = q_limit
                     if file_vars.get("languages"):
                         raw_l = file_vars["languages"]
                         if isinstance(raw_l, str):
                             raw_l = [x.strip() for x in raw_l.split(",") if x.strip()]
-                        queue_lang_order[full_q] = [str(x).strip().lower() for x in raw_l]
+                        queue_lang_order[full_q] = [
+                            normalize_language_tag(x) or str(x).strip().lower()
+                            for x in raw_l
+                            if str(x).strip()
+                        ]
 
             # Process each overlay in file
             for ov_key, ov_def in self._candidate_overlays_for_title(
@@ -3498,16 +4025,11 @@ class OverlayConfigEngine:
                 if not matches_artwork_type(expanded_ov, item_metadata):
                     continue
 
-                # Check run_definition if present (Kometa default: run_this / allowed_libraries)
-                run_def = expanded_ov.get("run_definition")
-                if run_def is not None:
-                    if isinstance(run_def, list):
-                        if any(str(r).strip().lower() in ("false", "none", "", "0") or r is False for r in run_def):
-                            continue
-                    elif str(run_def).strip().lower() in ("false", "none", "", "0") or run_def is False:
-                        continue
+                # Check allowed_libraries and run_definition (Kometa default: run_this / allowed_libraries)
+                if not _overlay_enabled_for_library(expanded_ov, library_type):
+                    continue
 
-                # Check plex_search, plex_all and secondary filters
+                # Check plex_search, plex_all, external builders, and secondary filters
                 matches = False
                 p_all = str(expanded_ov.get("plex_all") or ov_def.get("plex_all") or "").lower()
                 search_block = None
@@ -3519,6 +4041,8 @@ class OverlayConfigEngine:
                 elif "plex_search" in ov_def:
                     search_block = ov_def["plex_search"]
                     matches = self._match_filters(search_block, item_metadata, empty_match=False)
+                elif overlay_has_external_builders(expanded_ov):
+                    matches = matches_external_builders(expanded_ov, item_metadata)
 
                 sec_filters = expanded_ov.get("filters") or ov_def.get("filters")
                 if matches and sec_filters:
@@ -3619,6 +4143,17 @@ class OverlayConfigEngine:
                     "_audio_lang_targets": audio_targets,
                     "_subtitle_lang_targets": subtitle_targets,
                 }
+
+                if (
+                    str(rule_entry.get("default", "")).lower() == "languages"
+                    and resolved_ov.get("language_code")
+                    and not resolved_ov.get("file")
+                    and not resolved_ov.get("url")
+                ):
+                    flag_style = "round" if str(file_vars.get("style", "round")).strip().lower() == "round" else "square"
+                    custom_flag = self.resolve_custom_flag_path(resolved_ov["language_code"], flag_style)
+                    if custom_flag:
+                        resolved_ov["file"] = str(custom_flag)
 
                 if subtitle_rule:
                     resolved_ov["mapping_name"] = "subtitle_languages_" + mapping_name
@@ -3774,6 +4309,7 @@ class OverlayConfigEngine:
         from pickle import dumps
 
         media_type = str(item_metadata.get("media_type", "movie")).lower()
+        library_type = "show" if media_type in ("show", "series", "season", "episode") else "movie"
         is_season = (item_metadata.get("season_number") is not None and media_type != "episode") or (media_type == "season")
         is_episode = (media_type == "episode") or bool(item_metadata.get("is_episode"))
         item_audio_tags = get_item_language_tags(item_metadata, is_subtitle=False)
@@ -3788,6 +4324,7 @@ class OverlayConfigEngine:
             if not res or len(res) < 4:
                 continue
             file_overlays, _, file_templates, file_vars = res
+            file_vars = {**file_vars, "library_type": library_type}
             definitions_key = dumps([file_overlays, file_templates, file_vars])
             if not hasattr(self, "_expanded_rules_cache"):
                 self._expanded_rules_cache = {}
@@ -3826,12 +4363,8 @@ class OverlayConfigEngine:
                 expanded_ov = expanded_definitions[definition_key]
                 if not expanded_ov or not matches_artwork_type(expanded_ov, item_metadata):
                     continue
-                run_def = expanded_ov.get("run_definition")
-                if run_def is not None:
-                    if isinstance(run_def, list) and any(str(r).strip().lower() in ("false", "none", "", "0") or r is False for r in run_def):
-                        continue
-                    if not isinstance(run_def, list) and (str(run_def).strip().lower() in ("false", "none", "", "0") or run_def is False):
-                        continue
+                if not _overlay_enabled_for_library(expanded_ov, library_type):
+                    continue
 
                 matches = False
                 p_all = str(expanded_ov.get("plex_all") or ov_def.get("plex_all") or "").lower()
@@ -3844,6 +4377,8 @@ class OverlayConfigEngine:
                 elif "plex_search" in ov_def:
                     search_block = ov_def["plex_search"]
                     matches = self._match_filters(search_block, item_metadata, empty_match=False)
+                elif overlay_has_external_builders(expanded_ov):
+                    matches = matches_external_builders(expanded_ov, item_metadata)
 
                 sec_filters = expanded_ov.get("filters") or ov_def.get("filters")
                 if matches and sec_filters:
@@ -3892,7 +4427,12 @@ class OverlayConfigEngine:
 
         return [ov for ov in survivors if ov.get("mapping_name") not in suppressed_names and ov.get("name") not in suppressed_names]
 
-    def _resolve_queue_slots(self, queue_settings: Dict[str, Any], variables: Dict[str, Any]) -> List[Dict[str, Any]]:
+    def _resolve_queue_slots(
+        self,
+        queue_settings: Dict[str, Any],
+        variables: Dict[str, Any],
+        min_slots: int = 21,
+    ) -> List[Dict[str, Any]]:
         defaults = queue_settings.get("default", {})
         conditionals = queue_settings.get("conditionals", {})
         con_resolved = _kometa_evaluate_conditionals(conditionals, variables, defaults)
@@ -3939,7 +4479,7 @@ class OverlayConfigEngine:
             "vertical_offset": init_v_off,
             "horizontal_offset": init_h_off
         }]
-        for x in range(20):
+        for x in range(max(20, int(min_slots) - 1)):
             factor = ((int(x / 2) + 1) * (-1 if x % 2 == 1 else 1)) if surround else (x + 1)
             slots.append({
                 "vertical_align": init_v_align,
@@ -3960,6 +4500,10 @@ class OverlayConfigEngine:
         ov_vars = {**file_vars, "overlay_name": str(key), "key": str(key)}
         if "variables" in ov_def:
             ov_vars.update(ov_def["variables"])
+        merged_def["_overlay_key"] = str(ov_vars.get("key") or key)
+        allowed_ov = ov_vars.get("allowed_libraries")
+        if allowed_ov not in (None, "") and not (isinstance(allowed_ov, str) and "<<" in allowed_ov and ">>" in allowed_ov):
+            merged_def.setdefault("allowed_libraries", allowed_ov)
 
         # Dynamically evaluate nested token definitions in ov_vars (e.g. text_<<key>>: <<text>>)
         for _ in range(3):
@@ -4002,6 +4546,10 @@ class OverlayConfigEngine:
                         for dk, dv in resolved_defaults.items():
                             resolved_defaults[dk] = _kometa_replace_var(dv, [curr_vars, resolved_defaults])
 
+                    allowed_call = curr_vars.get("allowed_libraries")
+                    if allowed_call not in (None, "") and not (isinstance(allowed_call, str) and "<<" in allowed_call and ">>" in allowed_call):
+                        merged_def.setdefault("allowed_libraries", allowed_call)
+
                     expanded = _kometa_substitute_vars_deep(tpl_body, [curr_vars, resolved_defaults])
                     for mk, mv in expanded.items():
                         if mk not in ("default", "conditionals", "optional"):
@@ -4010,6 +4558,8 @@ class OverlayConfigEngine:
                                     merged_def["overlay"] = {}
                                 merged_def["overlay"].update(mv)
                             elif mk not in merged_def:
+                                if isinstance(mv, str) and "<<" in mv and ">>" in mv:
+                                    continue
                                 merged_def[mk] = mv
 
         final_def = _kometa_substitute_vars_deep(merged_def, [ov_vars, file_vars])
@@ -4302,6 +4852,15 @@ class OverlayConfigEngine:
             elif k.endswith(".lt"):
                 return cnt < v_num
             return cnt == v_num
+        if k in ("tmdb_keyword", "tmdb_keywords", "tmdb_keyword.any", "tmdb_keyword.all", "tmdb_keywords.all", "tmdb_keyword.not", "tmdb_keywords.not"):
+            raw_targets = v if isinstance(v, (list, tuple, set)) else str(v or "").split(",")
+            targets = [str(x).strip().lower() for x in raw_targets if x is not None and str(x).strip()]
+            item_kws = {str(x).strip().lower() for x in (meta.get("tmdb_keywords") or []) if str(x).strip()}
+            if k.endswith(".not"):
+                return not any(t in item_kws for t in targets)
+            if k.endswith(".all"):
+                return bool(targets) and all(t in item_kws for t in targets)
+            return bool(targets) and any(t in item_kws for t in targets)
         return True
 
     def _convert_to_layer(self, ov: Dict[str, Any], meta: Dict[str, Any]) -> Optional[Dict[str, Any]]:

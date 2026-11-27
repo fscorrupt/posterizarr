@@ -123,7 +123,7 @@ commands.
 
 ![Action Center review filters and actions](images/07-action-center.png)
 
-*Choose **Asset Management > Action Center** to filter flagged assets and resolve, replace, or delete their tracking entries.*
+*Choose **Asset Management > Action Center** to filter flagged assets and resolve, replace, or delete tracking entries, or use **Cleanup Deleted** to prune orphaned records for deleted media without touching files on disk.*
 
 ![Asset Title Review comparing current media-server titles against existing artwork](images/ui-asset-title-review.png)
 
@@ -181,11 +181,11 @@ and response formats are in the [API reference](endpoints.md).
 
 ![Dynamic Overlays Visual Badges](images/20-overlay-visual-badges.png)
 
-*Choose **Visual Badges** to configure badge appearance and layout.*
+*Choose **Visual Badges** to configure badge appearance, resolution tier filtering, Award / Chart Ribbons, Media Stinger, and layout.*
 
 ![Dynamic Overlays Live Preview](images/21-overlay-live-preview.png)
 
-*Choose **Live Preview** to inspect sample artwork and adjust badge placement. Previewing does not upload artwork.*
+*Choose **Live Preview** to inspect sample artwork, switch Award / Chart Ribbon or Media Stinger previews, and adjust badge placement via drag-and-drop. Previewing does not upload artwork.*
 
 ![Dynamic Overlays Synchronize view with separate maintenance tabs](images/22-overlay-sync-cache.png)
 

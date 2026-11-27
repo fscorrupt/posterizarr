@@ -2,7 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net;
 using System.Net.WebSockets;
+using System.Security.Authentication;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
@@ -202,6 +204,11 @@ public class PosterizarrWebSocketListener : IHostedService, IDisposable
 
             using var client = new ClientWebSocket();
 
+            if (config.AllowInvalidSslCertificates)
+            {
+                client.Options.RemoteCertificateValidationCallback = (_, _, _, _) => true;
+            }
+
             // SECURITY: Transmit API Key strictly via HTTP Header (never in URL or query params)
             if (!string.IsNullOrWhiteSpace(config.PosterizarrApiKey))
             {
@@ -245,6 +252,13 @@ public class PosterizarrWebSocketListener : IHostedService, IDisposable
                                       innerMsg.IndexOf("401", StringComparison.OrdinalIgnoreCase) >= 0 ||
                                       innerMsg.IndexOf("403", StringComparison.OrdinalIgnoreCase) >= 0;
 
+                bool isTlsError = ex.InnerException is AuthenticationException ||
+                                ex.InnerException?.InnerException is AuthenticationException ||
+                                msg.IndexOf("certificate", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                innerMsg.IndexOf("certificate", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                msg.IndexOf("SSL", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                innerMsg.IndexOf("SSL", StringComparison.OrdinalIgnoreCase) >= 0;
+
                 if (is404)
                 {
                     if (!_hasLoggedMissingEndpoint)
@@ -261,6 +275,14 @@ public class PosterizarrWebSocketListener : IHostedService, IDisposable
                         LogDebug("Posterizarr WebSocket endpoint at '{0}' is still returning HTTP 404. Retrying in 10 minutes...", wsUri);
                     }
                     retryDelaySeconds = 600; // 10 minutes backoff: avoid spamming server logs while Posterizarr is on an older build
+                }
+                else if (isTlsError)
+                {
+                    _logger.LogWarning(
+                        "[Posterizarr WS] TLS/certificate error connecting to '{0}': {1}. " +
+                        "If using a local/self-signed reverse-proxy certificate (e.g., Caddy tls internal), trust its root CA, enable 'Allow Self-Signed / Local SSL Certificates' in plugin settings, or use the internal http:// URL. Retrying in {2}s...",
+                        wsUri, ex.InnerException?.Message ?? ex.Message, Math.Max(retryDelaySeconds, 60));
+                    retryDelaySeconds = Math.Max(retryDelaySeconds, 60);
                 }
                 else if (isRefused)
                 {
@@ -312,10 +334,13 @@ public class PosterizarrWebSocketListener : IHostedService, IDisposable
         try
         {
             var trimmed = rawUrl.Trim();
-            if (!trimmed.StartsWith("http://", StringComparison.OrdinalIgnoreCase) &&
-                !trimmed.StartsWith("https://", StringComparison.OrdinalIgnoreCase) &&
-                !trimmed.StartsWith("ws://", StringComparison.OrdinalIgnoreCase) &&
-                !trimmed.StartsWith("wss://", StringComparison.OrdinalIgnoreCase))
+            bool hadExplicitScheme =
+                trimmed.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+                trimmed.StartsWith("https://", StringComparison.OrdinalIgnoreCase) ||
+                trimmed.StartsWith("ws://", StringComparison.OrdinalIgnoreCase) ||
+                trimmed.StartsWith("wss://", StringComparison.OrdinalIgnoreCase);
+
+            if (!hadExplicitScheme)
             {
                 trimmed = "http://" + trimmed;
             }
@@ -330,10 +355,21 @@ public class PosterizarrWebSocketListener : IHostedService, IDisposable
                 builder.Scheme = "ws";
             }
 
-            // If no explicit port was specified in rawUrl, default to Posterizarr's default port 8000
-            if (!System.Text.RegularExpressions.Regex.IsMatch(trimmed, @":\d+(?:/|$)"))
+            bool hasExplicitPort = System.Text.RegularExpressions.Regex.IsMatch(trimmed, @":\d+(?:/|$)");
+            if (!hasExplicitPort)
             {
-                builder.Port = 8000;
+                if (builder.Scheme.Equals("wss", StringComparison.OrdinalIgnoreCase))
+                {
+                    builder.Port = -1;
+                }
+                else if (hadExplicitScheme && builder.Host.Contains('.') && !IPAddress.TryParse(builder.Host, out _))
+                {
+                    builder.Port = -1;
+                }
+                else
+                {
+                    builder.Port = 8000;
+                }
             }
 
             builder.Path = builder.Path.TrimEnd('/') + "/ws/events";

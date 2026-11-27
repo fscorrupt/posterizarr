@@ -65,6 +65,225 @@ function formatFallbackKeyName(key) {
     .trim();
 }
 
+export function buildDynamicOverlaySettingsSearchItems(t) {
+  const dynamicOverlaysTitle = t("dynamicOverlays.title", "Dynamic Overlays");
+  const engineSubtitle = `${dynamicOverlaysTitle} › Overlay Engine & Provider Settings`;
+
+  return [
+    {
+      id: "overlay-setting:overlay_engine_settings",
+      title: "Overlay Engine, Concurrency & Provider Settings",
+      subtitle: `${dynamicOverlaysTitle} › Visual / YAML Config`,
+      description:
+        "Configure parallel RAM workers, debug pixel log, API keys (MDBList, OMDb, SIMKL), and auto-refresh schedule.",
+      settingKey: "overlay_engine_settings",
+      route: "/dynamic-overlays?tab=config",
+      navState: {
+        overlaySettingKey: "overlay_engine_settings",
+        targetTab: "config",
+        openEngineSettings: true,
+      },
+      iconKey: "sliders",
+      keywords:
+        "overlay engine concurrency provider settings workers ram debug pixel log mdblist mdb omdb simkl api key ratings auto-sync",
+    },
+    {
+      id: "overlay-setting:mdblist_api_key",
+      title: "MDBList API Key",
+      subtitle: engineSubtitle,
+      description:
+        "Optional MDBList API key for Trakt, Letterboxd, IMDb, and Rotten Tomatoes ratings.",
+      settingKey: "mdblist_api_key",
+      route: "/dynamic-overlays?tab=config",
+      navState: {
+        overlaySettingKey: "mdblist_api_key",
+        targetTab: "config",
+        openEngineSettings: true,
+      },
+      iconKey: "settings",
+      keywords:
+        "mdblist mdb api key ratings trakt letterboxd imdb rotten tomatoes rt overlays provider",
+    },
+    {
+      id: "overlay-setting:omdb_api_key",
+      title: "OMDb API Key",
+      subtitle: engineSubtitle,
+      description:
+        "Optional OMDb API key for IMDb, Rotten Tomatoes, and Metacritic ratings.",
+      settingKey: "omdb_api_key",
+      route: "/dynamic-overlays?tab=config",
+      navState: {
+        overlaySettingKey: "omdb_api_key",
+        targetTab: "config",
+        openEngineSettings: true,
+      },
+      iconKey: "settings",
+      keywords:
+        "omdb omdbapi api key ratings imdb rotten tomatoes metacritic overlays provider",
+    },
+    {
+      id: "overlay-setting:simkl_client_id",
+      title: "SIMKL Client ID",
+      subtitle: engineSubtitle,
+      description:
+        "Optional SIMKL Client ID for anime season and ratings overlays.",
+      settingKey: "simkl_client_id",
+      route: "/dynamic-overlays?tab=config",
+      navState: {
+        overlaySettingKey: "simkl_client_id",
+        targetTab: "config",
+        openEngineSettings: true,
+      },
+      iconKey: "settings",
+      keywords:
+        "simkl client id api key anime season ratings overlays provider",
+    },
+    {
+      id: "overlay-setting:season_rating_libraries",
+      title: "Libraries for Anime Season Ratings",
+      subtitle: engineSubtitle,
+      description: "Select which libraries fetch anime season ratings via SIMKL.",
+      settingKey: "season_rating_libraries",
+      route: "/dynamic-overlays?tab=config",
+      navState: {
+        overlaySettingKey: "season_rating_libraries",
+        targetTab: "config",
+        openEngineSettings: true,
+      },
+      iconKey: "settings",
+      keywords: "anime season ratings simkl libraries overlays",
+    },
+    {
+      id: "overlay-setting:auto_sync_on_startup",
+      title: "Auto-Sync on New Artwork",
+      subtitle: engineSubtitle,
+      description:
+        "Automatically add overlays whenever Posterizarr creates new artwork in scheduled runs.",
+      settingKey: "auto_sync_on_startup",
+      route: "/dynamic-overlays?tab=config",
+      navState: {
+        overlaySettingKey: "auto_sync_on_startup",
+        targetTab: "config",
+        openEngineSettings: true,
+      },
+      iconKey: "settings",
+      keywords: "auto sync startup new artwork scheduled runs dynamic overlays",
+    },
+    {
+      id: "overlay-setting:ratings_cache_rules",
+      title: "Saved Ratings & Refresh Rules",
+      subtitle: engineSubtitle,
+      description:
+        "Tiered rating cache refresh intervals and Clear Ratings Cache action.",
+      settingKey: "ratings_cache_rules",
+      route: "/dynamic-overlays?tab=config",
+      navState: {
+        overlaySettingKey: "ratings_cache_rules",
+        targetTab: "config",
+        openEngineSettings: true,
+      },
+      iconKey: "sparkles",
+      keywords: "saved ratings refresh rules clear cache ttl mdblist omdb imdb",
+    },
+    {
+      id: "overlay-setting:debug_logging",
+      title: "Debug Pixel Coordinates Logging",
+      subtitle: engineSubtitle,
+      description:
+        "Prints per-poster pixel coordinates and scale factors into DynamicOverlaysSync.log.",
+      settingKey: "debug_logging",
+      route: "/dynamic-overlays?tab=config",
+      navState: {
+        overlaySettingKey: "debug_logging",
+        targetTab: "config",
+        openEngineSettings: true,
+      },
+      iconKey: "sliders",
+      keywords: "debug pixel coordinates logging DynamicOverlaysSync.log overlays",
+    },
+    {
+      id: "overlay-setting:concurrency",
+      title: "Parallel In-Memory Processing",
+      subtitle: engineSubtitle,
+      description:
+        "Number of artwork items composited and synchronized simultaneously in RAM (workers).",
+      settingKey: "concurrency",
+      route: "/dynamic-overlays?tab=config",
+      navState: {
+        overlaySettingKey: "concurrency",
+        targetTab: "config",
+        openEngineSettings: true,
+      },
+      iconKey: "sliders",
+      keywords:
+        "parallel workers concurrency ram in-memory processing threads speed overlays",
+    },
+    {
+      id: "overlay-setting:change_detection_dry_run",
+      title: "Dynamic Overlays Dry Run",
+      subtitle: `${dynamicOverlaysTitle} › Media Change Detection`,
+      description:
+        "Render overlays locally without uploading to Plex, Jellyfin, or Emby.",
+      settingKey: "change_detection_dry_run",
+      route: "/dynamic-overlays?tab=media-changes",
+      navState: {
+        overlaySettingKey: "change_detection_dry_run",
+        targetTab: "media-changes",
+      },
+      iconKey: "sliders",
+      keywords:
+        "dry run dryrun preview test no upload dynamic overlays media change detection",
+    },
+    {
+      id: "overlay-setting:ratings_cache",
+      title: "Ratings Cache & Auto-Refresh",
+      subtitle: `${dynamicOverlaysTitle} › Ratings Cache`,
+      description:
+        "Browse or clear cached IMDb, Rotten Tomatoes, TMDb, Trakt, and Letterboxd ratings.",
+      settingKey: "ratings_cache",
+      route: "/dynamic-overlays?tab=ratings-cache",
+      navState: {
+        overlaySettingKey: "ratings_cache",
+        targetTab: "ratings-cache",
+      },
+      iconKey: "sparkles",
+      keywords:
+        "ratings cache auto refresh browse clear imdb omdb mdblist rotten tomatoes trakt letterboxd",
+    },
+    {
+      id: "overlay-setting:animetafill_simkl_client_id",
+      title: "AniMetaFill SIMKL Client ID",
+      subtitle: `${dynamicOverlaysTitle} › AniMetaFill`,
+      description:
+        "Required SIMKL Client ID for anime canon/filler episode classification.",
+      settingKey: "animetafill_simkl_client_id",
+      route: "/dynamic-overlays?tab=anime",
+      navState: {
+        overlaySettingKey: "animetafill_simkl_client_id",
+        targetTab: "anime",
+      },
+      iconKey: "settings",
+      keywords:
+        "animetafill simkl client id api key anime filler canon mixed episodes",
+    },
+    {
+      id: "overlay-setting:animetafill_sonarr",
+      title: "AniMetaFill Sonarr Connection",
+      subtitle: `${dynamicOverlaysTitle} › AniMetaFill`,
+      description:
+        "Optional Sonarr URL and API key for AniMetaFill anime episode mapping.",
+      settingKey: "animetafill_sonarr",
+      route: "/dynamic-overlays?tab=anime",
+      navState: {
+        overlaySettingKey: "animetafill_sonarr",
+        targetTab: "anime",
+      },
+      iconKey: "settings",
+      keywords: "animetafill sonarr url api key anime episodes",
+    },
+  ].map((item) => ({ ...item, category: "settings" }));
+}
+
 export function buildStaticSearchItems({ t, themes = {}, setTheme }) {
   const pages = [
     {
@@ -249,7 +468,7 @@ export function buildStaticSearchItems({ t, themes = {}, setTheme }) {
       subtitle: "Builders",
       route: "/dynamic-overlays?tab=config",
       iconKey: "sliders",
-      keywords: "dynamic overlays config yaml editor visual studio",
+      keywords: "dynamic overlays config yaml editor visual studio mdblist mdb omdb simkl provider api key workers concurrency engine",
     },
     {
       id: "page:dynamic-overlays-preview",
@@ -369,7 +588,9 @@ export function buildStaticSearchItems({ t, themes = {}, setTheme }) {
     })),
   ];
 
-  return [...pages, ...actions];
+  const overlaySettings = buildDynamicOverlaySettingsSearchItems(t);
+
+  return [...pages, ...overlaySettings, ...actions];
 }
 
 export function buildConfigSearchItems(configPayload, t) {

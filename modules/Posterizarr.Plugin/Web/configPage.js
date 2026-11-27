@@ -45,6 +45,9 @@
             const txtApiKey = page.querySelector('#txtPosterizarrApiKey');
             if (txtApiKey) txtApiKey.value = config.PosterizarrApiKey || "";
 
+            const chkAllowInvalidSsl = page.querySelector('#chkAllowInvalidSsl');
+            if (chkAllowInvalidSsl) chkAllowInvalidSsl.checked = config.AllowInvalidSslCertificates || false;
+
             configLoaded = true;
             Dashboard.hideLoadingMsg();
         }).catch(function (err) {
@@ -187,6 +190,9 @@
 
                     const txtApiKey = view.querySelector('#txtPosterizarrApiKey');
                     config.PosterizarrApiKey = txtApiKey ? (txtApiKey.value || "").trim() : "";
+
+                    const chkAllowInvalidSsl = view.querySelector('#chkAllowInvalidSsl');
+                    config.AllowInvalidSslCertificates = chkAllowInvalidSsl ? chkAllowInvalidSsl.checked : false;
 
                     if (config.EnableRealtimeSync && (!config.PosterizarrApiUrl || !config.PosterizarrApiKey)) {
                         Dashboard.hideLoadingMsg();

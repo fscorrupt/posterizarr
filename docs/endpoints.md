@@ -200,6 +200,7 @@ The `/api/dynamic-overlays/episode-title-changes*` endpoints power the standalon
 | `POST /api/dynamic-overlays/episode-title-changes/fast-normal-run` | Confirmed Fast Normal Run over `candidate_ids` or `all_eligible`, using the same search and filters. Optional `force_unknown_text: true` includes safe uncertain-text candidates. |
 | `GET /api/dynamic-overlays/custom-image-sources` | Lists available custom image files from **Overlay Builder** (`Overlayfiles/`) and `Overlayfiles/dynamic_overlays/assets/` (excluding built-in default subdirectories). |
 | `POST /api/dynamic-overlays/rules/add-custom-image` | Multipart upload (`file`) or existing-image reuse (`existing_source` + `existing_image`) that copies/validates the image, writes a `custom_<name>.yml` (`plex_all: true`) rule, and attaches it to a single library in `config.yml`. |
+| `GET /api/dynamic-overlays/preview` | Renders the live preview canvas or transparent drag-and-drop badge sprites for sample or uploaded artwork. Accepts layout coordinates, asset-boundary options, and badge preview parameters including `ribbon`, `ribbon_style` (`yellow`, `red`, `black`, `gray`), `mediastinger`, `mediastinger_back_color`, `mediastinger_back_width`, and `mediastinger_back_height`. |
 
 ### Overlay Bundles
 
@@ -207,7 +208,7 @@ The `/api/dynamic-overlays/episode-title-changes*` endpoints power the standalon
 |---|---|
 | `GET /api/dynamic-overlays/bundle/export` | Download custom YAML and required custom assets/fonts plus layouts and portable settings. Official downloadable Kometa files are dependency references, not ZIP payloads. Credential fields and media-server connections are excluded; known credentials in text are masked. |
 | `POST /api/dynamic-overlays/bundle/preview` | Multipart `file` upload. Returns source profiles, existing destination libraries/server, features, file counts, conflicts, and warnings without applying the bundle. |
-| `POST /api/dynamic-overlays/bundle/import` | Multipart upload with `file`, JSON-string `mapping`, JSON-string `anime_libraries`/`season_libraries`, and boolean `import_settings`/`replace_files`. Applies validated mappings and starts in Dry Run, without uploading artwork. |
+| `POST /api/dynamic-overlays/bundle/import` | Multipart upload with `file`, JSON-string `mapping`, JSON-string `anime_libraries`/`season_libraries`, and boolean `import_settings`, `replace_files`, and `fetch_dependencies` (default `true`). Applies validated mappings in Dry Run without uploading artwork, and optionally downloads missing official Kometa dependencies (`POST /api/dynamic-overlays/community/import` accepts the same `fetch_dependencies` boolean). |
 
 `mapping` maps source profile names to existing destination library names, for
 example `{"Source TV":"My Shows","Source Movies":""}`. An empty value skips a
@@ -224,9 +225,13 @@ so clients can translate the error. Preview responses also include
 sync/classification/import returns `409`. See the
 [bundle workflow and limits](dynamic_overlays_reference.md#share-a-complete-overlay-bundle).
 
-`official_dependency_count` in the preview reports omitted downloadable defaults.
-Export returns `503` with code `officialCatalogUnavailable` if the official
-Kometa catalog cannot be verified; it does not silently export the whole catalog.
+`official_dependency_count` and `missing_official_dependency_count` in the
+preview report omitted downloadable defaults and how many are currently absent
+locally. Import responses include a `dependencies` summary (`enabled`,
+`requested`, `downloaded_count`, `already_present_count`, `failed_count`,
+`downloaded`, `failed`, `sha_changed_count`, and `readiness`). Export returns
+`503` with code `officialCatalogUnavailable` if the official Kometa catalog
+cannot be verified; it does not silently export the whole catalog.
 
 ### `POST /api/dynamic-overlays/sync`
 
@@ -1656,6 +1661,21 @@ Submits data or triggers an action at `/api/assets/bulk-delete-assets`.
     ```json
     {
       "success": true
+    }
+    ```
+
+### `POST /api/assets/prune-deleted`
+Queries active configured media server libraries (**Plex**, **Jellyfin**, and **Emby**) and removes orphaned Action Center (`imagechoices`, `skipped_items`) and `media_export.db` records for media that no longer exists on the server, without deleting any files on disk. Excluded libraries and libraries that error or return `0` active items are skipped. Returns `400` if no active libraries could be queried and `503` if the database is unavailable.
+
+??? example "View Response"
+    ```json
+    {
+      "success": true,
+      "imagechoices_deleted": 4,
+      "skipped_deleted": 1,
+      "export_deleted": 3,
+      "libraries_checked": ["Movies", "TV Shows"],
+      "warnings": []
     }
     ```
 

@@ -96,6 +96,14 @@
                     <div class="fieldDescription">Required for real-time sync. Found in your Posterizarr configuration.</div>
                 </div>
 
+                <div class="inputContainer">
+                    <label class="checkboxContainerLabel">
+                        <input type="checkbox" id="chkAllowInvalidSsl" name="chkAllowInvalidSsl" is="emby-checkbox" />
+                        <span>Allow Self-Signed / Local SSL Certificates</span>
+                    </label>
+                    <div class="fieldDescription">Allow connecting over HTTPS to reverse proxies with local or self-signed certificates (e.g., Caddy <code>tls internal</code>). Leave disabled when using public CA certs or an internal HTTP URL.</div>
+                </div>
+
                 <div class="inputContainer" style="margin-top: 1em; margin-bottom: 1.5em;">
                     <button is="emby-button" type="button" id="btnTestPosterizarr" class="raised" style="margin-right: 1em;">
                         <span>Test Connection</span>
@@ -226,6 +234,8 @@
                     if (chkRealtime) chkRealtime.checked = config.EnableRealtimeSync || false;
                     page.querySelector('#txtPosterizarrApiUrl').value = config.PosterizarrApiUrl || "";
                     page.querySelector('#txtPosterizarrApiKey').value = config.PosterizarrApiKey || "";
+                    const chkAllowInvalidSsl = page.querySelector('#chkAllowInvalidSsl');
+                    if (chkAllowInvalidSsl) chkAllowInvalidSsl.checked = config.AllowInvalidSslCertificates || false;
 
                     // Plex Direct Sync bindings & mutual exclusivity
                     const chkPlexSync = page.querySelector('#chkEnablePlexSync');
@@ -364,6 +374,11 @@
                                         '<span style="color: #aaa; font-size: 0.9em;">The server connects directly in the background. Save settings and check server logs.</span>';
                                     return;
                                 }
+                                if (rawUrl.toLowerCase().startsWith('https://')) {
+                                    resultDiv.innerHTML = '<span style="color: #e5a00d;">⚠️ Browser test failed over HTTPS.</span><br/>' +
+                                        '<span style="color: #aaa; font-size: 0.9em;">If using local/self-signed certs (e.g., Caddy <code>tls internal</code>), enable "Allow Self-Signed / Local SSL Certificates" above or use the internal HTTP URL, then save settings.</span>';
+                                    return;
+                                }
                                 if (!rawUrl.includes('.') && !rawUrl.includes('localhost') && !rawUrl.includes('127.0.0.1')) {
                                     resultDiv.innerHTML = '<span style="color: #52b788;">ℹ️ Internal Docker hostname detected.</span><br/>' +
                                         '<span style="color: #aaa; font-size: 0.9em;">The browser cannot resolve container hostnames directly, but Jellyfin can. Save settings to connect.</span>';
@@ -476,6 +491,10 @@
 
                         const chkRealtime = view.querySelector('#chkEnableRealtimeSync');
                         config.EnableRealtimeSync = chkRealtime ? chkRealtime.checked : false;
+                        config.PosterizarrApiUrl = (view.querySelector('#txtPosterizarrApiUrl').value || "").trim();
+                        config.PosterizarrApiKey = (view.querySelector('#txtPosterizarrApiKey').value || "").trim();
+                        const chkAllowInvalidSsl = view.querySelector('#chkAllowInvalidSsl');
+                        config.AllowInvalidSslCertificates = chkAllowInvalidSsl ? chkAllowInvalidSsl.checked : false;
 
                         config.PlexServerUrl = (view.querySelector('#txtPlexServerUrl').value || "").trim();
                         config.PlexToken = (view.querySelector('#txtPlexToken').value || "").trim();
