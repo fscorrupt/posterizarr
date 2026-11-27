@@ -11503,7 +11503,7 @@ async def get_recent_assets(
 
         logger.error(traceback.format_exc())
         return JSONResponse(
-            content={"success": False, "error": str(e), "assets": [], "total_count": 0},
+            content={"success": False, "error": "An internal error occurred while loading recent assets.", "assets": [], "total_count": 0},
             headers=_RECENT_ASSETS_NO_STORE_HEADERS,
         )
 
@@ -21118,7 +21118,7 @@ async def get_dynamic_overlay_dry_run_previews():
         return {"success": True, "previews": previews}
     except Exception as e:
         logger.error(f"Error listing dry-run previews: {e}", exc_info=True)
-        return {"success": False, "error": str(e), "previews": []}
+        return {"success": False, "error": "Failed to list dry-run previews.", "previews": []}
 
 
 @app.get("/api/dynamic-overlays/dry-run-preview/{preview_id}")
@@ -21129,15 +21129,19 @@ async def get_dynamic_overlay_dry_run_preview_image(preview_id: str):
         raise HTTPException(status_code=400, detail="Invalid preview id")
     from overlay_sync_service import get_dry_run_previews_dir
     previews_dir = get_dry_run_previews_dir(BASE_DIR)
-    path = previews_dir / f"{safe_id}.jpg"
-    if not _is_within_root(path.resolve(), previews_dir.resolve()):
-        raise HTTPException(status_code=403, detail="Path traversal attempt detected")
-    if path.is_file():
-        return FileResponse(
-            path,
-            media_type="image/jpeg",
-            headers={"Cache-Control": "no-store"},
-        )
+    root = previews_dir.resolve()
+    if root.is_dir():
+        for candidate in root.glob("*.jpg"):
+            if (
+                candidate.stem == safe_id
+                and _is_within_root(candidate.resolve(), root)
+                and candidate.is_file()
+            ):
+                return FileResponse(
+                    candidate,
+                    media_type="image/jpeg",
+                    headers={"Cache-Control": "no-store"},
+                )
     raise HTTPException(status_code=404, detail="Dry-run preview image not found")
 
 
@@ -21150,7 +21154,7 @@ async def clear_dynamic_overlay_dry_run_previews():
         return {"success": True, "cleared": cleared}
     except Exception as e:
         logger.error(f"Error clearing dry-run previews: {e}", exc_info=True)
-        return {"success": False, "error": str(e), "cleared": 0}
+        return {"success": False, "error": "Failed to clear dry-run previews.", "cleared": 0}
 
 
 class QuarantineDeletionRequest(BaseModel):
@@ -23155,8 +23159,9 @@ async def get_dynamic_overlays_visual_config_endpoint():
         from dynamic_overlays_service import parse_config_yml_to_visual
         vis = parse_config_yml_to_visual(auto_seed=False)
         return {"success": True, "config": vis}
-    except Exception as e:
-        return {"success": False, "error": str(e)}
+    except Exception:
+        logger.exception("Failed to load dynamic overlays visual configuration")
+        return {"success": False, "error": "Failed to load visual configuration."}
 
 def _extract_default_names_from_config_yml() -> List[str]:
     """Read default overlay template names currently referenced in config.yml."""
@@ -23204,8 +23209,9 @@ async def save_dynamic_overlays_visual_config_endpoint(req: DynamicOverlaysVisua
                 "config": fresh_vis,
             }
         return {"success": False, "error": "Failed to compile visual configuration."}
-    except Exception as e:
-        return {"success": False, "error": str(e)}
+    except Exception:
+        logger.exception("Failed to save dynamic overlays visual configuration")
+        return {"success": False, "error": "Failed to save visual configuration."}
 
 @app.post("/api/dynamic-overlays/import-yaml")
 async def import_dynamic_overlays_yaml_endpoint(req: DynamicOverlaysImportYamlRequest):
@@ -23225,8 +23231,12 @@ async def import_dynamic_overlays_yaml_endpoint(req: DynamicOverlaysImportYamlRe
             "extracted_keys": extracted_keys,
             "message": "YAML successfully translated into visual configuration."
         }
-    except Exception as e:
-        return {"success": False, "error": str(e)}
+    except yaml.YAMLError:
+        logger.warning("Invalid YAML provided to import-yaml endpoint", exc_info=True)
+        return {"success": False, "error": "Invalid YAML syntax. Check backend logs for details."}
+    except Exception:
+        logger.exception("Failed to import dynamic overlays YAML")
+        return {"success": False, "error": "Failed to import YAML configuration."}
 
 @app.post("/api/dynamic-overlays/quick-start")
 async def quick_start_dynamic_overlays_endpoint():

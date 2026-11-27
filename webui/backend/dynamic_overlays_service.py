@@ -874,8 +874,8 @@ def parse_config_yml_to_visual(config_path: Optional[Path] = None, auto_seed: bo
         with open(path, "r", encoding="utf-8") as f:
             raw = yaml.safe_load(f) or {}
     except Exception as e:
-        logger.error(f"Failed parsing {path}: {e}")
-        return {"libraries": {}, "error": str(e)}
+        logger.error(f"Failed parsing {path}: {e}", exc_info=True)
+        return {"libraries": {}, "error": "Failed to parse configuration file. Check backend logs for details."}
 
     # Extract API keys if present on import / read
     if isinstance(raw, dict):

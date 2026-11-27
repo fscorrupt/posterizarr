@@ -1322,8 +1322,8 @@ class OverlayResolver:
         try:
             main_config = load_cached_yaml_file(config_path)
         except Exception as e:
-            logger.error(f"[OverlayResolver] Failed reading main config {config_path}: {e}")
-            return {"has_configs": False, "error": f"Invalid YAML in {config_path.name}: {e}"}
+            logger.error(f"[OverlayResolver] Failed reading main config {config_path}: {e}", exc_info=True)
+            return {"has_configs": False, "error": f"Invalid YAML in {config_path.name}. Check backend logs for details."}
 
         # Extract API keys if present in main config
         if isinstance(main_config, dict):
