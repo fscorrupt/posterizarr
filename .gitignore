@@ -83,3 +83,15 @@ scratch*
 Posterizarr-Logs/
 container_logs/
 *.har
+webui/backend/test_action_center_cleanup.py
+webui/backend/test_dry_run_previews.py
+webui/backend/test_dynamic_overlays_sync_and_hdr.py
+webui/backend/test_jellyfin_pagination.py
+webui/backend/test_mediastinger_and_ribbon.py
+webui/backend/test_overlay_bundle_dependencies.py
+webui/backend/test_parent_filepath_aggregation.py
+webui/backend/test_recent_assets_refresh.py
+webui/backend/test_regional_flags_and_limit.py
+webui/backend/test_resolution_tier_filtering.py
+webui/backend/test_status_overlays.py
+webui/backend/test_status_overlays.py
