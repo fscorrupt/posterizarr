@@ -9,6 +9,20 @@
     "imageUrl": "https://raw.githubusercontent.com/fscorrupt/posterizarr/main/docs/images/Plugin_logo.png",
     "versions": [
       {
+        "version": "4.0.2",
+        "changelog": "Official Release 4.0.2",
+        "targetAbi": "12.0.0.0",
+        "sourceUrl": "https://github.com/fscorrupt/posterizarr/releases/download/4.0.2/Posterizarr.Plugin_v4.0.2-jf12.zip",
+        "checksum": "16EB03826E501B7744F1D1D6778C2CFC"
+      },
+      {
+        "version": "4.0.2",
+        "changelog": "Official Release 4.0.2",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://github.com/fscorrupt/posterizarr/releases/download/4.0.2/Posterizarr.Plugin_v4.0.2.zip",
+        "checksum": "DA4BCA9ECC40D5EC8F5ADC37941DE07B"
+      },
+      {
         "version": "4.0.1",
         "changelog": "Official Release 4.0.1",
         "targetAbi": "12.0.0.0",
