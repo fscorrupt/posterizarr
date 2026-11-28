@@ -95,3 +95,4 @@ webui/backend/test_regional_flags_and_limit.py
 webui/backend/test_resolution_tier_filtering.py
 webui/backend/test_status_overlays.py
 webui/backend/test_status_overlays.py
+webui/backend/test_multi_rating_horizontal_layout.py

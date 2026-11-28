@@ -77,7 +77,57 @@ def apply_asset_creation_overlay(base, template, config, overlay_dir, resolution
     return base
 
 
+def _numeric_offset(value):
+    if value is None:
+        return 0
+    if isinstance(value, (int, float)):
+        return int(value)
+    text = str(value).strip()
+    if text.endswith("%"):
+        return None
+    try:
+        return int(float(text))
+    except (TypeError, ValueError):
+        return None
+
+
+def _can_pad_compound_group(group):
+    for _, layer in group:
+        if layer.get("type") == "preview":
+            return False
+        if _numeric_offset(layer.get("horizontal_offset")) is None or _numeric_offset(layer.get("vertical_offset")) is None:
+            return False
+        if str(layer.get("scale_width") or "").strip().endswith("%") or str(layer.get("scale_height") or "").strip().endswith("%"):
+            return False
+    return True
+
+
+def _render_padded_compound_group(group, canvas_box, pad_x, pad_y):
+    work_box = (canvas_box[0] + 2 * pad_x, canvas_box[1] + 2 * pad_y)
+    rendered = []
+    for index, layer in group:
+        padded_layer = dict(layer)
+        h_align = (padded_layer.get("horizontal_align") or "left").lower()
+        v_align = (padded_layer.get("vertical_align") or "top").lower()
+        if pad_x and h_align != "center":
+            padded_layer["horizontal_offset"] = _numeric_offset(padded_layer.get("horizontal_offset")) + pad_x
+        if pad_y and v_align != "center":
+            padded_layer["vertical_offset"] = _numeric_offset(padded_layer.get("vertical_offset")) + pad_y
+        image = DynamicOverlayCompositor._render_layer(padded_layer, work_box, abort_on_missing=True)
+        work_bounds = image.getbbox() if image is not None else None
+        if work_bounds:
+            canvas_bounds = (
+                work_bounds[0] - pad_x,
+                work_bounds[1] - pad_y,
+                work_bounds[2] - pad_x,
+                work_bounds[3] - pad_y,
+            )
+            rendered.append((index, layer, image.crop(work_bounds), canvas_bounds))
+    return rendered
+
+
 def _position_compound_preview_layers(layers, placements, canvas_box):
+    canvas_w, canvas_h = canvas_box
     groups = {}
     for index, layer in enumerate(layers):
         groups.setdefault(layer["preview_key"], []).append((index, layer))
@@ -87,11 +137,28 @@ def _position_compound_preview_layers(layers, placements, canvas_box):
         if not placement or len(group) < 2:
             continue
         rendered = []
+        clipped_x = False
+        clipped_y = False
         for index, layer in group:
             image = DynamicOverlayCompositor._render_layer(layer, canvas_box, abort_on_missing=True)
             bounds = image.getbbox() if image is not None else None
             if bounds:
-                rendered.append((index, layer, image, bounds))
+                rendered.append((index, layer, image.crop(bounds), bounds))
+                if bounds[0] == 0 or bounds[2] == canvas_w:
+                    clipped_x = True
+                if bounds[1] == 0 or bounds[3] == canvas_h:
+                    clipped_y = True
+            else:
+                clipped_x = True
+                clipped_y = True
+        if (clipped_x or clipped_y) and _can_pad_compound_group(group):
+            max_abs_x = max(abs(_numeric_offset(layer.get("horizontal_offset")) or 0) for _, layer in group)
+            max_abs_y = max(abs(_numeric_offset(layer.get("vertical_offset")) or 0) for _, layer in group)
+            pad_x = min(max(canvas_w, max_abs_x + 600), 4000) if clipped_x else 0
+            pad_y = min(max(canvas_h // 2, max_abs_y + 400), 3000) if clipped_y else 0
+            padded_rendered = _render_padded_compound_group(group, canvas_box, pad_x, pad_y)
+            if padded_rendered:
+                rendered = padded_rendered
         if not rendered:
             continue
         left = min(part[3][0] for part in rendered)
@@ -108,10 +175,10 @@ def _position_compound_preview_layers(layers, placements, canvas_box):
         )
         shift_x = target_left - original_left
         shift_y = target_top - original_top
-        for index, layer, image, bounds in rendered:
+        for index, layer, cropped_img, bounds in rendered:
             result[index] = {
                 "name": layer.get("name"), "preview_key": key, "type": "preview",
-                "image_element": image.crop(bounds),
+                "image_element": cropped_img,
                 "horizontal_offset": bounds[0] + shift_x,
                 "vertical_offset": bounds[1] + shift_y,
             }
@@ -330,7 +397,20 @@ def build_preview_layers(options, placements, library_rules, overlays_dir, build
                 variables["final_name"] = "text(<<final_text>>)"
                 variables["font_color"] = "#FFFFFF"
         if isinstance(rule, dict) and str(rule.get("default", "")).lower() in ("ratings", "rating"):
-            rule.setdefault("template_variables", {}).update({key: value for key, value in rating_options.items() if key in allowed_rating_options})
+            rating_vars = rule.setdefault("template_variables", {})
+            rating_vars.update({key: value for key, value in rating_options.items() if key in allowed_rating_options})
+            rating_placement = placements.get("rating")
+            if rating_placement:
+                rating_vars["horizontal_align"] = rating_placement["align"]
+                rating_vars["horizontal_position"] = rating_placement["align"]
+                rating_vars["vertical_align"] = rating_placement["valign"]
+                rating_vars["vertical_position"] = rating_placement["valign"]
+                rating_vars["horizontal_offset"] = rating_placement["x"]
+                rating_vars["vertical_offset"] = rating_placement["y"]
+                if rating_placement.get("font_size"):
+                    rating_vars["font_size"] = int(rating_placement["font_size"])
+                if rating_placement.get("font"):
+                    rating_vars["font"] = rating_placement["font"]
         if isinstance(rule, dict) and str(rule.get("default", "")).lower() == "streaming":
             allowed_streaming_options = {"region", "availability_types", "style", "overlay_limit", "spacing", "orientation"}
             rule.setdefault("template_variables", {}).update({key: value for key, value in (options.get("streaming_options") or {}).items() if key in allowed_streaming_options})

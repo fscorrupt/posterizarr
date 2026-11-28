@@ -43,7 +43,14 @@ import httpx
 
 from overlay_cache import OverlayCache, compute_metadata_hash, snapshot_overlay_layers
 from overlay_cache import compute_layers_recipe_hash as _compute_layers_recipe_hash
-from overlay_engine import DynamicOverlayCompositor, OverlayAssetMissingError, PORTRAIT_DIM, LANDSCAPE_DIM
+from overlay_engine import (
+    DynamicOverlayCompositor,
+    OverlayAssetMissingError,
+    PORTRAIT_DIM,
+    LANDSCAPE_DIM,
+    get_candidate_font_dirs,
+    load_overlay_font,
+)
 from overlay_resolver import (
     matches_artwork_type,
     matches_episode_air_date,
@@ -2404,6 +2411,14 @@ def build_multi_rating_layers(
     if fonts_dir is None:
         fonts_dir = Path(__file__).resolve().parent.parent.parent / "Overlayfiles" / "dynamic_overlays" / "fonts"
 
+    candidate_font_dirs = [fonts_dir]
+    try:
+        for cand_dir in get_candidate_font_dirs():
+            if cand_dir not in candidate_font_dirs:
+                candidate_font_dirs.append(cand_dir)
+    except Exception:
+        pass
+
     inter_font = fonts_dir / "Inter-Bold.ttf"
     font_to_use = str(inter_font) if inter_font.exists() else None
 
@@ -2446,12 +2461,28 @@ def build_multi_rating_layers(
     )
     has_badge_background = theme in ("brand", "score") or contrast_box
     effective_back_padding = back_padding if has_badge_background else 0
+    bg_extra = 1 if has_badge_background else 0
+
     measure_font = None
-    if font_to_use:
+    requested_font = dyn_settings.get("font") or dyn_settings.get("font_path")
+    if requested_font:
+        req_str = str(requested_font).strip()
+        if req_str and req_str.lower() not in ("none", "off", "false", "null"):
+            try:
+                measure_font = load_overlay_font(req_str, font_size, candidate_font_dirs)
+                req_path = Path(req_str)
+                resolved_font_file = next(
+                    (cand for cand in [req_path, *(d / req_path.name for d in candidate_font_dirs)] if cand.is_file()),
+                    None,
+                )
+                font_to_use = str(resolved_font_file) if resolved_font_file else req_str
+            except Exception:
+                measure_font = None
+    if measure_font is None and font_to_use:
         try:
             measure_font = ImageFont.truetype(font_to_use, font_size)
         except (OSError, ValueError):
-            pass
+            measure_font = None
 
     if measure_font:
         digit_width = max(measure_font.getbbox(str(digit))[2] - measure_font.getbbox(str(digit))[0] for digit in range(10))
@@ -2513,6 +2544,10 @@ def build_multi_rating_layers(
         return []
 
     layers = []
+    rel_xs = []
+    rel_ys = []
+    pill_ws = []
+    pill_hs = []
     horizontal_distance = 0
     vertical_distance = 0
     for idx, (src, raw_val) in enumerate(ordered_items):
@@ -2596,7 +2631,7 @@ def build_multi_rating_layers(
                 with Image.open(logo_file) as logo:
                     source_width, source_height = logo.size
                 logo_height = scale_h
-                logo_width = int(round(source_width * scale_h / source_height))
+                logo_width = int(source_width * scale_h / source_height)
             except (OSError, ValueError, ZeroDivisionError):
                 pass
         if measure_font:
@@ -2612,28 +2647,37 @@ def build_multi_rating_layers(
             score_width = 3 * digit_width + 4
         else:
             score_width = 3 * digit_width + dot_width + 4
-        if src in ("simkl", "mal") and not logo_file.exists():
+        if src in ("simkl", "mal") and (not logo_file or not logo_file.exists()):
             score_width = max(score_width, text_width)
         if score_size_mode == "fixed" and requested_score_width:
             score_width = max(16, requested_score_width)
+        elif score_size_mode == "content":
+            score_width = max(1, text_width)
         content_width = (score_width if custom_score_layout else max(text_width, score_width)) + logo_width + (8 if logo_width else 0)
         content_height = max(text_height, score_height, logo_height)
+        pill_w = content_width + (2 * effective_back_padding) + bg_extra
+        pill_h = content_height + (2 * effective_back_padding) + bg_extra
 
         # Calculate position for this badge
         if alignment == "vertical":
+            rel_x = 0
+            rel_y = idx * int(badge_step_v) if badge_step_v is not None else vertical_distance
             cur_h_offset = base_h_offset
-            cur_v_offset = base_v_offset + (
-                idx * int(badge_step_v) if badge_step_v is not None else vertical_distance
-            )
+            cur_v_offset = base_v_offset + rel_y
             if badge_step_v is None:
-                vertical_distance += content_height + (2 * effective_back_padding) + spacing + 1
+                vertical_distance += pill_h + spacing
         else:
-            cur_h_offset = base_h_offset + (
-                idx * int(badge_step_h) if badge_step_h is not None else horizontal_distance
-            )
+            rel_x = idx * int(badge_step_h) if badge_step_h is not None else horizontal_distance
+            rel_y = 0
+            cur_h_offset = base_h_offset + rel_x
             cur_v_offset = base_v_offset
             if badge_step_h is None:
-                horizontal_distance += content_width + (2 * effective_back_padding) + spacing + 1
+                horizontal_distance += pill_w + spacing
+
+        rel_xs.append(rel_x)
+        rel_ys.append(rel_y)
+        pill_ws.append(pill_w)
+        pill_hs.append(pill_h)
 
         layer_def = {
             "name": f"multi_rating_{src}",
@@ -2679,6 +2723,18 @@ def build_multi_rating_layers(
         row_width = max(layer["back_width"] for layer in layers)
         for layer in layers:
             layer["back_width"] = row_width
+        if v_align == "center":
+            total_col_h = max(ry + ph for ry, ph in zip(rel_ys, pill_hs))
+            for layer, ry in zip(layers, rel_ys):
+                layer["vertical_offset"] = (
+                    base_v_offset - (total_col_h // 2) + ry + effective_back_padding + (layer["back_height"] // 2)
+                )
+    elif h_align == "center":
+        total_row_w = max(rx + pw for rx, pw in zip(rel_xs, pill_ws))
+        for layer, rx in zip(layers, rel_xs):
+            layer["horizontal_offset"] = (
+                base_h_offset - (total_row_w // 2) + rx + effective_back_padding + (layer["back_width"] // 2)
+            )
 
     return layers
 

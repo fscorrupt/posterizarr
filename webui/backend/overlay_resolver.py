@@ -2903,6 +2903,10 @@ class OverlayResolver:
                             for coord_k, coord_v in r_coords.items():
                                 if coord_v is not None:
                                     vars_dict[coord_k] = coord_v
+                            if "horizontal_align" in r_coords:
+                                vars_dict.pop("horizontal_position", None)
+                            if "vertical_align" in r_coords:
+                                vars_dict.pop("vertical_position", None)
                             matched_keys.add("ratings")
 
                     if any(k.lower() == "resolution" for k, _ in matched_entries) and ("overlays_movies.yml" in rule_name or "overlays_tv.yml" in rule_name):

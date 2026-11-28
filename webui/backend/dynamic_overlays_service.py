@@ -1531,12 +1531,14 @@ def compile_visual_to_config_yml(visual_data: Dict[str, Any], output_path: Optio
             h, v = _split_unified_position(b_score.get("position", "top-right"))
             score_vars: Dict[str, Any] = {
                 **b_score.get("template_variables", {}),
-                "horizontal_position": h,
-                "vertical_position": v,
+                "horizontal_align": h,
+                "vertical_align": v,
                 "horizontal_offset": int(b_score.get("offset_x", 0)),
                 "vertical_offset": int(b_score.get("offset_y", 0)),
                 "back_color": b_score.get("back_color", "#00000000")
             }
+            score_vars.pop("horizontal_position", None)
+            score_vars.pop("vertical_position", None)
             if b_score.get("level"):
                 score_vars["builder_level"] = b_score["level"]
             if b_score.get("sources") is not None:
