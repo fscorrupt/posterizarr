@@ -631,7 +631,7 @@ function Invoke-MoviePosterCreation {
                                                         }
                                                     }
                                                     $joinedTitlePointSize = $joinedTitle -replace '""', '""""' -replace '“', '''' -replace '”', '''' -replace '„', ''''
-                                                    $optimalFontSize = Get-OptimalPointSize -text $joinedTitlePointSize -font $fontImagemagick -box_width $MaxWidth  -box_height $MaxHeight -min_pointsize $minPointSize -max_pointsize $maxPointSize -lineSpacing $lineSpacing
+                                                    $optimalFontSize = Get-OptimalPointSize -text $joinedTitlePointSize -font $fontImagemagick -box_width $MaxWidth  -box_height $MaxHeight -min_pointsize $minPointSize -max_pointsize $maxPointSize -lineSpacing $lineSpacing -strokeWidth $(if ($AddTextStroke -eq 'true') { $strokewidth } else { 0 })
 
                                                     if ($global:IsTruncated -ne $true) {
                                                         Write-Entry -Subtext ("Optimal font size set to: '{0}' [{1}]" -f $optimalFontSize, $(if ($null -eq $script:CurrentTextSizeSource) { 'calculated' } else { $script:CurrentTextSizeSource })) -Path $global:configLogging -Color White -log Info
@@ -1428,7 +1428,7 @@ function Invoke-MoviePosterCreation {
                                                         }
                                                     }
                                                     $joinedTitlePointSize = $joinedTitle -replace '""', '""""' -replace '“', '''' -replace '”', '''' -replace '„', ''''
-                                                    $optimalFontSize = Get-OptimalPointSize -text $joinedTitlePointSize -font $backgroundfontImagemagick -box_width $BackgroundMaxWidth  -box_height $BackgroundMaxHeight -min_pointsize $BackgroundminPointSize -max_pointsize $BackgroundmaxPointSize -lineSpacing $BackgroundlineSpacing
+                                                    $optimalFontSize = Get-OptimalPointSize -text $joinedTitlePointSize -font $backgroundfontImagemagick -box_width $BackgroundMaxWidth  -box_height $BackgroundMaxHeight -min_pointsize $BackgroundminPointSize -max_pointsize $BackgroundmaxPointSize -lineSpacing $BackgroundlineSpacing -strokeWidth $(if ($AddBackgroundTextStroke -eq 'true') { $Backgroundstrokewidth } else { 0 })
                                                     if ($global:IsTruncated -ne $true) {
                                                         Write-Entry -Subtext ("Optimal font size set to: '{0}' [{1}]" -f $optimalFontSize, $(if ($null -eq $script:CurrentTextSizeSource) { 'calculated' } else { $script:CurrentTextSizeSource })) -Path $global:configLogging -Color White -log Info
                                                         $cleanTitle = $joinedTitle -replace 'Â³', '' -replace 'Â²', ''
@@ -1438,7 +1438,7 @@ function Invoke-MoviePosterCreation {
                                                         $yNudge = [int]($optimalFontSize * 0.3)
                                                         $gap = 20
 
-                                                        if ($supChar -ne "" -and $AddTextStroke -eq 'true') {
+                                                        if ($supChar -ne "" -and $AddBackgroundTextStroke -eq 'true') {
                                                             # SUPERSCRIPT + STROKE MODE
                                                             $Arguments = "`"$backgroundImage`" ( -background none " +
                                                             "( ( -font `"$backgroundfontImagemagick`" -pointsize $optimalFontSize -fill `"$Backgroundstrokecolor`" -stroke `"$Backgroundstrokecolor`" -strokewidth `"$Backgroundstrokewidth`" label:`"$cleanTitle`" ) " +
@@ -1456,7 +1456,7 @@ function Invoke-MoviePosterCreation {
                                                         }
                                                         else {
                                                             # STANDARD MODE (Normal caption logic)
-                                                            if ($AddTextStroke -eq 'true') {
+                                                            if ($AddBackgroundTextStroke -eq 'true') {
                                                                 $Arguments = "`"$backgroundImage`" -gravity center -background None -layers Flatten `( -size `"$Backgroundboxsize`" -background none `( -font `"$backgroundfontImagemagick`" -pointsize `"$optimalFontSize`" -fill `"$Backgroundstrokecolor`" -stroke `"$Backgroundstrokecolor`" -strokewidth `"$Backgroundstrokewidth`" -size `"$Backgroundboxsize`" -background none -interline-spacing `"$BackgroundlineSpacing`" -gravity `"$Backgroundtextgravity`" caption:`"$joinedTitle`" `) `( -font `"$backgroundfontImagemagick`" -pointsize `"$optimalFontSize`" -fill `"$Backgroundfontcolor`" -stroke none -size `"$Backgroundboxsize`" -background none -interline-spacing `"$BackgroundlineSpacing`" -gravity `"$Backgroundtextgravity`" caption:`"$joinedTitle`" `) -gravity `"$ShowOnSeasontextgravity`" -composite -trim +repage -extent `"$Backgroundboxsize`" `) -gravity south -geometry +0`"$Backgroundtext_offset`" -quality $global:outputQuality -composite `"$backgroundImage`""
                                                             }
                                                             Else {
@@ -2366,7 +2366,7 @@ function Invoke-ShowPosterCreation {
                                                     }
                                                 }
                                                 $joinedTitlePointSize = $joinedTitle -replace '""', '""""' -replace '“', '''' -replace '”', '''' -replace '„', ''''
-                                                $optimalFontSize = Get-OptimalPointSize -text $joinedTitlePointSize -font $fontImagemagick -box_width $MaxWidth  -box_height $MaxHeight -min_pointsize $minPointSize -max_pointsize $maxPointSize -lineSpacing $lineSpacing
+                                                $optimalFontSize = Get-OptimalPointSize -text $joinedTitlePointSize -font $fontImagemagick -box_width $MaxWidth  -box_height $MaxHeight -min_pointsize $minPointSize -max_pointsize $maxPointSize -lineSpacing $lineSpacing -strokeWidth $(if ($AddTextStroke -eq 'true') { $strokewidth } else { 0 })
                                                 if ($global:IsTruncated -ne $true) {
                                                     Write-Entry -Subtext ("Optimal font size set to: '{0}' [{1}]" -f $optimalFontSize, $(if ($null -eq $script:CurrentTextSizeSource) { 'calculated' } else { $script:CurrentTextSizeSource })) -Path $global:configLogging -Color White -log Info
                                                     $cleanTitle = $joinedTitle -replace 'Â³', '' -replace 'Â²', ''
@@ -3206,7 +3206,7 @@ function Invoke-ShowPosterCreation {
                                                     }
                                                 }
                                                 $joinedTitlePointSize = $joinedTitle -replace '""', '""""' -replace '“', '''' -replace '”', '''' -replace '„', ''''
-                                                $optimalFontSize = Get-OptimalPointSize -text $joinedTitlePointSize -font $backgroundfontImagemagick -box_width $BackgroundMaxWidth  -box_height $BackgroundMaxHeight -min_pointsize $BackgroundminPointSize -max_pointsize $BackgroundmaxPointSize -lineSpacing $BackgroundlineSpacing
+                                                $optimalFontSize = Get-OptimalPointSize -text $joinedTitlePointSize -font $backgroundfontImagemagick -box_width $BackgroundMaxWidth  -box_height $BackgroundMaxHeight -min_pointsize $BackgroundminPointSize -max_pointsize $BackgroundmaxPointSize -lineSpacing $BackgroundlineSpacing -strokeWidth $(if ($AddBackgroundTextStroke -eq 'true') { $Backgroundstrokewidth } else { 0 })
                                                 if ($global:IsTruncated -ne $true) {
                                                     Write-Entry -Subtext ("Optimal font size set to: '{0}' [{1}]" -f $optimalFontSize, $(if ($null -eq $script:CurrentTextSizeSource) { 'calculated' } else { $script:CurrentTextSizeSource })) -Path $global:configLogging -Color White -log Info
                                                     $cleanTitle = $joinedTitle -replace 'Â³', '' -replace 'Â²', ''
@@ -3216,7 +3216,7 @@ function Invoke-ShowPosterCreation {
                                                     $yNudge = [int]($optimalFontSize * 0.3)
                                                     $gap = 20
 
-                                                    if ($supChar -ne "" -and $AddTextStroke -eq 'true') {
+                                                    if ($supChar -ne "" -and $AddBackgroundTextStroke -eq 'true') {
                                                         # SUPERSCRIPT + STROKE MODE
                                                         $Arguments = "`"$backgroundImage`" ( -background none " +
                                                         "( ( -font `"$backgroundfontImagemagick`" -pointsize $optimalFontSize -fill `"$Backgroundstrokecolor`" -stroke `"$Backgroundstrokecolor`" -strokewidth `"$Backgroundstrokewidth`" label:`"$cleanTitle`" ) " +
@@ -3234,7 +3234,7 @@ function Invoke-ShowPosterCreation {
                                                     }
                                                     else {
                                                         # STANDARD MODE (Normal caption logic)
-                                                        if ($AddTextStroke -eq 'true') {
+                                                        if ($AddBackgroundTextStroke -eq 'true') {
                                                             $Arguments = "`"$backgroundImage`" -gravity center -background None -layers Flatten `( -size `"$Backgroundboxsize`" -background none `( -font `"$backgroundfontImagemagick`" -pointsize `"$optimalFontSize`" -fill `"$Backgroundstrokecolor`" -stroke `"$Backgroundstrokecolor`" -strokewidth `"$Backgroundstrokewidth`" -size `"$Backgroundboxsize`" -background none -interline-spacing `"$BackgroundlineSpacing`" -gravity `"$Backgroundtextgravity`" caption:`"$joinedTitle`" `) `( -font `"$backgroundfontImagemagick`" -pointsize `"$optimalFontSize`" -fill `"$Backgroundfontcolor`" -stroke none -size `"$Backgroundboxsize`" -background none -interline-spacing `"$BackgroundlineSpacing`" -gravity `"$Backgroundtextgravity`" caption:`"$joinedTitle`" `) -gravity `"$ShowOnSeasontextgravity`" -composite -trim +repage -extent `"$Backgroundboxsize`" `) -gravity south -geometry +0`"$Backgroundtext_offset`" -quality $global:outputQuality -composite `"$backgroundImage`""
                                                         }
                                                         Else {
@@ -4115,8 +4115,8 @@ function Invoke-ShowPosterCreation {
                                                     Write-Entry -Subtext "Skipping season title text because the season title is empty." -Path $global:configLogging -Color Yellow -log Warning
                                                 }
                                                 if ($AddShowTitletoSeason -eq 'true') {
-                                                    $optimalFontSize = if ($hasSeasonTitle) { Get-OptimalPointSize -text $joinedTitlePointSize -font $fontImagemagick -box_width $SeasonMaxWidth  -box_height $SeasonMaxHeight -min_pointsize $SeasonminPointSize -max_pointsize $SeasonmaxPointSize -lineSpacing $SeasonlineSpacing } else { $null }
-                                                    $ShowoptimalFontSize = Get-OptimalPointSize -text $joinedShowTitlePointSize -font $fontImagemagick -box_width $ShowOnSeasonMaxWidth  -box_height $ShowOnSeasonMaxHeight -min_pointsize $ShowOnSeasonminPointSize -max_pointsize $ShowOnSeasonmaxPointSize -lineSpacing $ShowOnSeasonlineSpacing
+                                                    $optimalFontSize = if ($hasSeasonTitle) { Get-OptimalPointSize -text $joinedTitlePointSize -font $fontImagemagick -box_width $SeasonMaxWidth  -box_height $SeasonMaxHeight -min_pointsize $SeasonminPointSize -max_pointsize $SeasonmaxPointSize -lineSpacing $SeasonlineSpacing -strokeWidth $(if ($AddSeasonTextStroke -eq 'true') { $Seasonstrokewidth } else { 0 }) } else { $null }
+                                                    $ShowoptimalFontSize = Get-OptimalPointSize -text $joinedShowTitlePointSize -font $fontImagemagick -box_width $ShowOnSeasonMaxWidth  -box_height $ShowOnSeasonMaxHeight -min_pointsize $ShowOnSeasonminPointSize -max_pointsize $ShowOnSeasonmaxPointSize -lineSpacing $ShowOnSeasonlineSpacing -strokeWidth $(if ($AddShowOnSeasonTextStroke -eq 'true') { $ShowOnSeasonstrokewidth } else { 0 })
 
                                                     if ($global:IsTruncated -ne $true) {
                                                         Write-Entry -Subtext ("Optimal Season font size set to: '{0}' [{1}]" -f $optimalFontSize, $(if ($null -eq $script:CurrentTextSizeSource) { 'calculated' } else { $script:CurrentTextSizeSource })) -Path $global:configLogging -Color White -log Info
@@ -4255,7 +4255,7 @@ function Invoke-ShowPosterCreation {
                                                     }
                                                 }
                                                 ElseIf ($hasSeasonTitle) {
-                                                    $optimalFontSize = Get-OptimalPointSize -text $joinedTitlePointSize -font $fontImagemagick -box_width $SeasonMaxWidth  -box_height $SeasonMaxHeight -min_pointsize $SeasonminPointSize -max_pointsize $SeasonmaxPointSize -lineSpacing $SeasonlineSpacing
+                                                    $optimalFontSize = Get-OptimalPointSize -text $joinedTitlePointSize -font $fontImagemagick -box_width $SeasonMaxWidth  -box_height $SeasonMaxHeight -min_pointsize $SeasonminPointSize -max_pointsize $SeasonmaxPointSize -lineSpacing $SeasonlineSpacing -strokeWidth $(if ($AddSeasonTextStroke -eq 'true') { $Seasonstrokewidth } else { 0 })
                                                     if ($global:IsTruncated -ne $true) {
                                                         Write-Entry -Subtext ("Optimal font size set to: '{0}' [{1}]" -f $optimalFontSize, $(if ($null -eq $script:CurrentTextSizeSource) { 'calculated' } else { $script:CurrentTextSizeSource })) -Path $global:configLogging -Color White -log Info
                                                         # Add Stroke
@@ -5120,7 +5120,7 @@ function Invoke-TitleCardCreation {
                                                     }
                                                 }
                                                 $joinedTitlePointSize = $global:EPTitle -replace '""', '""""' -replace '“', '''' -replace '”', '''' -replace '„', ''''
-                                                $optimalFontSize = Get-OptimalPointSize -text $joinedTitlePointSize -font $TitleCardfontImagemagick -box_width $TitleCardEPTitleMaxWidth  -box_height $TitleCardEPTitleMaxHeight -min_pointsize $TitleCardEPTitleminPointSize -max_pointsize $TitleCardEPTitlemaxPointSize -lineSpacing $TitleCardEPTitlelineSpacing
+                                                $optimalFontSize = Get-OptimalPointSize -text $joinedTitlePointSize -font $TitleCardfontImagemagick -box_width $TitleCardEPTitleMaxWidth  -box_height $TitleCardEPTitleMaxHeight -min_pointsize $TitleCardEPTitleminPointSize -max_pointsize $TitleCardEPTitlemaxPointSize -lineSpacing $TitleCardEPTitlelineSpacing -strokeWidth $(if ($AddTitleCardEPTitleTextStroke -eq 'true') { $TitleCardEPTitlestrokewidth } else { 0 })
                                                 if ($global:IsTruncated -ne $true) {
                                                     Write-Entry -Subtext ("Optimal font size set to: '{0}' [{1}]" -f $optimalFontSize, $(if ($null -eq $script:CurrentTextSizeSource) { 'calculated' } else { $script:CurrentTextSizeSource })) -Path $global:configLogging -Color White -log Info
                                                     # Add Stroke
@@ -5142,7 +5142,7 @@ function Invoke-TitleCardCreation {
                                                 }
                                                 $global:SeasonEPNumber = $global:SeasonEPNumber -replace 'â€ž', '''' -replace 'â€', '"' -replace 'â€œ', '''' -replace '"', '''' -replace '“', '''' -replace '”', '''' -replace '„', '''' -replace '`', ''
                                                 $joinedTitlePointSize = $global:SeasonEPNumber -replace '""', '""""' -replace '“', '''' -replace '”', '''' -replace '„', ''''
-                                                $optimalFontSize = Get-OptimalPointSize -text $joinedTitlePointSize -font $TitleCardfontImagemagick -box_width $TitleCardEPMaxWidth  -box_height $TitleCardEPMaxHeight -min_pointsize $TitleCardEPminPointSize -max_pointsize $TitleCardEPmaxPointSize -lineSpacing $TitleCardEPlineSpacing
+                                                $optimalFontSize = Get-OptimalPointSize -text $joinedTitlePointSize -font $TitleCardfontImagemagick -box_width $TitleCardEPMaxWidth  -box_height $TitleCardEPMaxHeight -min_pointsize $TitleCardEPminPointSize -max_pointsize $TitleCardEPmaxPointSize -lineSpacing $TitleCardEPlineSpacing -strokeWidth $(if ($AddTitleCardTextStroke -eq 'true') { $TitleCardstrokewidth } else { 0 })
                                                 if ($global:IsTruncated -ne $true) {
                                                     Write-Entry -Subtext ("Optimal font size set to: '{0}' [{1}]" -f $optimalFontSize, $(if ($null -eq $script:CurrentTextSizeSource) { 'calculated' } else { $script:CurrentTextSizeSource })) -Path $global:configLogging -Color White -log Info
                                                     # Add Stroke
@@ -5835,7 +5835,7 @@ function Invoke-TitleCardCreation {
                                                 }
                                             }
                                             $joinedTitlePointSize = $global:EPTitle -replace '""', '""""' -replace '“', '''' -replace '”', '''' -replace '„', '''' -replace '`', ''
-                                            $optimalFontSize = Get-OptimalPointSize -text $joinedTitlePointSize -font $TitleCardfontImagemagick -box_width $TitleCardEPTitleMaxWidth  -box_height $TitleCardEPTitleMaxHeight -min_pointsize $TitleCardEPTitleminPointSize -max_pointsize $TitleCardEPTitlemaxPointSize -lineSpacing $TitleCardEPTitlelineSpacing
+                                            $optimalFontSize = Get-OptimalPointSize -text $joinedTitlePointSize -font $TitleCardfontImagemagick -box_width $TitleCardEPTitleMaxWidth  -box_height $TitleCardEPTitleMaxHeight -min_pointsize $TitleCardEPTitleminPointSize -max_pointsize $TitleCardEPTitlemaxPointSize -lineSpacing $TitleCardEPTitlelineSpacing -strokeWidth $(if ($AddTitleCardEPTitleTextStroke -eq 'true') { $TitleCardEPTitlestrokewidth } else { 0 })
                                             if ($global:IsTruncated -ne $true) {
                                                 Write-Entry -Subtext ("Optimal font size set to: '{0}' [{1}]" -f $optimalFontSize, $(if ($null -eq $script:CurrentTextSizeSource) { 'calculated' } else { $script:CurrentTextSizeSource })) -Path $global:configLogging -Color White -log Info
                                                 # Add Stroke
@@ -5858,7 +5858,7 @@ function Invoke-TitleCardCreation {
                                             }
                                             $global:SeasonEPNumber = $global:SeasonEPNumber -replace 'â€ž', '''' -replace 'â€', '"' -replace 'â€œ', '''' -replace '"', '''' -replace '“', '''' -replace '”', '''' -replace '„', '''' -replace '`', ''
                                             $joinedTitlePointSize = $global:SeasonEPNumber -replace '""', '""""' -replace '“', '''' -replace '”', '''' -replace '„', ''''
-                                            $optimalFontSize = Get-OptimalPointSize -text $joinedTitlePointSize -font $TitleCardfontImagemagick -box_width $TitleCardEPMaxWidth  -box_height $TitleCardEPMaxHeight -min_pointsize $TitleCardEPminPointSize -max_pointsize $TitleCardEPmaxPointSize -lineSpacing $TitleCardEPlineSpacing
+                                            $optimalFontSize = Get-OptimalPointSize -text $joinedTitlePointSize -font $TitleCardfontImagemagick -box_width $TitleCardEPMaxWidth  -box_height $TitleCardEPMaxHeight -min_pointsize $TitleCardEPminPointSize -max_pointsize $TitleCardEPmaxPointSize -lineSpacing $TitleCardEPlineSpacing -strokeWidth $(if ($AddTitleCardTextStroke -eq 'true') { $TitleCardstrokewidth } else { 0 })
                                             if ($global:IsTruncated -ne $true) {
                                                 Write-Entry -Subtext ("Optimal font size set to: '{0}' [{1}]" -f $optimalFontSize, $(if ($null -eq $script:CurrentTextSizeSource) { 'calculated' } else { $script:CurrentTextSizeSource })) -Path $global:configLogging -Color White -log Info
                                                 # Add Stroke
@@ -6624,7 +6624,7 @@ function Invoke-TitleCardCreation {
                                                                     }
                                                                 }
                                                                 $joinedTitlePointSize = $global:EPTitle -replace '""', '""""' -replace '`', ''
-                                                                $optimalFontSize = Get-OptimalPointSize -text $joinedTitlePointSize -font $TitleCardfontImagemagick -box_width $TitleCardEPTitleMaxWidth  -box_height $TitleCardEPTitleMaxHeight -min_pointsize $TitleCardEPTitleminPointSize -max_pointsize $TitleCardEPTitlemaxPointSize -lineSpacing $TitleCardEPTitlelineSpacing
+                                                                $optimalFontSize = Get-OptimalPointSize -text $joinedTitlePointSize -font $TitleCardfontImagemagick -box_width $TitleCardEPTitleMaxWidth  -box_height $TitleCardEPTitleMaxHeight -min_pointsize $TitleCardEPTitleminPointSize -max_pointsize $TitleCardEPTitlemaxPointSize -lineSpacing $TitleCardEPTitlelineSpacing -strokeWidth $(if ($AddTitleCardEPTitleTextStroke -eq 'true') { $TitleCardEPTitlestrokewidth } else { 0 })
                                                                 if ($global:IsTruncated -ne $true) {
                                                                     Write-Entry -Subtext ("Optimal font size set to: '{0}' [{1}]" -f $optimalFontSize, $(if ($null -eq $script:CurrentTextSizeSource) { 'calculated' } else { $script:CurrentTextSizeSource })) -Path $global:configLogging -Color White -log Info
                                                                     # Add Stroke
@@ -6647,7 +6647,7 @@ function Invoke-TitleCardCreation {
                                                                 }
                                                                 $global:SeasonEPNumber = $global:SeasonEPNumber -replace 'â€ž', '"' -replace 'â€', '"' -replace 'â€œ', '"' -replace '"', '""' -replace '`', ''
                                                                 $joinedTitlePointSize = $global:SeasonEPNumber -replace '""', '""""'
-                                                                $optimalFontSize = Get-OptimalPointSize -text $joinedTitlePointSize -font $TitleCardfontImagemagick -box_width $TitleCardEPMaxWidth  -box_height $TitleCardEPMaxHeight -min_pointsize $TitleCardEPminPointSize -max_pointsize $TitleCardEPmaxPointSize -lineSpacing $TitleCardEPlineSpacing
+                                                                $optimalFontSize = Get-OptimalPointSize -text $joinedTitlePointSize -font $TitleCardfontImagemagick -box_width $TitleCardEPMaxWidth  -box_height $TitleCardEPMaxHeight -min_pointsize $TitleCardEPminPointSize -max_pointsize $TitleCardEPmaxPointSize -lineSpacing $TitleCardEPlineSpacing -strokeWidth $(if ($AddTitleCardTextStroke -eq 'true') { $TitleCardstrokewidth } else { 0 })
                                                                 if ($global:IsTruncated -ne $true) {
                                                                     Write-Entry -Subtext ("Optimal font size set to: '{0}' [{1}]" -f $optimalFontSize, $(if ($null -eq $script:CurrentTextSizeSource) { 'calculated' } else { $script:CurrentTextSizeSource })) -Path $global:configLogging -Color White -log Info
                                                                     # Add Stroke

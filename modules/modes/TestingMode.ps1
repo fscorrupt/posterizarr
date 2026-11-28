@@ -214,7 +214,7 @@
     if ($AddText -eq 'true') {
         Write-Entry -Subtext "Finished Optimal Font Sizes for posters..." -Path $global:configLogging -Color Cyan -log Info
         foreach ($case in $testCases) {
-            $posterFontSizes[$case.ID] = Get-OptimalPointSize -text $case.Text -font $fontImagemagick -box_width $MaxWidth  -box_height $MaxHeight -min_pointsize $minPointSize -max_pointsize $maxPointSize -lineSpacing $lineSpacing
+            $posterFontSizes[$case.ID] = Get-OptimalPointSize -text $case.Text -font $fontImagemagick -box_width $MaxWidth  -box_height $MaxHeight -min_pointsize $minPointSize -max_pointsize $maxPointSize -lineSpacing $lineSpacing -strokeWidth $(if ($AddTextStroke -eq 'true') { $strokewidth } else { 0 })
             if ($global:IsTruncated) { $global:TruncatedCount = Increment-GlobalStat 'TruncatedCount' }
         }
     }
@@ -223,18 +223,18 @@
         if ($AddShowTitletoSeason -eq 'true') {
             # Title
             foreach ($case in $testCases) {
-                $showFontSizes[$case.ID] = Get-OptimalPointSize -text $case.Text -font $fontImagemagick -box_width $ShowOnSeasonMaxWidth  -box_height $ShowOnSeasonMaxHeight -min_pointsize $ShowOnSeasonminPointSize -max_pointsize $ShowOnSeasonmaxPointSize -lineSpacing $ShowOnSeasonlineSpacing
+                $showFontSizes[$case.ID] = Get-OptimalPointSize -text $case.Text -font $fontImagemagick -box_width $ShowOnSeasonMaxWidth  -box_height $ShowOnSeasonMaxHeight -min_pointsize $ShowOnSeasonminPointSize -max_pointsize $ShowOnSeasonmaxPointSize -lineSpacing $ShowOnSeasonlineSpacing -strokeWidth $(if ($AddShowOnSeasonTextStroke -eq 'true') { $ShowOnSeasonstrokewidth } else { 0 })
                 if ($global:IsTruncated) { $global:TruncatedCount = Increment-GlobalStat 'TruncatedCount' }
             }
             # Season
             foreach ($case in $testCases) {
-                $seasonFontSizes[$case.ID] = Get-OptimalPointSize -text $case.Text -font $fontImagemagick -box_width $SeasonMaxWidth  -box_height $SeasonMaxHeight -min_pointsize $SeasonminPointSize -max_pointsize $SeasonmaxPointSize -lineSpacing $SeasonlineSpacing
+                $seasonFontSizes[$case.ID] = Get-OptimalPointSize -text $case.Text -font $fontImagemagick -box_width $SeasonMaxWidth  -box_height $SeasonMaxHeight -min_pointsize $SeasonminPointSize -max_pointsize $SeasonmaxPointSize -lineSpacing $SeasonlineSpacing -strokeWidth $(if ($AddSeasonTextStroke -eq 'true') { $Seasonstrokewidth } else { 0 })
                 if ($global:IsTruncated) { $global:TruncatedCount = Increment-GlobalStat 'TruncatedCount' }
             }
         }
         Else {
             foreach ($case in $testCases) {
-                $seasonFontSizes[$case.ID] = Get-OptimalPointSize -text $case.Text -font $fontImagemagick -box_width $SeasonMaxWidth  -box_height $SeasonMaxHeight -min_pointsize $SeasonminPointSize -max_pointsize $SeasonmaxPointSize -lineSpacing $SeasonlineSpacing
+                $seasonFontSizes[$case.ID] = Get-OptimalPointSize -text $case.Text -font $fontImagemagick -box_width $SeasonMaxWidth  -box_height $SeasonMaxHeight -min_pointsize $SeasonminPointSize -max_pointsize $SeasonmaxPointSize -lineSpacing $SeasonlineSpacing -strokeWidth $(if ($AddSeasonTextStroke -eq 'true') { $Seasonstrokewidth } else { 0 })
                 if ($global:IsTruncated) { $global:TruncatedCount = Increment-GlobalStat 'TruncatedCount' }
             }
         }
@@ -243,7 +243,7 @@
 
     if ($AddBackgroundText -eq 'true') {
         foreach ($case in $testCases) {
-            $backgroundFontSizes[$case.ID] = Get-OptimalPointSize -text $case.Text -font $backgroundfontImagemagick -box_width $BackgroundMaxWidth  -box_height $BackgroundMaxHeight -min_pointsize $BackgroundminPointSize -max_pointsize $BackgroundmaxPointSize -lineSpacing $BackgroundlineSpacing
+            $backgroundFontSizes[$case.ID] = Get-OptimalPointSize -text $case.Text -font $backgroundfontImagemagick -box_width $BackgroundMaxWidth  -box_height $BackgroundMaxHeight -min_pointsize $BackgroundminPointSize -max_pointsize $BackgroundmaxPointSize -lineSpacing $BackgroundlineSpacing -strokeWidth $(if ($AddBackgroundTextStroke -eq 'true') { $Backgroundstrokewidth } else { 0 })
             if ($global:IsTruncated) { $global:TruncatedCount = Increment-GlobalStat 'TruncatedCount' }
         }
         Write-Entry -Subtext "Finished Optimal Font Sizes for backgrounds..." -Path $global:configLogging -Color Cyan -log Info
@@ -251,18 +251,18 @@
 
     if ($AddTitleCardEPTitleText -eq 'true') {
         foreach ($case in $testCases) {
-            $titleCardFontSizes[$case.ID] = Get-OptimalPointSize -text $case.Text -font $titlecardfontImagemagick -box_width $TitleCardEPTitleMaxWidth  -box_height $TitleCardEPTitleMaxHeight -min_pointsize $TitleCardEPTitleminPointSize -max_pointsize $TitleCardEPTitlemaxPointSize -lineSpacing $TitleCardEPTitlelineSpacing
+            $titleCardFontSizes[$case.ID] = Get-OptimalPointSize -text $case.Text -font $titlecardfontImagemagick -box_width $TitleCardEPTitleMaxWidth  -box_height $TitleCardEPTitleMaxHeight -min_pointsize $TitleCardEPTitleminPointSize -max_pointsize $TitleCardEPTitlemaxPointSize -lineSpacing $TitleCardEPTitlelineSpacing -strokeWidth $(if ($AddTitleCardEPTitleTextStroke -eq 'true') { $TitleCardEPTitlestrokewidth } else { 0 })
             if ($global:IsTruncated) { $global:TruncatedCount = Increment-GlobalStat 'TruncatedCount' }
         }
     }
 
     if ($AddTitleCardEPText -eq 'true') {
         $Episodetext = $Episodetext -replace 'â€ž', '''' -replace 'â€', '"' -replace 'â€œ', '''' -replace '"', '''' -replace '“', '''' -replace '”', '''' -replace '„', '''' -replace '`', ''
-        $TitleCardoptimalFontSizeEpisodetext = Get-OptimalPointSize -text $Episodetext -font $titlecardfontImagemagick -box_width $TitleCardEPMaxWidth  -box_height $TitleCardEPMaxHeight -min_pointsize $TitleCardEPminPointSize -max_pointsize $TitleCardEPmaxPointSize -lineSpacing $TitleCardEPlineSpacing
+        $TitleCardoptimalFontSizeEpisodetext = Get-OptimalPointSize -text $Episodetext -font $titlecardfontImagemagick -box_width $TitleCardEPMaxWidth  -box_height $TitleCardEPMaxHeight -min_pointsize $TitleCardEPminPointSize -max_pointsize $TitleCardEPmaxPointSize -lineSpacing $TitleCardEPlineSpacing -strokeWidth $(if ($AddTitleCardTextStroke -eq 'true') { $TitleCardstrokewidth } else { 0 })
         if ($global:IsTruncated) { $global:TruncatedCount = Increment-GlobalStat 'TruncatedCount' }
 
         $EpisodetextCAPS = $EpisodetextCAPS -replace 'â€ž', '''' -replace 'â€', '"' -replace 'â€œ', '''' -replace '"', '''' -replace '“', '''' -replace '”', '''' -replace '„', '''' -replace '`', ''
-        $TitleCardoptimalFontSizeEpisodetextCAPS = Get-OptimalPointSize -text $EpisodetextCAPS -font $titlecardfontImagemagick -box_width $TitleCardEPMaxWidth  -box_height $TitleCardEPMaxHeight -min_pointsize $TitleCardEPminPointSize -max_pointsize $TitleCardEPmaxPointSize -lineSpacing $TitleCardEPlineSpacing
+        $TitleCardoptimalFontSizeEpisodetextCAPS = Get-OptimalPointSize -text $EpisodetextCAPS -font $titlecardfontImagemagick -box_width $TitleCardEPMaxWidth  -box_height $TitleCardEPMaxHeight -min_pointsize $TitleCardEPminPointSize -max_pointsize $TitleCardEPmaxPointSize -lineSpacing $TitleCardEPlineSpacing -strokeWidth $(if ($AddTitleCardTextStroke -eq 'true') { $TitleCardstrokewidth } else { 0 })
         if ($global:IsTruncated) { $global:TruncatedCount = Increment-GlobalStat 'TruncatedCount' }
     }
 
@@ -349,7 +349,7 @@
                 Write-Entry -Subtext "Optimal font size for Show Title $($case.ID) text is: '$($showFontSizes[$case.ID])'" -Path $global:configLogging -Color White -log Info
                 Write-Entry -Subtext "    Applying text: `"$($case.Text)`"" -Path $global:configLogging -Color White -log Info
 
-                $testingargs = Get-TextOverlay-Arguments -AddStroke $AddSeasonTextStroke -InputFile $seasonPosterPaths[$case.ID] -OutputFile $seasonPosterPaths[$case.ID] -Font $fontImagemagick -PointSize $showFontSizes[$case.ID] -FontColor $ShowOnSeasonfontcolor -BoxSize $ShowOnSeasonboxsize -LineSpacing $ShowOnSeasonlineSpacing -TextGravity $ShowOnSeasontextgravity -CaptionText $case.Text -TextOffset $ShowOnSeasontext_offset -StrokeColor $ShowOnSeasonstrokecolor -StrokeWidth $ShowOnSeasonstrokewidth
+                $testingargs = Get-TextOverlay-Arguments -AddStroke $AddShowOnSeasonTextStroke -InputFile $seasonPosterPaths[$case.ID] -OutputFile $seasonPosterPaths[$case.ID] -Font $fontImagemagick -PointSize $showFontSizes[$case.ID] -FontColor $ShowOnSeasonfontcolor -BoxSize $ShowOnSeasonboxsize -LineSpacing $ShowOnSeasonlineSpacing -TextGravity $ShowOnSeasontextgravity -CaptionText $case.Text -TextOffset $ShowOnSeasontext_offset -StrokeColor $ShowOnSeasonstrokecolor -StrokeWidth $ShowOnSeasonstrokewidth
                 Invoke-MagickTestCommand -Arguments $testingargs -CommandLogPath $magickLog
             }
         }

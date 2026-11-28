@@ -128,8 +128,24 @@ function Get-OptimalPointSize {
         [int]$box_height,
         [int]$min_pointsize,
         [int]$max_pointsize,
-        [int]$lineSpacing # parameter for line height
+        [int]$lineSpacing, # parameter for line height
+        $strokeWidth = 0
     )
+
+    $parsedStrokeWidth = 0.0
+    if ($null -ne $strokeWidth -and -not [string]::IsNullOrWhiteSpace([string]$strokeWidth)) {
+        [void][double]::TryParse(
+            ([string]$strokeWidth).Trim(),
+            [System.Globalization.NumberStyles]::Float,
+            [System.Globalization.CultureInfo]::InvariantCulture,
+            [ref]$parsedStrokeWidth
+        )
+    }
+    $strokeWidthInvariant = if ($parsedStrokeWidth -gt 0) {
+        $parsedStrokeWidth.ToString([System.Globalization.CultureInfo]::InvariantCulture)
+    } else {
+        $null
+    }
 
     try {
         if (-not $script:IMVersion) { $script:IMVersion = (& $magick -version | Select-Object -First 1) }
@@ -138,6 +154,9 @@ function Get-OptimalPointSize {
             font = $fontImagemagick; w = $box_width; h = $box_height;
             min = $min_pointsize; max = $max_pointsize; line = $lineSpacing;
             imv = $script:IMVersion; algo = 'Get-OptimalPointSize-v1'
+        }
+        if ($strokeWidthInvariant) {
+            $__tsc_Params['sw'] = $strokeWidthInvariant
         }
 
         $__tsc_Key = New-TextSizeCacheKey -Text $text -Params $__tsc_Params
@@ -170,14 +189,18 @@ function Get-OptimalPointSize {
         '-font', $fontImagemagick,
         '-gravity', 'center',
         '-fill', 'black',
-        '-interline-spacing', "$lineSpacing",
+        '-interline-spacing', "$lineSpacing"
+    )
+    if ($strokeWidthInvariant) {
+        $magickArgs += @('-strokewidth', $strokeWidthInvariant)
+    }
+    $magickArgs += @(
         "caption:$text",
         '-format', '%[caption:pointsize]',
         'info:'
     )
 
-    try { (ConvertTo-Json -InputObject $magickArgs -Compress) | Out-File $magickLog -Append
- -ErrorAction Stop } catch {}
+    try { (ConvertTo-Json -InputObject $magickArgs -Compress) | Out-File $magickLog -Append -ErrorAction Stop } catch {}
     $tsc_sw = [Diagnostics.Stopwatch]::StartNew()
 
     $current_pointsize = [int](& $magick @magickArgs | Out-String).Trim()
