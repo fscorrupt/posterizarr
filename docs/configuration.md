@@ -334,7 +334,7 @@ may require adapter updates.
         !!! note "Regex in config.json"
             If you are manually editing `config.json` instead of using the Web UI, you must double-escape any backslashes in your regex (e.g. use `"/\\d+/"` instead of `/\d+/`).
     - `SkipJapTitle` : Set to `true` to skip TitleCard creation if the Titletext is `Jap or Chinese`.
-    - `AssetCleanup` : Set to `true` to cleanup Assets that are no longer in Plex.
+    - `AssetCleanup` : Set to `true` to cleanup Assets that are no longer on your media server (Plex, Jellyfin, Emby, or Silo).
 
         !!! danger "Risk of Data Loss from excluded Libraries"
 
