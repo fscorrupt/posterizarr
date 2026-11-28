@@ -2730,6 +2730,26 @@ class OverlayResolver:
 
         target_vars.pop("text", None)
 
+    @staticmethod
+    def _sync_alignment_vars(target_vars: Dict[str, Any], rule_name: str, coords: Dict[str, Any]) -> None:
+        """Keep Kometa alignment keys in lockstep with the template type (languages use *_position; others use *_align)."""
+        h_val = coords.get("horizontal_align") or coords.get("horizontal_position")
+        v_val = coords.get("vertical_align") or coords.get("vertical_position")
+        if rule_name in ("languages", "subtitle_languages"):
+            if h_val:
+                target_vars["horizontal_position"] = h_val
+                target_vars["horizontal_align"] = h_val
+            if v_val:
+                target_vars["vertical_position"] = v_val
+                target_vars["vertical_align"] = v_val
+        else:
+            if h_val:
+                target_vars["horizontal_align"] = h_val
+                target_vars.pop("horizontal_position", None)
+            if v_val:
+                target_vars["vertical_align"] = v_val
+                target_vars.pop("vertical_position", None)
+
     def save_library_layout(
         self,
         library_name: str,
@@ -2903,10 +2923,7 @@ class OverlayResolver:
                             for coord_k, coord_v in r_coords.items():
                                 if coord_v is not None:
                                     vars_dict[coord_k] = coord_v
-                            if "horizontal_align" in r_coords:
-                                vars_dict.pop("horizontal_position", None)
-                            if "vertical_align" in r_coords:
-                                vars_dict.pop("vertical_position", None)
+                            self._sync_alignment_vars(vars_dict, rule_name, r_coords)
                             matched_keys.add("ratings")
 
                     if any(k.lower() == "resolution" for k, _ in matched_entries) and ("overlays_movies.yml" in rule_name or "overlays_tv.yml" in rule_name):
@@ -2968,12 +2985,15 @@ class OverlayResolver:
                             vars_dict["back_width"] = int(best_coords["back_width"])
                         elif "back_width" not in vars_dict:
                             vars_dict["back_width"] = 205
+                        self._sync_alignment_vars(vars_dict, rule_name, best_coords)
                     elif best_key.lower() == "status":
                         self._apply_status_layout_vars(vars_dict, best_coords)
+                        self._sync_alignment_vars(vars_dict, rule_name, best_coords)
                     else:
                         for coord_k, coord_v in best_coords.items():
                             if coord_v is not None:
                                 vars_dict[coord_k] = coord_v
+                        self._sync_alignment_vars(vars_dict, rule_name, best_coords)
                     updated_count += 1
 
             # 2. For active dragged items that did not match an existing rule, append them safely
@@ -3006,6 +3026,13 @@ class OverlayResolver:
                     def_key = "languages" if key_lower == "subtitle_languages" else ("single_rating" if key_lower == "rating" else ("runtimes" if key_lower == "runtime" else key))
                     if key_lower == "subtitle_languages":
                         clean_vars["use_subtitles"] = True
+                    if def_key == "languages":
+                        clean_vars.setdefault("final_name", "text(<<final_text>>)")
+                        clean_vars.setdefault("font_color", "#FFFFFF")
+                    elif def_key == "runtimes":
+                        clean_vars.setdefault("back_width", 205)
+                        clean_vars.setdefault("back_color", "#00000000")
+                    self._sync_alignment_vars(clean_vars, "subtitle_languages" if key_lower == "subtitle_languages" else def_key, clean_vars)
                     overlay_files.append({
                         "default": def_key,
                         "template_variables": clean_vars
@@ -3030,6 +3057,7 @@ class OverlayResolver:
                 native_variables = native_rule.setdefault("template_variables", {})
                 native_variables.update({key: value for key, value in resolution_update.items() if value is not None})
                 native_variables["mode"] = "corner_badge" if resolution_update["mode"] == "badge" else resolution_update["mode"]
+                self._sync_alignment_vars(native_variables, "resolution", resolution_update)
 
             # Check if Critic & Audience ratings are enabled for this library.
             # If ratings is explicitly null/disabled in layout_updates, OR not enabled in visual badges, purge orphan default: ratings rules!

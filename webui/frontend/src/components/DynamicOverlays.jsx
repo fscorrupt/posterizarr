@@ -4079,10 +4079,10 @@ export default function DynamicOverlays() {
           ...(itemKey === "resolution" ? {
             mode: updatedOffset.mode || (updatedOffset.banner_4k ? "banner" : "corner_badge"),
             banner_4k: updatedOffset.mode === "banner" || Boolean(updatedOffset.banner_4k),
-            back_color: updatedOffset.back_color,
-            back_radius: updatedOffset.back_radius,
-            back_width: updatedOffset.back_width,
-            back_height: updatedOffset.back_height
+            ...(updatedOffset.back_color !== undefined ? { back_color: updatedOffset.back_color } : {}),
+            ...(updatedOffset.back_radius !== undefined ? { back_radius: updatedOffset.back_radius } : {}),
+            ...(updatedOffset.back_width !== undefined ? { back_width: updatedOffset.back_width } : {}),
+            ...(updatedOffset.back_height !== undefined ? { back_height: updatedOffset.back_height } : {})
           } : {}),
           ...(itemKey === "runtime" && updatedOffset.font_size ? {
             font_size: updatedOffset.font_size
@@ -4484,9 +4484,12 @@ export default function DynamicOverlays() {
       const layoutPayload = {};
       const curLibForSave = visualConfig?.libraries?.[libName];
       const curBadgesForSave = curLibForSave?.badges || {};
+      const scopedBadgesForSave = curLibForSave ? getConfiguredPreviewBadges(curLibForSave, previewTemplate) : null;
       layoutPayload.asset_overrides = curLibForSave?.asset_overrides || {};
       const isCriticRatingEnabled = previewRatingMode === "providers";
       const isRatingEnabled = Boolean(previewRating && previewRating !== "Off");
+      const criticInScope = !curBadgesForSave?.critic_rating?.enabled || Boolean(scopedBadgesForSave?.critic_rating?.preview_scope_matches);
+      const singleInScope = !curBadgesForSave?.rating?.enabled || Boolean(scopedBadgesForSave?.rating?.preview_scope_matches);
 
       if (isRatingEnabled && isCriticRatingEnabled) {
         layoutPayload.ratings = {
@@ -4499,7 +4502,7 @@ export default function DynamicOverlays() {
           ...(offsets.rating.font_size ? { font_size: offsets.rating.font_size } : {}),
           ...(offsets.rating.font ? { font: offsets.rating.font } : {})
         };
-      } else {
+      } else if (criticInScope) {
         // Never append default: ratings if Critic Scores are not enabled! Explicitly remove any orphan rules.
         layoutPayload.ratings = null;
       }
@@ -4516,7 +4519,7 @@ export default function DynamicOverlays() {
           ...(offsets.rating.font_size ? { font_size: offsets.rating.font_size } : {}),
           ...(offsets.rating.font ? { font: offsets.rating.font } : {})
         };
-      } else {
+      } else if (singleInScope) {
         layoutPayload.rating = null;
       }
       if (previewRuntime && previewRuntime !== "Off") {
@@ -4527,8 +4530,6 @@ export default function DynamicOverlays() {
           horizontal_align: offsets.runtime.align,
           vertical_align: offsets.runtime.valign,
           font_size: Number(offsets.runtime.font_size) || (isLandscape ? 52 : 40),
-          back_width: isLandscape ? 180 : 205,
-          back_color: "#00000000",
           text: previewRuntimePrefix,
           format: previewRuntimeFormat,
           ...(offsets.runtime.font ? { font: offsets.runtime.font } : {})
@@ -4557,18 +4558,27 @@ export default function DynamicOverlays() {
       if (previewResolution && previewResolution !== "None") {
         const isLandscape = isLandscapeFormat(previewTemplate);
         const isBanner = !isLandscape && (offsets.resolution?.mode || resolutionMode) === "banner";
-        layoutPayload.resolution = {
-          mode: isBanner ? "banner" : "corner_badge",
-          horizontal_offset: isBanner ? 0 : (offsets.resolution.x ?? 15),
-          vertical_offset: isBanner ? 0 : (offsets.resolution.y ?? 15),
-          horizontal_align: isBanner ? "center" : (offsets.resolution.align || "left"),
-          vertical_align: isBanner ? "top" : (offsets.resolution.valign || "top"),
-          banner_4k: isBanner,
-          back_color: isBanner ? "#00000000" : (offsets.resolution?.back_color || "#00000099"),
-          back_radius: isBanner ? 0 : (offsets.resolution?.back_radius !== undefined ? Number(offsets.resolution.back_radius) : 15),
-          back_width: isBanner ? 0 : (offsets.resolution?.back_width ? Number(offsets.resolution.back_width) : (isLandscape ? 260 : 245)),
-          back_height: isBanner ? 0 : (offsets.resolution?.back_height ? Number(offsets.resolution.back_height) : (isLandscape ? 85 : 95))
-        };
+        layoutPayload.resolution = isBanner
+          ? {
+            mode: "banner",
+            horizontal_offset: 0,
+            vertical_offset: 0,
+            horizontal_align: "center",
+            vertical_align: "top",
+            banner_4k: true
+          }
+          : {
+            mode: "corner_badge",
+            horizontal_offset: offsets.resolution?.x ?? 15,
+            vertical_offset: offsets.resolution?.y ?? 15,
+            horizontal_align: offsets.resolution?.align || "left",
+            vertical_align: offsets.resolution?.valign || "top",
+            banner_4k: false,
+            back_color: offsets.resolution?.back_color ?? "#00000099",
+            back_radius: offsets.resolution?.back_radius !== undefined ? Number(offsets.resolution.back_radius) : 15,
+            back_width: offsets.resolution?.back_width ? Number(offsets.resolution.back_width) : (isLandscape ? 260 : 245),
+            back_height: offsets.resolution?.back_height ? Number(offsets.resolution.back_height) : (isLandscape ? 85 : 95)
+          };
       }
       if (previewLanguages && previewLanguages !== "Off") {
         layoutPayload.languages = {
@@ -4576,8 +4586,6 @@ export default function DynamicOverlays() {
           overlay_limit: effectivePreviewLanguageLimit,
           style: previewLanguageStyle,
           hide_text: !previewLanguageLabels,
-          final_name: "text(<<final_text>>)",
-          font_color: "#FFFFFF",
           horizontal_offset: offsets.languages?.x ?? 30,
           vertical_offset: offsets.languages?.y ?? 35,
           horizontal_align: offsets.languages?.align ?? "left",
@@ -4594,7 +4602,7 @@ export default function DynamicOverlays() {
           vertical_offset: position?.y ?? 0,
           horizontal_align: position?.align || "center",
           vertical_align: position?.valign || "bottom",
-          ...(key === "subtitle_languages" ? { use_subtitles: true, style: previewSubtitleStyle, languages: previewSubtitles.split(",").map(code => code.trim()).filter(Boolean), hide_text: !previewSubtitleLabels, final_name: "text(<<final_text>>)", font_color: "#FFFFFF" } : {}),
+          ...(key === "subtitle_languages" ? { use_subtitles: true, style: previewSubtitleStyle, languages: previewSubtitles.split(",").map(code => code.trim()).filter(Boolean), hide_text: !previewSubtitleLabels } : {}),
           ...(key === "streaming" ? previewStreamingOptions : {})
         };
       }
@@ -4838,26 +4846,31 @@ export default function DynamicOverlays() {
     );
     setResolutionMode(isLandscape ? "corner_badge" : (isResBanner ? "banner" : "corner_badge"));
     if (badges.resolution?.preview_scope_matches && (badges.resolution?.enabled || badges.resolution?.banner_4k || badges.resolution?.banner_1080p || badges.resolution?.titlecard_enabled)) {
+      const parseNumericOffset = (raw, fallback) =>
+        raw !== undefined && raw !== null && raw !== "" && Number.isFinite(Number(raw)) ? Number(raw) : fallback;
+      const savedResPill = {
+        back_color: badges.resolution.back_color ?? "#00000099",
+        back_radius: badges.resolution.back_radius !== undefined ? Number(badges.resolution.back_radius) : 15,
+        back_width: Number(badges.resolution.back_width) || (isLandscape ? 260 : 245),
+        back_height: Number(badges.resolution.back_height) || (isLandscape ? 85 : 95)
+      };
       if (targetFormat === "movie_poster" || targetFormat === "show_poster" || targetFormat === "season_poster") {
         if (isResBanner) {
-          nextOffsets.resolution = { x: 0, y: 0, align: "center", valign: "top", mode: "banner", banner_4k: true };
+          nextOffsets.resolution = { x: 0, y: 0, align: "center", valign: "top", mode: "banner", banner_4k: true, ...savedResPill };
           setPreviewResolution(firstEnabledRes);
         } else if (badges.resolution.banner_1080p && !Array.isArray(badges.resolution?.tiers)) {
-          nextOffsets.resolution = { x: 0, y: 0, align: "center", valign: "top", mode: "banner", banner_4k: true };
+          nextOffsets.resolution = { x: 0, y: 0, align: "center", valign: "top", mode: "banner", banner_4k: true, ...savedResPill };
           setPreviewResolution("1080p");
         } else {
           const p = parsePos(badges.resolution.position, "left", "top");
           nextOffsets.resolution = {
-            x: Number(badges.resolution.offset_x) || 15,
-            y: Number(badges.resolution.offset_y) || 15,
+            x: parseNumericOffset(badges.resolution.offset_x, 15),
+            y: parseNumericOffset(badges.resolution.offset_y, 15),
             align: p.align,
             valign: p.valign,
             mode: "corner_badge",
             banner_4k: false,
-            back_color: badges.resolution.back_color || "#00000099",
-            back_radius: badges.resolution.back_radius !== undefined ? Number(badges.resolution.back_radius) : 15,
-            back_width: Number(badges.resolution.back_width) || 245,
-            back_height: Number(badges.resolution.back_height) || 95
+            ...savedResPill
           };
           setPreviewResolution(firstEnabledRes);
         }
@@ -4869,15 +4882,12 @@ export default function DynamicOverlays() {
         const tcX = badges.resolution.titlecard_offset_x ?? badges.resolution.offset_x;
         const tcY = badges.resolution.titlecard_offset_y ?? badges.resolution.offset_y;
         nextOffsets.resolution = {
-          x: (tcX !== undefined && tcX !== null && (tcX > 0 || p.align === "left")) ? Number(tcX) : 15,
-          y: (tcY !== undefined && tcY !== null && (tcY > 0 || p.valign === "top")) ? Number(tcY) : 15,
+          x: parseNumericOffset(tcX, 15),
+          y: parseNumericOffset(tcY, 15),
           align: p.align,
           valign: p.valign,
           mode: "corner_badge",
-          back_color: badges.resolution.back_color || "#00000099",
-          back_radius: badges.resolution.back_radius !== undefined ? Number(badges.resolution.back_radius) : 15,
-          back_width: Number(badges.resolution.back_width) || 260,
-          back_height: Number(badges.resolution.back_height) || 85
+          ...savedResPill
         };
         setPreviewResolution(firstEnabledRes || (badges.resolution.banner_1080p ? "1080p" : "4K"));
       } else {
@@ -9763,7 +9773,7 @@ export default function DynamicOverlays() {
                             type="button"
                             onClick={() => {
                               setResolutionMode("banner");
-                              handleOffsetChange("resolution", { x: 0, y: 0, align: "center", valign: "top", mode: "banner", banner_4k: true }, true);
+                              handleOffsetChange("resolution", { ...(offsets.resolution || {}), x: 0, y: 0, align: "center", valign: "top", mode: "banner", banner_4k: true }, true);
                             }}
                             className={`px-2 py-0.5 rounded text-[10px] font-semibold border transition-all ${
                               (offsets.resolution?.mode || resolutionMode) === "banner"
@@ -9777,7 +9787,7 @@ export default function DynamicOverlays() {
                             type="button"
                             onClick={() => {
                               setResolutionMode("corner_badge");
-                              handleOffsetChange("resolution", { x: 15, y: 15, align: "left", valign: "top", mode: "corner_badge", banner_4k: false }, true);
+                              handleOffsetChange("resolution", { ...(offsets.resolution || {}), x: 15, y: 15, align: "left", valign: "top", mode: "corner_badge", banner_4k: false }, true);
                             }}
                             className={`px-2 py-0.5 rounded text-[10px] font-semibold border transition-all ${
                               (offsets.resolution?.mode || resolutionMode) === "corner_badge"

@@ -812,6 +812,15 @@ def generate_starter_visual_config(detected_libraries: Optional[List[Dict[str, s
     return {"libraries": visual_libs}
 
 
+def _safe_int_or_none(value: Any) -> Optional[int]:
+    if value is None or value == "" or isinstance(value, bool):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def _resolve_visual_badge_slot(default_name: str, file_name: str, vars_dict: Dict[str, Any]) -> Optional[str]:
     """Map a config.yml overlay rule to its single-instance Visual Badges slot key, or None if unmanaged."""
     if default_name == "languages":
@@ -1134,7 +1143,7 @@ def parse_config_yml_to_visual(config_path: Optional[Path] = None, auto_seed: bo
                 raw_x = vars_dict.get("horizontal_offset")
                 raw_y = vars_dict.get("vertical_offset")
                 language_key = "subtitle_languages" if str(vars_dict.get("use_subtitles", False)).lower() in ("true", "1") else "audio_languages"
-                badges[language_key] = {
+                lang_badge = {
                     "enabled": True,
                     "languages": vars_dict.get("languages", ["de", "en"]),
                     "level": vars_dict.get("builder_level", "episode" if media_type == "show" else "movie"),
@@ -1146,8 +1155,13 @@ def parse_config_yml_to_visual(config_path: Optional[Path] = None, auto_seed: bo
                     "show_labels": str(vars_dict.get("hide_text", True)).lower() not in ("true", "1"),
                     "back_radius": int(vars_dict.get("back_radius", 15)),
                     "back_color": vars_dict.get("back_color", "#00000000"),
+                    "font": vars_dict.get("font", ""),
                     "template_variables": dict(vars_dict)
                 }
+                parsed_lang_fs = _safe_int_or_none(vars_dict.get("font_size"))
+                if parsed_lang_fs is not None:
+                    lang_badge["font_size"] = parsed_lang_fs
+                badges[language_key] = lang_badge
 
             elif default_name == "single_rating":
                 h_pos = vars_dict.get("horizontal_align") or vars_dict.get("horizontal_position", "right")
@@ -1176,6 +1190,7 @@ def parse_config_yml_to_visual(config_path: Optional[Path] = None, auto_seed: bo
                     "offset_x": int(raw_rt_x) if raw_rt_x is not None else def_rt_x,
                     "offset_y": int(raw_rt_y) if raw_rt_y is not None else def_rt_y,
                     "font_size": int(vars_dict["font_size"]) if vars_dict.get("font_size") else (52 if media_type == "show" else 40),
+                    "font": vars_dict.get("font", ""),
                     "back_color": vars_dict.get("back_color", "#00000000"),
                     "back_radius": int(vars_dict.get("back_radius", 15)),
                     "back_width": int(vars_dict.get("back_width", 205)),
@@ -1218,8 +1233,8 @@ def parse_config_yml_to_visual(config_path: Optional[Path] = None, auto_seed: bo
 
             # 4. Network
             elif default_name == "network":
-                h_pos = vars_dict.get("horizontal_position") or vars_dict.get("horizontal_align", "center")
-                v_pos = vars_dict.get("vertical_position") or vars_dict.get("vertical_align", "bottom")
+                h_pos = vars_dict.get("horizontal_align") or vars_dict.get("horizontal_position", "center")
+                v_pos = vars_dict.get("vertical_align") or vars_dict.get("vertical_position", "bottom")
                 badges["network"] = {
                     "enabled": True,
                     "level": vars_dict.get("builder_level", "season"),
@@ -1235,8 +1250,9 @@ def parse_config_yml_to_visual(config_path: Optional[Path] = None, auto_seed: bo
                 "commonsense", "content_rating", "content_rating_de", "content_rating_uk",
                 "content_rating_au", "content_rating_nz", "content_rating_us_movie", "content_rating_us_show"
             ):
-                h_pos = vars_dict.get("horizontal_position") or vars_dict.get("horizontal_align", "left")
-                v_pos = vars_dict.get("vertical_position") or vars_dict.get("vertical_align", "bottom")
+                h_pos = vars_dict.get("horizontal_align") or vars_dict.get("horizontal_position", "left")
+                v_pos = vars_dict.get("vertical_align") or vars_dict.get("vertical_position", "bottom")
+                parsed_age_fs = _safe_int_or_none(vars_dict.get("font_size"))
                 badges["age_rating"] = {
                     "enabled": True,
                     "source": default_name,
@@ -1246,6 +1262,8 @@ def parse_config_yml_to_visual(config_path: Optional[Path] = None, auto_seed: bo
                     "offset_y": vars_dict.get("vertical_offset", 37),
                     "back_color": vars_dict.get("back_color", "#00000000"),
                     "back_width": vars_dict.get("back_width", 230),
+                    "font_size": parsed_age_fs if parsed_age_fs is not None else 55,
+                    "font": vars_dict.get("font", ""),
                     "template_variables": dict(vars_dict)
                 }
 
@@ -1274,6 +1292,7 @@ def parse_config_yml_to_visual(config_path: Optional[Path] = None, auto_seed: bo
                     "back_radius": vars_dict.get("back_radius", 8),
                     "back_padding": vars_dict.get("back_padding", 6),
                     "font_size": vars_dict.get("font_size", 30),
+                    "font": vars_dict.get("font", ""),
                     "template_variables": dict(vars_dict)
                 }
 
@@ -1454,7 +1473,8 @@ def parse_config_yml_to_visual(config_path: Optional[Path] = None, auto_seed: bo
                     "level": "episode",
                     "position": _to_unified_position(h_pos, v_pos),
                     "offset_x": vars_dict.get("horizontal_offset", 20),
-                    "offset_y": vars_dict.get("vertical_offset", 20)
+                    "offset_y": vars_dict.get("vertical_offset", 20),
+                    "template_variables": dict(vars_dict)
                 }
 
         visual_libs[lib_name] = {
@@ -1496,17 +1516,24 @@ def compile_visual_to_config_yml(visual_data: Dict[str, Any], output_path: Optio
         ) else None)
         if b_age and b_age.get("enabled"):
             h, v = _split_unified_position(b_age.get("position", "top-right"))
+            age_tpl = b_age.get("template_variables", {})
+            age_font = b_age.get("font") or age_tpl.get("font") or "fonts/Inter-Medium.ttf"
+            parsed_age_fs = _safe_int_or_none(b_age.get("font_size"))
+            if parsed_age_fs is None:
+                parsed_age_fs = _safe_int_or_none(age_tpl.get("font_size"))
             age_vars: Dict[str, Any] = {
-                **b_age.get("template_variables", {}),
-                "horizontal_position": h,
-                "vertical_position": v,
+                **age_tpl,
+                "horizontal_align": h,
+                "vertical_align": v,
                 "horizontal_offset": int(b_age.get("offset_x", 255)),
                 "vertical_offset": int(b_age.get("offset_y", 37)),
                 "back_width": int(b_age.get("back_width", 230)),
                 "back_color": b_age.get("back_color", "#00000000"),
-                "font_size": int(b_age.get("font_size", 55)),
-                "font": b_age.get("font") or "fonts/Inter-Medium.ttf"
+                "font_size": parsed_age_fs if parsed_age_fs is not None else 55,
+                "font": age_font
             }
+            age_vars.pop("horizontal_position", None)
+            age_vars.pop("vertical_position", None)
             if b_age.get("level"):
                 age_vars["builder_level"] = b_age["level"]
             overlay_files.append({
@@ -1517,13 +1544,16 @@ def compile_visual_to_config_yml(visual_data: Dict[str, Any], output_path: Optio
         b_single = badges.get("rating", {})
         if b_single.get("enabled") and b_single.get("source") == "audience_rating":
             h, v = _split_unified_position(b_single.get("position", "bottom-right"))
-            overlay_files.append({"default": "single_rating", "template_variables": {
+            single_vars = {
                 **b_single.get("template_variables", {}),
                 "builder_level": b_single.get("level", "movie" if media_type == "movie" else "show"),
                 "horizontal_align": h, "vertical_align": v,
                 "horizontal_offset": int(b_single.get("offset_x", 30)), "vertical_offset": int(b_single.get("offset_y", 25)),
                 "theme": b_single.get("theme", "score")
-            }})
+            }
+            single_vars.pop("horizontal_position", None)
+            single_vars.pop("vertical_position", None)
+            overlay_files.append({"default": "single_rating", "template_variables": single_vars})
 
         # 1b. Audience & Critic Score Rating (IMDb / TMDB / Rotten Tomatoes)
         b_score = badges.get("critic_rating") or (badges.get("rating", {}) if badges.get("rating", {}).get("source") in ("ratings", "rating") else None)
@@ -1557,6 +1587,8 @@ def compile_visual_to_config_yml(visual_data: Dict[str, Any], output_path: Optio
                 score_vars["back_padding"] = int(b_score["back_padding"])
             if b_score.get("font_size") is not None:
                 score_vars["font_size"] = int(b_score["font_size"])
+            if b_score.get("font"):
+                score_vars["font"] = b_score["font"]
             if b_score.get("score_size_mode") in ("auto", "fixed", "content"):
                 score_vars["score_size_mode"] = b_score["score_size_mode"]
             if b_score.get("score_width") is not None:
@@ -1575,17 +1607,20 @@ def compile_visual_to_config_yml(visual_data: Dict[str, Any], output_path: Optio
         b_net = badges.get("network", {})
         if media_type == "show" and b_net.get("enabled"):
             h, v = _split_unified_position(b_net.get("position", "bottom-center"))
+            net_vars = {
+                **b_net.get("template_variables", {}),
+                "builder_level": b_net.get("level", "season"),
+                "horizontal_align": h,
+                "vertical_align": v,
+                "horizontal_offset": int(b_net.get("offset_x", 30)),
+                "vertical_offset": int(b_net.get("offset_y", 50)),
+                "back_color": b_net.get("back_color", "#00000000")
+            }
+            net_vars.pop("horizontal_position", None)
+            net_vars.pop("vertical_position", None)
             overlay_files.append({
                 "default": "network",
-                "template_variables": {
-                    **b_net.get("template_variables", {}),
-                    "builder_level": b_net.get("level", "season"),
-                    "horizontal_position": h,
-                    "vertical_position": v,
-                    "horizontal_offset": int(b_net.get("offset_x", 30)),
-                    "vertical_offset": int(b_net.get("offset_y", 50)),
-                    "back_color": b_net.get("back_color", "#00000000")
-                }
+                "template_variables": net_vars
             })
 
         # 3. Audio Languages
@@ -1600,25 +1635,34 @@ def compile_visual_to_config_yml(visual_data: Dict[str, Any], output_path: Optio
             if lang_limit < 1:
                 lang_limit = 5
             h, v = _split_unified_position(b_lang.get("position", "bottom-left"))
+            lang_tpl = b_lang.get("template_variables", {})
+            lang_vars = {
+                **lang_tpl,
+                "use_subtitles": language_key == "subtitle_languages",
+                "languages": b_lang.get("languages", ["de", "en"]),
+                "builder_level": b_lang.get("level", "episode" if media_type == "show" else "movie"),
+                "overlay_limit": lang_limit,
+                "horizontal_position": h,
+                "vertical_position": v,
+                "horizontal_align": h,
+                "vertical_align": v,
+                "style": b_lang.get("style", "round"),
+                "horizontal_offset": int(b_lang.get("offset_x", 48)),
+                "vertical_offset": int(b_lang.get("offset_y", 37)),
+                "back_color": b_lang.get("back_color", "#00000000"),
+                "back_radius": int(b_lang.get("back_radius", 15)),
+                "hide_text": not b_lang.get("show_labels", False),
+                "font_color": lang_tpl.get("font_color", "#FFFFFF"),
+                "final_name": lang_tpl.get("final_name", "text(<<final_text>>)")
+            }
+            if b_lang.get("font"):
+                lang_vars["font"] = b_lang["font"]
+            parsed_lang_fs = _safe_int_or_none(b_lang.get("font_size"))
+            if parsed_lang_fs is not None:
+                lang_vars["font_size"] = parsed_lang_fs
             overlay_files.append({
                 "default": "languages",
-                "template_variables": {
-                    **b_lang.get("template_variables", {}),
-                    "use_subtitles": language_key == "subtitle_languages",
-                    "languages": b_lang.get("languages", ["de", "en"]),
-                    "builder_level": b_lang.get("level", "episode" if media_type == "show" else "movie"),
-                    "overlay_limit": lang_limit,
-                    "horizontal_position": h,
-                    "vertical_position": v,
-                    "style": b_lang.get("style", "round"),
-                    "horizontal_offset": int(b_lang.get("offset_x", 48)),
-                    "vertical_offset": int(b_lang.get("offset_y", 37)),
-                    "back_color": b_lang.get("back_color", "#00000000"),
-                    "back_radius": int(b_lang.get("back_radius", 15)),
-                    "hide_text": not b_lang.get("show_labels", False),
-                    "font_color": "#FFFFFF",
-                    "final_name": "text(<<final_text>>)"
-                }
+                "template_variables": lang_vars
             })
 
         for badge_key in ("aspect", "studio", "streaming"):
@@ -1626,23 +1670,26 @@ def compile_visual_to_config_yml(visual_data: Dict[str, Any], output_path: Optio
             if not badge.get("enabled"):
                 continue
             h, v = _split_unified_position(badge.get("position", "bottom-center"))
+            extra_vars = {
+                **badge.get("template_variables", {}),
+                "builder_level": badge.get("level", "movie" if media_type == "movie" else "show"),
+                "horizontal_align": h, "vertical_align": v,
+                "horizontal_offset": int(badge.get("offset_x", 0)),
+                "vertical_offset": int(badge.get("offset_y", 150)),
+                **({
+                    "region": str(badge.get("region", "US")).upper(),
+                    "availability_types": badge.get("availability_types", ["flatrate"]),
+                    "style": badge.get("style", "color"),
+                    "overlay_limit": int(badge.get("limit", 3)),
+                    "spacing": int(badge.get("spacing", 115)),
+                    "orientation": badge.get("orientation", "vertical")
+                } if badge_key == "streaming" else {})
+            }
+            extra_vars.pop("horizontal_position", None)
+            extra_vars.pop("vertical_position", None)
             overlay_files.append({
                 "default": badge_key,
-                "template_variables": {
-                    **badge.get("template_variables", {}),
-                    "builder_level": badge.get("level", "movie" if media_type == "movie" else "show"),
-                    "horizontal_align": h, "vertical_align": v,
-                    "horizontal_offset": int(badge.get("offset_x", 0)),
-                    "vertical_offset": int(badge.get("offset_y", 150)),
-                    **({
-                        "region": str(badge.get("region", "US")).upper(),
-                        "availability_types": badge.get("availability_types", ["flatrate"]),
-                        "style": badge.get("style", "color"),
-                        "overlay_limit": int(badge.get("limit", 3)),
-                        "spacing": int(badge.get("spacing", 115)),
-                        "orientation": badge.get("orientation", "vertical")
-                    } if badge_key == "streaming" else {})
-                }
+                "template_variables": extra_vars
             })
 
         # 3b. Award / Chart Ribbon (Movies & TV Shows)
@@ -1714,6 +1761,8 @@ def compile_visual_to_config_yml(visual_data: Dict[str, Any], output_path: Optio
                 "back_color": b_stat.get("back_color", "#00000000"),
                 "back_radius": int(b_stat.get("back_radius", 15)),
             })
+            stat_vars.pop("horizontal_position", None)
+            stat_vars.pop("vertical_position", None)
             for st in STATUS_STATE_KEYS:
                 stat_vars[f"font_color_{st}"] = (
                     str(colors.get(st) or "").strip() or STATUS_DEFAULT_COLORS[st]
@@ -1747,15 +1796,16 @@ def compile_visual_to_config_yml(visual_data: Dict[str, Any], output_path: Optio
             raw_rt_y = b_rt.get("offset_y")
             def_rt_x = 140 if media_type == "movie" else 18
             def_rt_y = 37 if media_type == "movie" else 20
+            rt_tpl = b_rt.get("template_variables", {})
             rt_vars = {
-                **b_rt.get("template_variables", {}),
+                **rt_tpl,
                 "builder_level": b_rt.get("level", "episode" if media_type == "show" else "movie"),
                 "horizontal_align": h,
                 "vertical_align": v,
                 "horizontal_offset": int(raw_rt_x) if raw_rt_x is not None else def_rt_x,
                 "vertical_offset": int(raw_rt_y) if raw_rt_y is not None else def_rt_y,
                 "font_size": int(b_rt["font_size"]) if b_rt.get("font_size") else (52 if media_type == "show" else 50),
-                "font": b_rt.get("font") or "fonts/Inter-Bold.ttf",
+                "font": b_rt.get("font") or rt_tpl.get("font") or "fonts/Inter-Bold.ttf",
                 "back_color": b_rt.get("back_color", "#00000000"),
                 "back_radius": int(b_rt.get("back_radius", 15)),
                 "back_width": int(b_rt.get("back_width", 205)),
@@ -1763,6 +1813,8 @@ def compile_visual_to_config_yml(visual_data: Dict[str, Any], output_path: Optio
                 "text": b_rt.get("text", ""),
                 "format": b_rt.get("format", "<<runtimeH>>h <<runtimeM>>m")
             }
+            rt_vars.pop("horizontal_position", None)
+            rt_vars.pop("vertical_position", None)
             overlay_files.append({
                 "default": "runtimes",
                 "template_variables": rt_vars
@@ -1857,6 +1909,8 @@ def compile_visual_to_config_yml(visual_data: Dict[str, Any], output_path: Optio
                         "back_height": int(b_res.get("back_height", 85 if media_type == "show" else 95))
                     })
 
+                res_vars.pop("horizontal_position", None)
+                res_vars.pop("vertical_position", None)
                 if b_res.get("level"):
                     res_vars["builder_level"] = b_res["level"]
                 overlay_files.append({
@@ -1880,6 +1934,8 @@ def compile_visual_to_config_yml(visual_data: Dict[str, Any], output_path: Optio
                 "back_width": int(b_audio.get("back_width", 305)),
                 "back_height": int(b_audio.get("back_height", 105))
             }
+            audio_vars.pop("horizontal_position", None)
+            audio_vars.pop("vertical_position", None)
             if b_audio.get("level"):
                 audio_vars["builder_level"] = b_audio["level"]
             overlay_files.append({
@@ -1898,6 +1954,8 @@ def compile_visual_to_config_yml(visual_data: Dict[str, Any], output_path: Optio
                 "horizontal_offset": int(b_vf.get("offset_x", 15)),
                 "vertical_offset": int(b_vf.get("offset_y", 15))
             }
+            vf_vars.pop("horizontal_position", None)
+            vf_vars.pop("vertical_position", None)
             if b_vf.get("level"):
                 vf_vars["builder_level"] = b_vf["level"]
             overlay_files.append({
@@ -1908,11 +1966,17 @@ def compile_visual_to_config_yml(visual_data: Dict[str, Any], output_path: Optio
         # 9. Anime Badges (TV only)
         b_anim = badges.get("anime", {})
         if media_type == "show" and b_anim.get("enabled"):
-            anim_vars = {}
+            anim_vars = {**b_anim.get("template_variables", {})}
+            if b_anim.get("position"):
+                h, v = _split_unified_position(b_anim["position"])
+                anim_vars["horizontal_align"] = h
+                anim_vars["vertical_align"] = v
             if "offset_x" in b_anim:
                 anim_vars["horizontal_offset"] = b_anim["offset_x"]
             if "offset_y" in b_anim:
                 anim_vars["vertical_offset"] = b_anim["offset_y"]
+            anim_vars.pop("horizontal_position", None)
+            anim_vars.pop("vertical_position", None)
             entry = {"file": "config/anime_overlays.yml"}
             if anim_vars:
                 entry["template_variables"] = anim_vars

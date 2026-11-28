@@ -394,8 +394,8 @@ def build_preview_layers(options, placements, library_rules, overlays_dir, build
             label_option = "subtitle_labels" if subtitle else "language_labels"
             if options.get(label_option) is not None:
                 variables["hide_text"] = not options[label_option]
-                variables["final_name"] = "text(<<final_text>>)"
-                variables["font_color"] = "#FFFFFF"
+                variables.setdefault("final_name", "text(<<final_text>>)")
+                variables.setdefault("font_color", "#FFFFFF")
         if isinstance(rule, dict) and str(rule.get("default", "")).lower() in ("ratings", "rating"):
             rating_vars = rule.setdefault("template_variables", {})
             rating_vars.update({key: value for key, value in rating_options.items() if key in allowed_rating_options})
