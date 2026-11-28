@@ -97,3 +97,4 @@ webui/backend/test_status_overlays.py
 webui/backend/test_status_overlays.py
 webui/backend/test_multi_rating_horizontal_layout.py
 webui/backend/test_save_layout_preserves_settings.py
+webui/frontend/src/utils/assetReplacerFilters.test.js

@@ -19,6 +19,15 @@ import { useToast } from "../context/ToastContext";
 import ConfirmDialog from "./ConfirmDialog";
 import ImageCropModal from "./ImageCropModal";
 import { BLUEPRINTS } from "./Blueprints";
+import {
+  expandAllowedLanguages,
+  filterReplacerPreviews,
+  getDefaultTypeFilter,
+  isBackdropPreview,
+  isLogoPreview,
+  isPosterPreview,
+  normalizeLanguageOrder,
+} from "../utils/assetReplacerFilters";
 
 const API_URL = "/api";
 
@@ -41,7 +50,10 @@ function AssetReplacer({ asset, onClose, onSuccess, initialTab = "upload", initi
     poster: [],
     background: [],
     season: [],
+    titlecard: [],
+    logo: [],
   });
+  const [tmdbLanguageMappings, setTmdbLanguageMappings] = useState({});
 
   const [activeTab, setActiveTab] = useState(initialTab === "previews" ? "previews" : "upload");
   const [processWithOverlays, setProcessWithOverlays] = useState(true);
@@ -547,7 +559,9 @@ function AssetReplacer({ asset, onClose, onSuccess, initialTab = "upload", initi
 
   // Sync default type filter with current asset type
   useEffect(() => {
-    setTypeFilter(metadata.asset_type === "titlecard" ? "all" : metadata.asset_type === "background" ? "backdrop" : "poster");
+    if (!logoSelectionMode) {
+      setTypeFilter(getDefaultTypeFilter(metadata.asset_type));
+    }
   }, [metadata.asset_type]);
 
   // Check if Posterizarr is running on component mount
@@ -606,6 +620,7 @@ function AssetReplacer({ asset, onClose, onSuccess, initialTab = "upload", initi
       // ----------------------------------------------------------------------
       let userFavProvider = "fanart"; // Default fallback
       let languageOrderList = [];
+      let rawMappings = {};
 
       try {
         const configResponse = await fetch(`${API_URL}/config`);
@@ -624,13 +639,23 @@ function AssetReplacer({ asset, onClose, onSuccess, initialTab = "upload", initi
             else if (p.includes("fanart")) userFavProvider = "fanart";
           }
 
-          // B) Get LogoLanguageOrder (Handle Array or String)
-          const rawOrder = cfg.LogoLanguageOrder || apiPart.LogoLanguageOrder;
+          // B) Get LogoLanguageOrder (Handle Array or String) and TmdbLanguageMappings
+          const rawOrder =
+            cfg.LogoLanguageOrder ||
+            cfg.logolanguageorder ||
+            apiPart.LogoLanguageOrder ||
+            apiPart.logolanguageorder;
+          rawMappings =
+            cfg.TmdbLanguageMappings ||
+            cfg.tmdblanguagemappings ||
+            apiPart.TmdbLanguageMappings ||
+            apiPart.tmdblanguagemappings ||
+            {};
 
-          if (Array.isArray(rawOrder)) {
-            languageOrderList = rawOrder.map(lang => lang.trim().toLowerCase());
-          } else if (typeof rawOrder === 'string' && rawOrder) {
-            languageOrderList = rawOrder.split(",").map(lang => lang.trim().toLowerCase());
+          languageOrderList = normalizeLanguageOrder(rawOrder);
+          setLanguageOrder((prev) => ({ ...prev, logo: languageOrderList }));
+          if (Object.keys(rawMappings).length > 0) {
+            setTmdbLanguageMappings(rawMappings);
           }
 
           if (languageOrderList.length > 0) {
@@ -665,20 +690,28 @@ function AssetReplacer({ asset, onClose, onSuccess, initialTab = "upload", initi
         // 3. Filter & Sort by LogoLanguageOrder (STRICT MODE)
         // --------------------------------------------------------------------
         if (languageOrderList.length > 0) {
+          const allowedMatchSet = new Set(expandAllowedLanguages(languageOrderList, rawMappings));
+          const getLanguageRank = (lang) => {
+            const directIdx = languageOrderList.indexOf(lang);
+            if (directIdx !== -1) return directIdx;
+            return languageOrderList.findIndex((pref) =>
+              expandAllowedLanguages([pref], rawMappings).includes(lang)
+            );
+          };
           const processLogos = (logoList) => {
             if (!logoList) return [];
 
             // A) Filter: REMOVE logos not in the allowed list
             const filtered = logoList.filter(logo => {
               const logoLang = (logo.language || "xx").toLowerCase();
-              return languageOrderList.includes(logoLang);
+              return allowedMatchSet.has(logoLang);
             });
 
             // B) Sort: Order exactly as they appear in LogoLanguageOrder
             return filtered.sort((a, b) => {
               const langA = (a.language || "xx").toLowerCase();
               const langB = (b.language || "xx").toLowerCase();
-              return languageOrderList.indexOf(langA) - languageOrderList.indexOf(langB);
+              return getLanguageRank(langA) - getLanguageRank(langB);
             });
           };
 
@@ -706,6 +739,8 @@ function AssetReplacer({ asset, onClose, onSuccess, initialTab = "upload", initi
         const totalResults = results.tmdb.length + results.tvdb.length + results.fanart.length;
 
         if (totalResults > 0) {
+          setTypeFilter("all");
+          setLanguageFilter("all");
           setActiveProviderTab(activeProvider);
           setActiveTab("previews");
         if (contentScrollRef.current) {
@@ -741,6 +776,9 @@ function AssetReplacer({ asset, onClose, onSuccess, initialTab = "upload", initi
     }));
     setActiveTab("upload");
     setLogoSelectionMode(false);
+    setTypeFilter(getDefaultTypeFilter(metadata.asset_type));
+    setLanguageFilter("all");
+    setPreviews({ tmdb: [], tvdb: [], fanart: [] });
     showInfo(t("assetReplacer.logoApplied"));
   };
 
@@ -789,36 +827,59 @@ function AssetReplacer({ asset, onClose, onSuccess, initialTab = "upload", initi
           setSpecialSeasonOverrideText(specialSeasonOverrideTextVal);
 
           // Process PreferredBackgroundLanguageOrder - handle "PleaseFillMe"
-          let backgroundOrder =
+          const rawBackgroundOrder =
             configSource.PreferredBackgroundLanguageOrder ||
             configSource.preferredbackgroundlanguageorder ||
             [];
 
-          let posterOrder =
+          const posterOrder = normalizeLanguageOrder(
             configSource.PreferredLanguageOrder ||
             configSource.preferredlanguageorder ||
-            [];
+            []
+          );
 
-          let seasonOrder =
+          const seasonOrder = normalizeLanguageOrder(
             configSource.PreferredSeasonLanguageOrder ||
             configSource.preferredseasonlanguageorder ||
-            [];
+            []
+          );
 
-          let tcOrder =
+          const rawTcOrder =
             configSource.PreferredTCLanguageOrder ||
             configSource.preferredtclanguageorder ||
             [];
 
+          const rawLogoOrder =
+            configSource.LogoLanguageOrder ||
+            configSource.logolanguageorder ||
+            data.config?.LogoLanguageOrder ||
+            data.config?.ApiPart?.LogoLanguageOrder ||
+            [];
+
+          const rawMappings =
+            configSource.TmdbLanguageMappings ||
+            configSource.tmdblanguagemappings ||
+            data.config?.TmdbLanguageMappings ||
+            data.config?.ApiPart?.TmdbLanguageMappings ||
+            {};
+
+          let backgroundOrder = normalizeLanguageOrder(rawBackgroundOrder);
+          let tcOrder = normalizeLanguageOrder(rawTcOrder);
+          const logoOrder = normalizeLanguageOrder(rawLogoOrder);
+
           if (
-            backgroundOrder.length === 1 &&
-            backgroundOrder[0] === "PleaseFillMe"
+            backgroundOrder.length === 0 &&
+            ((Array.isArray(rawBackgroundOrder) && rawBackgroundOrder.some((v) => String(v).trim().toLowerCase() === "pleasefillme")) ||
+              (typeof rawBackgroundOrder === "string" && rawBackgroundOrder.toLowerCase().includes("pleasefillme")))
           ) {
-            // Use poster language order as fallback
             backgroundOrder = posterOrder;
           }
 
-          if (tcOrder.length === 1 && tcOrder[0] === "PleaseFillMe") {
-            // Use poster language order as fallback
+          if (
+            tcOrder.length === 0 &&
+            ((Array.isArray(rawTcOrder) && rawTcOrder.some((v) => String(v).trim().toLowerCase() === "pleasefillme")) ||
+              (typeof rawTcOrder === "string" && rawTcOrder.toLowerCase().includes("pleasefillme")))
+          ) {
             tcOrder = posterOrder;
           }
 
@@ -827,13 +888,16 @@ function AssetReplacer({ asset, onClose, onSuccess, initialTab = "upload", initi
             background: backgroundOrder,
             season: seasonOrder,
             titlecard: tcOrder,
+            logo: logoOrder,
           });
+          setTmdbLanguageMappings(rawMappings || {});
 
           console.log("Loaded language preferences:", {
             poster: posterOrder,
             background: backgroundOrder,
             season: seasonOrder,
             titlecard: tcOrder,
+            logo: logoOrder,
             rawBackground: configSource.PreferredBackgroundLanguageOrder,
             rawTitleCard: configSource.PreferredTCLanguageOrder,
           });
@@ -1173,6 +1237,9 @@ function AssetReplacer({ asset, onClose, onSuccess, initialTab = "upload", initi
   const fetchProviderPreviews = async (searchMetadata, isManualSearch = false) => {
     console.log("=== AssetReplacer: Fetching Previews ===");
     setShowFetchConfirm(false);
+    setLogoSelectionMode(false);
+    setTypeFilter(getDefaultTypeFilter(searchMetadata?.asset_type || metadata.asset_type));
+    setLanguageFilter("all");
     console.log("Fetch params:", { metadata: searchMetadata, isManualSearch });
     setLoading(true);
     showError(null);
@@ -1743,40 +1810,24 @@ function AssetReplacer({ asset, onClose, onSuccess, initialTab = "upload", initi
   const totalPreviews = Object.values(previews).flat().length;
 
   const currentProviderPreviews = previews[activeProviderTab] || [];
-  const hasPosters = currentProviderPreviews.some(p => p.type === "poster" || p.type === "season" || p.type === "season_poster");
-  const hasBackdrops = currentProviderPreviews.some(p => p.type === "backdrop" || p.type === "background" || p.sub_type === "background");
-
-  const effectiveTypeFilter = (typeFilter === "poster" && !hasPosters && hasBackdrops)
-    ? "backdrop"
-    : (typeFilter === "backdrop" && !hasBackdrops && hasPosters)
-      ? "poster"
-      : typeFilter;
-
-  const typeFilteredPreviews = effectiveTypeFilter === "all"
-    ? currentProviderPreviews
-    : effectiveTypeFilter === "poster"
-      ? currentProviderPreviews.filter(p => p.type === "poster" || p.type === "season" || p.type === "season_poster")
-      : currentProviderPreviews.filter(p => p.type === "backdrop" || p.type === "background" || p.sub_type === "background");
-
-  const configuredOrder = (
-    languageOrder[metadata.asset_type] ||
-    languageOrder.poster ||
-    []
-  ).map(l => (l || "").trim().toLowerCase()).filter(Boolean);
-
-  const rawAvailable = [...new Set(typeFilteredPreviews.map(p => (p.language || "xx").toLowerCase()))];
-  const allowedLanguages = configuredOrder.length > 0
-    ? rawAvailable.filter(l => configuredOrder.includes(l))
-    : rawAvailable;
-
-  const availableLanguages = ["all", ...allowedLanguages];
-  const effectiveLanguageFilter = availableLanguages.includes(languageFilter) ? languageFilter : "all";
-
-  const filteredPreviews = effectiveLanguageFilter === "all"
-    ? (configuredOrder.length > 0
-        ? typeFilteredPreviews.filter(p => configuredOrder.includes((p.language || "xx").toLowerCase()))
-        : typeFilteredPreviews)
-    : typeFilteredPreviews.filter(p => (p.language || "xx").toLowerCase() === effectiveLanguageFilter);
+  const {
+    hasPosters,
+    hasBackdrops,
+    hasClearLogos,
+    hasClearArt,
+    effectiveTypeFilter,
+    availableLanguages,
+    effectiveLanguageFilter,
+    filteredPreviews,
+  } = filterReplacerPreviews({
+    previews: currentProviderPreviews,
+    typeFilter,
+    languageFilter,
+    logoSelectionMode,
+    assetType: metadata.asset_type,
+    languageOrder,
+    tmdbLanguageMappings,
+  });
 
   return (
     <div className="app-dialog-backdrop fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-0 sm:p-4">
@@ -2516,7 +2567,7 @@ function AssetReplacer({ asset, onClose, onSuccess, initialTab = "upload", initi
 
                   <div>
                     {/* Type Filter (Posters vs Backdrops) */}
-                    {hasPosters && hasBackdrops && (
+                    {!logoSelectionMode && hasPosters && hasBackdrops && (
                       <div className="flex gap-2 mb-3">
                         <button
                           type="button"
@@ -2527,7 +2578,7 @@ function AssetReplacer({ asset, onClose, onSuccess, initialTab = "upload", initi
                               : "bg-theme-bg border border-theme text-theme-muted hover:text-theme-text"
                           }`}
                         >
-                          {t("assetReplacer.filterPosters", "Posters")} ({currentProviderPreviews.filter(p => p.type === "poster" || p.type === "season" || p.type === "season_poster").length})
+                          {t("assetReplacer.filterPosters", "Posters")} ({currentProviderPreviews.filter(isPosterPreview).length})
                         </button>
                         <button
                           type="button"
@@ -2538,7 +2589,7 @@ function AssetReplacer({ asset, onClose, onSuccess, initialTab = "upload", initi
                               : "bg-theme-bg border border-theme text-theme-muted hover:text-theme-text"
                           }`}
                         >
-                          {t("assetReplacer.filterBackgrounds", "Backgrounds")} ({currentProviderPreviews.filter(p => p.type === "backdrop" || p.type === "background" || p.sub_type === "background").length})
+                          {t("assetReplacer.filterBackgrounds", "Backgrounds")} ({currentProviderPreviews.filter(isBackdropPreview).length})
                         </button>
                         <button
                           type="button"
@@ -2550,6 +2601,45 @@ function AssetReplacer({ asset, onClose, onSuccess, initialTab = "upload", initi
                           }`}
                         >
                           {t("assetReplacer.filterAllTypes", "All Types")} ({currentProviderPreviews.length})
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Logo Sub-Type Filter (ClearLogo vs ClearArt) */}
+                    {logoSelectionMode && hasClearLogos && hasClearArt && (
+                      <div className="flex gap-2 mb-3">
+                        <button
+                          type="button"
+                          onClick={() => setTypeFilter("all")}
+                          className={`px-3 py-1 text-xs font-medium rounded-lg transition-colors ${
+                            effectiveTypeFilter === "all"
+                              ? "bg-theme-primary text-white"
+                              : "bg-theme-bg border border-theme text-theme-muted hover:text-theme-text"
+                          }`}
+                        >
+                          {t("assetReplacer.filterAllTypes", "All Types")} ({currentProviderPreviews.length})
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setTypeFilter("clearlogo")}
+                          className={`px-3 py-1 text-xs font-medium rounded-lg transition-colors ${
+                            effectiveTypeFilter === "clearlogo"
+                              ? "bg-theme-primary text-white"
+                              : "bg-theme-bg border border-theme text-theme-muted hover:text-theme-text"
+                          }`}
+                        >
+                          ClearLogo ({currentProviderPreviews.filter(p => isLogoPreview(p) && String(p?.sub_type || "").toLowerCase() === "clearlogo").length})
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setTypeFilter("clearart")}
+                          className={`px-3 py-1 text-xs font-medium rounded-lg transition-colors ${
+                            effectiveTypeFilter === "clearart"
+                              ? "bg-theme-primary text-white"
+                              : "bg-theme-bg border border-theme text-theme-muted hover:text-theme-text"
+                          }`}
+                        >
+                          ClearArt ({currentProviderPreviews.filter(p => isLogoPreview(p) && String(p?.sub_type || "").toLowerCase() === "clearart").length})
                         </button>
                       </div>
                     )}
@@ -2573,13 +2663,13 @@ function AssetReplacer({ asset, onClose, onSuccess, initialTab = "upload", initi
                       </div>
                     )}
 
-                    <div className={useHorizontalLayout || typeFilter === "backdrop"
+                    <div className={useHorizontalLayout || effectiveTypeFilter === "backdrop" || logoSelectionMode
                       ? "grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2"
                       : "grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2"
                     }>
                       {filteredPreviews.map((preview, index) => (
                         <PreviewCard
-                          key={`${activeProviderTab}-${index}`}
+                          key={`${activeProviderTab}-${preview.original_url || preview.url || index}-${index}`}
                           preview={preview}
                           onSelect={() => handlePreviewClick(preview)}
                           disabled={uploading}
@@ -2653,13 +2743,10 @@ function PreviewCard({ preview, onSelect, disabled, isHorizontal = false, isTarg
   const [imageError, setImageError] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(false);
 
-  const isBackdrop = preview.type === "backdrop" || preview.type === "background" || preview.sub_type === "background";
+  const isBackdrop = isBackdropPreview(preview);
 
   // Detect if it is a logo (updated to handle multiple variants)
-  const isLogo = preview.type === "logo" ||
-    preview.type?.includes("clearart") ||
-    preview.type?.includes("clearlogo") ||
-    preview.type?.includes("hdmovielogo");
+  const isLogo = isLogoPreview(preview);
 
   const handleDownload = async (e) => {
     e.stopPropagation();
@@ -2707,7 +2794,7 @@ function PreviewCard({ preview, onSelect, disabled, isHorizontal = false, isTarg
       onClick={disabled ? undefined : onSelect}
     >
       <div
-        className={`relative ${isLogo ? "bg-slate-700/50" : "bg-theme"} ${(isHorizontal || isBackdrop) ? "aspect-[16/9]" : "aspect-[2/3]"
+        className={`relative ${isLogo ? "bg-slate-700/50" : "bg-theme"} ${(isHorizontal || isBackdrop || isLogo) ? "aspect-[16/9]" : "aspect-[2/3]"
           }`}
       >
         {isBackdrop && (
@@ -2800,7 +2887,11 @@ function PreviewCard({ preview, onSelect, disabled, isHorizontal = false, isTarg
                       ? "Backdrop"
                       : preview.type === "poster"
                         ? "Poster"
-                        : preview.type}
+                        : preview.type === "logo" && preview.sub_type === "clearart"
+                          ? "ClearArt"
+                          : preview.type === "logo" && preview.sub_type === "clearlogo"
+                            ? "ClearLogo"
+                            : preview.type}
               </span>
             )}
           </div>
